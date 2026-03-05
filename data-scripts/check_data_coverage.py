@@ -26,14 +26,10 @@ for sym in sample:
         if pq.name.startswith('._'):
             continue
         try:
-            df = pd.read_parquet(pq, engine='fastparquet' if 'fastparquet' in pd.get_option('io.parquet.engine') else 'auto')
+            df = pd.read_parquet(pq, engine='pyarrow')
             if 'time' in df.columns:
-                # bypass pyarrow timezone complexities
-                try:
-                    df['time'] = pd.to_datetime(df['time'], utc=True)
-                except:
-                    pass
-                times = pd.to_datetime(df['time'])
+                # Force strictly to standard UTC datetime regardless of input type to avoid timezone NoneType errors
+                times = pd.to_datetime(df['time'], utc=True, errors='coerce')
                 print(f"{sym:20s} {pq.stem:10s} {str(times.min())[:10]:12s} {str(times.max())[:10]:12s} {len(df):8,d}")
         except Exception as e:
             print(f"{sym:20s} {pq.stem:10s} ERROR: {e}")
@@ -47,13 +43,9 @@ for sym in symbols:
     pq_1d = nifty500_dir / sym / "1D.parquet"
     if pq_1d.exists():
         try:
-            df = pd.read_parquet(pq_1d)
+            df = pd.read_parquet(pq_1d, engine='pyarrow')
             if 'time' in df.columns:
-                try:
-                    df['time'] = pd.to_datetime(df['time'], utc=True)
-                except:
-                    pass
-                last_dates.append(pd.to_datetime(df['time']).max())
+                last_dates.append(pd.to_datetime(df['time'], utc=True, errors='coerce').max())
         except:
             pass
 
@@ -76,13 +68,9 @@ if underlying.exists():
                 if pq.name.startswith('._'):
                     continue
                 try:
-                    df = pd.read_parquet(pq)
+                    df = pd.read_parquet(pq, engine='pyarrow')
                     if 'time' in df.columns:
-                        try:
-                            df['time'] = pd.to_datetime(df['time'], utc=True)
-                        except:
-                            pass
-                        times = pd.to_datetime(df['time'])
+                        times = pd.to_datetime(df['time'], utc=True, errors='coerce')
                         print(f"  {idx.name:15s} {pq.stem:10s} {str(times.min())[:10]} → {str(times.max())[:19]}  ({len(df):,} rows)")
                 except Exception as e:
                     print(f"  {idx.name:15s} {pq.stem:10s} ERROR: {e}")
