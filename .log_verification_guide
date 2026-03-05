@@ -1,0 +1,20 @@
+# Data Download Verification Checklist
+
+## Always check:
+1. **File exists** → `ls -la <logfile>`
+2. **Line count** → `wc -l <logfile>`
+3. **Start of log** → `head -10 <logfile>`
+4. **End of log** → `tail -10 <logfile>`
+
+## For download logs:
+- Check total items vs processed items (e.g., `[499/499]`)
+- Check date range mentioned
+- Check completion status (final timestamp)
+- Look for error patterns (DH-905, DH-901, etc.)
+
+## For token status:
+- Check auth errors in logs
+- Verify token expiry dates
+- Look for "connection verified" messages
+
+## Rule: Never assume - always verify with actual log content.

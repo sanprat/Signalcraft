@@ -1,0 +1,36 @@
+{
+  "name": "TCS Supertrend Test",
+  "asset_type": "EQUITY",
+  "symbol": "TCS",
+  "index": null,
+  "option_type": null,
+  "strike_type": null,
+  "timeframe": "1D",
+  "entry_conditions": [
+    {
+      "indicator": "SUPERTREND",
+      "params": {
+        "period": 7,
+        "multiplier": 3.0
+      },
+      "logic": "AND"
+    }
+  ],
+  "exit_conditions": {
+    "target_pct": 8.0,
+    "stoploss_pct": 4.0,
+    "trailing_sl_pct": null,
+    "time_exit": null
+  },
+  "risk": {
+    "max_trades_per_day": 1,
+    "max_loss_per_day": 5000.0,
+    "quantity_lots": 5,
+    "lot_size": 1,
+    "reentry_after_sl": false
+  },
+  "backtest_from": "2024-01-01",
+  "backtest_to": "2025-12-31",
+  "strategy_id": "bdf4d9e4",
+  "created_at": "2026-03-02T16:23:15.658280"
+}

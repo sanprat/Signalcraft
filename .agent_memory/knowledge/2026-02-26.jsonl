@@ -1,0 +1,208 @@
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "backend/app/routers/quotes.py",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "backend/app/main.py",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "frontend/hooks/useQuotes.ts",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "frontend/app/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "frontend/app/dashboard/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "frontend/app/login/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "frontend/app/live/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "frontend/app/strategy/new/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "frontend/app/backtest/[id]/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T09:21:35Z",
+  "file_path": "frontend/next.config.js",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772097694"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "backend/app/routers/quotes.py",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "backend/app/main.py",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "frontend/hooks/useQuotes.ts",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "frontend/app/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "frontend/app/dashboard/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "frontend/app/login/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "frontend/app/live/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "frontend/app/strategy/new/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "frontend/app/backtest/[id]/page.tsx",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T11:56:37Z",
+  "file_path": "frontend/next.config.js",
+  "knowledge": "Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772106996"
+}
+{
+  "timestamp": "2026-02-26T12:08:15Z",
+  "file_path": "frontend/app/dashboard/page.tsx",
+  "knowledge": "Modified during task: Answer user question about why prices are ticking in dashboard when markets are closed.",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772107694"
+}
+{
+  "timestamp": "2026-02-26T12:08:15Z",
+  "file_path": "frontend/app/live/page.tsx",
+  "knowledge": "Modified during task: Answer user question about why prices are ticking in dashboard when markets are closed.",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772107694"
+}
+{
+  "timestamp": "2026-02-26T12:31:12Z",
+  "file_path": "frontend/app/dashboard/page.tsx",
+  "knowledge": "Modified during task: Answer user question about why prices are ticking in dashboard when markets are closed.",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772109071"
+}
+{
+  "timestamp": "2026-02-26T12:31:12Z",
+  "file_path": "frontend/app/live/page.tsx",
+  "knowledge": "Modified during task: Answer user question about why prices are ticking in dashboard when markets are closed.",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772109071"
+}
+{
+  "timestamp": "2026-02-26T13:23:38Z",
+  "file_path": "frontend/app/dashboard/page.tsx",
+  "knowledge": "Modified during task: Answer user question about why prices are ticking in dashboard when markets are closed.",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772112217"
+}
+{
+  "timestamp": "2026-02-26T13:23:38Z",
+  "file_path": "frontend/app/live/page.tsx",
+  "knowledge": "Modified during task: Answer user question about why prices are ticking in dashboard when markets are closed.",
+  "type": "update",
+  "confidence": "medium",
+  "session": "1772112217"
+}

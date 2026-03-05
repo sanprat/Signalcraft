@@ -1,0 +1,84 @@
+# SignalCraft .gitignore
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+
+# Build outputs
+.next/
+dist/
+build/
+*.egg-info/
+
+# Environment files (keep secrets safe!)
+.env
+.env.local
+.env.db
+.env.*.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+backups/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Docker
+docker-compose.override.yml
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Misc
+*.tar.gz
+*.zip
+.cache/
+
+# Internal Docs and Sensitive Data
+.env.bak
+.env.db.example
+SignalCraft_Architecture.docx
+SignalCraft_Dashboard.jsx
+SignalCraft_Developer_Guide.docx
+screeners_spec.md
+FnO_Developer_Setup_Guide.docx
+FnO_Platform_Architecture.docx
+ADMIN_PANEL_README.md
+POSTGRES_QUICKSTART.md
+QWEN.md
+
+# Large Data Exclusions
+data/
+backend/data/
+frontend/public/data/
+*.parquet
+*.csv
+*.xlsx

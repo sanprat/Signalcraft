@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test - SignalCraft</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #1a1a2e;
+            color: #fff;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .connected { background: #059669; }
+        .disconnected { background: #DC2626; }
+        .card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        .price {
+            font-size: 24px;
+            font-weight: 700;
+            font-family: 'DM Mono', monospace;
+        }
+        .change {
+            font-size: 16px;
+            margin-left: 10px;
+        }
+        .up { color: #34D399; }
+        .down { color: #F87171; }
+        .log {
+            background: #000;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'DM Mono', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔌 WebSocket Connection Test</h1>
+    
+    <div id="status" class="status disconnected">Connecting...</div>
+    
+    <div class="card">
+        <h3>Live Index Prices</h3>
+        <div id="nifty">NIFTY 50: <span class="price">--</span></div>
+        <div id="banknifty">BANKNIFTY: <span class="price">--</span></div>
+        <div id="finnifty">FINNIFTY: <span class="price">--</span></div>
+        <div id="sensex">SENSEX: <span class="price">--</span></div>
+    </div>
+    
+    <h3>Connection Log</h3>
+    <div id="log" class="log"></div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+        
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML = `[${time}] ${msg}\n` + logEl.innerHTML;
+        }
+
+        function connect() {
+            const ws = new WebSocket('ws://localhost:8000/ws/quotes');
+            
+            ws.onopen = () => {
+                statusEl.textContent = '● Connected to Backend';
+                statusEl.className = 'status connected';
+                log('WebSocket connected');
+            };
+            
+            ws.onclose = () => {
+                statusEl.textContent = '○ Disconnected - Reconnecting...';
+                statusEl.className = 'status disconnected';
+                log('WebSocket disconnected');
+                setTimeout(connect, 3000);
+            };
+            
+            ws.onerror = (err) => {
+                log('WebSocket error: ' + err);
+            };
+            
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                
+                if (msg.type === 'quotes') {
+                    log('Received quotes update');
+                    
+                    for (const [symbol, data] of Object.entries(msg.data)) {
+                        const id = symbol.toLowerCase().replace(' ', '');
+                        const el = document.getElementById(id);
+                        if (el) {
+                            const changeClass = data.up ? 'up' : 'down';
+                            const changeSign = data.up ? '+' : '';
+                            el.innerHTML = `${symbol}: <span class="price">${data.ltp.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span> <span class="change ${changeClass}">(${changeSign}${data.chg}%)</span>`;
+                        }
+                    }
+                } else if (msg.type === 'ping') {
+                    log('Heartbeat received');
+                }
+            };
+        }
+
+        connect();
+    </script>
+</body>
+</html>

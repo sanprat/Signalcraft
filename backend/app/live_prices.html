@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Index Prices - SignalCraft</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        h1 {
+            color: #fff;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+        .subtitle {
+            color: #8892b0;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 30px;
+            color: #64ffda;
+            font-size: 0.85rem;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #64ffda;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .indices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .index-card {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 15px;
+            padding: 25px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .index-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+        .index-name {
+            color: #8892b0;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+        .index-price {
+            color: #fff;
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .index-change {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        .positive {
+            background: rgba(34, 197, 94, 0.2);
+            color: #4ade80;
+        }
+        .negative {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+        .arrow {
+            font-size: 1.2rem;
+        }
+        .last-update {
+            text-align: center;
+            color: #8892b0;
+            margin-top: 30px;
+            font-size: 0.85rem;
+        }
+        .loading {
+            color: #8892b0;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Live Index Prices</h1>
+        <p class="subtitle">Powered by Dhan WebSocket API</p>
+        
+        <div class="status">
+            <div class="status-dot"></div>
+            <span id="connection-status">Connecting...</span>
+        </div>
+
+        <div class="indices-grid">
+            <div class="index-card">
+                <div class="index-name">NIFTY 50</div>
+                <div class="index-price" id="nifty-price">--</div>
+                <div class="index-change" id="nifty-change">--</div>
+            </div>
+            
+            <div class="index-card">
+                <div class="index-name">BANKNIFTY</div>
+                <div class="index-price" id="banknifty-price">--</div>
+                <div class="index-change" id="banknifty-change">--</div>
+            </div>
+            
+            <div class="index-card">
+                <div class="index-name">FINNIFTY</div>
+                <div class="index-price" id="finnifty-price">--</div>
+                <div class="index-change" id="finnifty-change">--</div>
+            </div>
+            
+            <div class="index-card">
+                <div class="index-name">SENSEX</div>
+                <div class="index-price" id="sensex-price">--</div>
+                <div class="index-change" id="sensex-change">--</div>
+            </div>
+        </div>
+
+        <div class="last-update">
+            Last update: <span id="last-update">--:--:--</span>
+        </div>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('connection-status');
+        const lastUpdateEl = document.getElementById('last-update');
+        
+        function updateCard(name, data) {
+            const priceEl = document.getElementById(`${name}-price`);
+            const changeEl = document.getElementById(`${name}-change`);
+            
+            if (data && data.ltp) {
+                priceEl.textContent = data.ltp.toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+                
+                const chg = data.chg.toFixed(2);
+                const isUp = data.up;
+                changeEl.className = `index-change ${isUp ? 'positive' : 'negative'}`;
+                changeEl.innerHTML = `
+                    <span class="arrow">${isUp ? '↑' : '↓'}</span>
+                    <span>${isUp ? '+' : ''}${chg}%</span>
+                `;
+            }
+        }
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/quotes`;
+            
+            const ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                statusEl.textContent = 'Live • Connected';
+                statusEl.style.color = '#64ffda';
+            };
+            
+            ws.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                
+                if (message.type === 'quotes' && message.data) {
+                    updateCard('nifty', message.data['NIFTY 50']);
+                    updateCard('banknifty', message.data['BANKNIFTY']);
+                    updateCard('finnifty', message.data['FINNIFTY']);
+                    updateCard('sensex', message.data['SENSEX']);
+                    
+                    if (message.ts) {
+                        lastUpdateEl.textContent = message.ts;
+                    }
+                } else if (message.type === 'ping') {
+                    // Heartbeat received
+                }
+            };
+            
+            ws.onclose = () => {
+                statusEl.textContent = 'Disconnected • Reconnecting...';
+                statusEl.style.color = '#f87171';
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                statusEl.textContent = 'Error • Reconnecting...';
+                statusEl.style.color = '#f87171';
+            };
+        }
+
+        // Initial fetch via REST API
+        fetch('/api/quotes')
+            .then(res => res.json())
+            .then(data => {
+                updateCard('nifty', data['NIFTY 50']);
+                updateCard('banknifty', data['BANKNIFTY']);
+                updateCard('finnifty', data['FINNIFTY']);
+                updateCard('sensex', data['SENSEX']);
+                lastUpdateEl.textContent = new Date().toLocaleTimeString();
+            })
+            .catch(err => console.error('Initial fetch error:', err));
+
+        // Start WebSocket connection
+        connectWebSocket();
+    </script>
+</body>
+</html>

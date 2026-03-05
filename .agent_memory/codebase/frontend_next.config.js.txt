@@ -1,0 +1,8 @@
+[2026-02-26T09:21:35Z] [update] [medium]
+Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)
+
+---
+[2026-02-26T11:56:37Z] [update] [medium]
+Modified during task: Fix root cause of static prices (falling back to Dhan WS from simulation after 3 attempts, parallel broadcasting)
+
+---

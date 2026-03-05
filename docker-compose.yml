@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: signalcraft-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-signalcraft}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-signalcraft_dev_pass}
+      POSTGRES_DB: ${DB_NAME:-signalcraft}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-signalcraft}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - signalcraft_network
+
+  # Redis Database
+  redis:
+    image: redis:7-alpine
+    container_name: signalcraft-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - signalcraft_network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: signalcraft-backend
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=signalcraft
+      - DB_PASSWORD=signalcraft_dev_pass
+      - DB_NAME=signalcraft
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - REDIS_URL=redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - signalcraft_network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    volumes:
+      - ./backend:/app # Useful for development, will be ignored in prod if we don't map it.
+      - ./data/candles:/app/data/candles
+      - ./data/underlying:/app/data/underlying
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: signalcraft-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=
+      - NEXT_PUBLIC_API_BASE_URL=
+    depends_on:
+      - backend
+    networks:
+      - signalcraft_network
+
+  # pgAdmin (Optional - Database Management UI)
+  # Uncomment to enable web-based database management
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: signalcraft-pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@localhost.com}
+  #     PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+  #   ports:
+  #     - "${PGADMIN_PORT:-5050}:80"
+  #   volumes:
+  #     - pgadmin_data:/var/lib/pgadmin
+  #   depends_on:
+  #     - postgres
+  #   networks:
+  #     - signalcraft_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  signalcraft_network:
+    driver: bridge
