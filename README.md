@@ -1,6 +1,6 @@
 # SignalCraft (Pytrader) 🚀
 
-<a href="https://www.zenalys.com" target="_blank">www.zenalys.com</a>
+[www.zenalys.com](https://www.zenalys.com)
 
 ![SignalCraft Banner](https://raw.githubusercontent.com/sanprat/Signalcraft/main/images/admin.png)
 
