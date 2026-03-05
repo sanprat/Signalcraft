@@ -236,6 +236,42 @@ def update_nifty500_stocks(client: DhanClient, end_date: date, dry_run: bool = F
                     )
                     time.sleep(1.0)
                     
+                # Secondary fallback: fetch 1-minute data and aggregate it into daily candles
+                if not raw:
+                    log.info(f"  [{i}/{len(symbols)}] {sym}: 1D API failed, aggregating 1min data as fallback")
+                    raw_1m = client.get_intraday_candles(
+                        security_id=sec_id,
+                        exchange_segment="NSE_EQ",
+                        instrument="EQUITY",
+                        interval="1",
+                        from_datetime=f"{start} 09:00:00",
+                        to_datetime=f"{end_date} 16:00:00",
+                    )
+                    time.sleep(1.0)
+                    if raw_1m:
+                        df_1m = pd.DataFrame(raw_1m)
+                        df_1m["time"] = pd.to_datetime(df_1m["time"]).dt.tz_localize(None).dt.tz_localize("Asia/Kolkata")
+                        
+                        # Apply market hours filter
+                        t = df_1m["time"]
+                        df_1m = df_1m[
+                            ((t.dt.hour > 9) | ((t.dt.hour == 9) & (t.dt.minute >= 15))) &
+                            ((t.dt.hour < 15) | ((t.dt.hour == 15) & (t.dt.minute <= 30)))
+                        ]
+                        
+                        if not df_1m.empty:
+                            df_1m.set_index("time", inplace=True)
+                            df_daily = df_1m.resample("D").agg({
+                                "open": "first",
+                                "high": "max",
+                                "low": "min",
+                                "close": "last",
+                                "volume": "sum"
+                            }).dropna().reset_index()
+                            merge_and_save(df_daily, out_path)
+                            sym_updated = True
+                            continue # skip the normal df save
+                    
                 if raw:
                     df = candles_to_df_daily(raw)
                     if not df.empty:
