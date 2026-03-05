@@ -5,6 +5,26 @@
 
 ---
 
+## 🚀 Major Update: Robust Historical Data Fallback & Timezone Fixes (March 5, 2026 - Evening)
+
+### **Overview**
+Resolved critical data ingestion and timezone parsing issues for the automated daily updater script ensuring uninterrupted historical data collection.
+
+---
+
+### 1. Robust Dhan API Fallback (`daily_updater.py`)
+- **Issue**: The Dhan API started throwing `DH-905` (HTTP 400) parameter errors for the standard 1-day (1D) historical data endpoint for NIFTY500 stocks.
+- **Resolution**: Implemented a sophisticated 1-minute fallback. When `DH-905` is encountered, the script automatically downloads high-resolution 1-minute intraday candles, filters for market hours, and mathematically aggregates them (first Open, max High, min Low, last Close, sum Volume) back into a standard 1D candle.
+
+### 2. PyArrow & macOS Compatibility (`check_data_coverage.py`)
+- **Issue**: The data coverage checker was failing on the VPS due to hidden macOS `._*` AppleDouble files being pulled via Git, and older PyArrow engines crashing on timezone parsing (`NoneType object has no attribute timezone`).
+- **Resolution**: 
+  - Added filter logic to seamlessly skip hidden OS files.
+  - Enforced the `engine='pyarrow'` flag and used strict standard UTC conversions `pd.to_datetime([], utc=True, errors='coerce')` to completely bypass timezone interpretation crashes on the remote Linux box.
+  - Wrote a local diagnostic tool (`check_dates.py`) to bypass PyArrow when evaluating the VPS environment's raw parquet strings.
+
+---
+
 ## 🚀 Major Update: Live Trading Deployment & Integrated Dashboard (March 3, 2026 - Late Night)
 
 ### **Overview**

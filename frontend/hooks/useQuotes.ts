@@ -6,6 +6,11 @@ import { config } from '@/lib/config'
 export type QuoteData = { ltp: number; chg: number; up: boolean }
 export type Quotes = Record<string, QuoteData>
 
+const logger = {
+    warn: (...args: any[]) => console.warn("[useQuotes]", ...args),
+    error: (...args: any[]) => console.error("[useQuotes]", ...args)
+};
+
 const INITIAL_QUOTES: Quotes = {
     'NIFTY 50': { ltp: 0.0, chg: 0.0, up: true },
     'BANKNIFTY': { ltp: 0.0, chg: 0.0, up: true },
@@ -103,8 +108,3 @@ export function useQuotes(apiBase = config.apiBaseUrl) {
         subscribe: () => { }
     }
 }
-
-const logger = {
-    warn: (...args: any[]) => console.warn("[useQuotes]", ...args),
-    error: (...args: any[]) => console.error("[useQuotes]", ...args)
-};
