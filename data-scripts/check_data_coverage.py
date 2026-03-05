@@ -28,11 +28,12 @@ for sym in sample:
         try:
             df = pd.read_parquet(pq, engine='fastparquet' if 'fastparquet' in pd.get_option('io.parquet.engine') else 'auto')
             if 'time' in df.columns:
-                # robust datetime parsing for pyarrow timezone issues
+                # bypass pyarrow timezone complexities
                 try:
-                    times = pd.to_datetime(df['time'], utc=True).dt.tz_convert('Asia/Kolkata')
+                    df['time'] = pd.to_datetime(df['time'], utc=True)
                 except:
-                    times = pd.to_datetime(df['time'])
+                    pass
+                times = pd.to_datetime(df['time'])
                 print(f"{sym:20s} {pq.stem:10s} {str(times.min())[:10]:12s} {str(times.max())[:10]:12s} {len(df):8,d}")
         except Exception as e:
             print(f"{sym:20s} {pq.stem:10s} ERROR: {e}")
@@ -48,6 +49,10 @@ for sym in symbols:
         try:
             df = pd.read_parquet(pq_1d)
             if 'time' in df.columns:
+                try:
+                    df['time'] = pd.to_datetime(df['time'], utc=True)
+                except:
+                    pass
                 last_dates.append(pd.to_datetime(df['time']).max())
         except:
             pass
@@ -68,9 +73,15 @@ if underlying.exists():
     for idx in sorted(underlying.iterdir()):
         if idx.is_dir():
             for pq in sorted(idx.glob("*.parquet")):
+                if pq.name.startswith('._'):
+                    continue
                 try:
                     df = pd.read_parquet(pq)
                     if 'time' in df.columns:
+                        try:
+                            df['time'] = pd.to_datetime(df['time'], utc=True)
+                        except:
+                            pass
                         times = pd.to_datetime(df['time'])
                         print(f"  {idx.name:15s} {pq.stem:10s} {str(times.min())[:10]} → {str(times.max())[:19]}  ({len(df):,} rows)")
                 except Exception as e:
