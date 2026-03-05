@@ -23,10 +23,16 @@ print("-" * 65)
 for sym in sample:
     sym_dir = nifty500_dir / sym
     for pq in sorted(sym_dir.glob("*.parquet")):
+        if pq.name.startswith('._'):
+            continue
         try:
-            df = pd.read_parquet(pq)
+            df = pd.read_parquet(pq, engine='fastparquet' if 'fastparquet' in pd.get_option('io.parquet.engine') else 'auto')
             if 'time' in df.columns:
-                times = pd.to_datetime(df['time'])
+                # robust datetime parsing for pyarrow timezone issues
+                try:
+                    times = pd.to_datetime(df['time'], utc=True).dt.tz_convert('Asia/Kolkata')
+                except:
+                    times = pd.to_datetime(df['time'])
                 print(f"{sym:20s} {pq.stem:10s} {str(times.min())[:10]:12s} {str(times.max())[:10]:12s} {len(df):8,d}")
         except Exception as e:
             print(f"{sym:20s} {pq.stem:10s} ERROR: {e}")
