@@ -4,13 +4,17 @@ import os
 import pandas as pd
 from pathlib import Path
 
-BASE = Path("/Users/sanim/Downloads/sunny/Python/AIML/Pybankers/Pytrader/data")
+BASE = Path(__file__).parent.parent / "data"
 
 # 1. NIFTY500 stocks - sample check
 nifty500_dir = BASE / "candles" / "NIFTY500"
-symbols = sorted([d.name for d in nifty500_dir.iterdir() if d.is_dir()])
-sample = symbols[:3] + symbols[len(symbols)//2:len(symbols)//2+3] + symbols[-3:]
-sample = list(dict.fromkeys(sample))
+if nifty500_dir.exists():
+    symbols = sorted([d.name for d in nifty500_dir.iterdir() if d.is_dir()])
+    sample = symbols[:3] + symbols[len(symbols)//2:len(symbols)//2+3] + symbols[-3:]
+    sample = list(dict.fromkeys(sample))
+else:
+    symbols = []
+    sample = []
 
 print(f"NIFTY500: {len(symbols)} symbols")
 print(f"{'Symbol':20s} {'Interval':10s} {'First':12s} {'Last':12s} {'Rows':>8s}")
@@ -97,7 +101,7 @@ for idx in ["NIFTY", "BANKNIFTY", "FINNIFTY"]:
         print(f"  {idx}: No FnO data directory found")
 
 # 5. data-scripts FnO data check  
-ds_candles = Path("/Users/sanim/Downloads/sunny/Python/AIML/Pybankers/Pytrader/data-scripts/data/candles")
+ds_candles = Path(__file__).parent / "data" / "candles"
 if ds_candles.exists():
     print(f"\n{'='*60}")
     print(f"  FnO OPTIONS DATA (data-scripts/data/)")
