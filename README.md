@@ -1,5 +1,7 @@
 # SignalCraft (Pytrader) 🚀
 
+[www.zenalys.com](https://www.zenalys.com)
+
 ![SignalCraft Banner](https://raw.githubusercontent.com/sanprat/Signalcraft/main/images/admin.png)
 
 **SignalCraft** is a sophisticated, real-time algorithmic trading and market analysis platform. Built with a focus on speed, reliability, and precision, it empowers traders to automate strategies, monitor global markets, and perform deep historical analysis with ease.
