@@ -171,7 +171,7 @@ export default function ZenalysLandingPage() {
                             <div style={{ fontSize: 14, fontWeight: 700, color: T.emerald, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 16 }}>Flagship Product</div>
                             <h2 style={{ fontSize: '3rem', fontWeight: 800, marginBottom: 24, letterSpacing: '-0.02em' }}>Signal<span style={{ color: T.emerald }}>Craft</span></h2>
                             <p style={{ fontSize: '1.1rem', color: T.textMid, lineHeight: 1.7, marginBottom: 32 }}>
-                                Our premier visual platform designed specifically for Options and Swing traders. Build complex, multi-leg strategies without writing code. Backtest against years of historical data instantly, and push to live execution with one click.
+                                Our premier visual platform designed for all types of traders. Build complex, multi-leg strategies without writing code. Backtest against years of historical data instantly, and push to live execution with one click.
                             </p>
                             <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 40px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                                 {[
