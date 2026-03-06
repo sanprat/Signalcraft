@@ -90,3 +90,22 @@ def get_candles(backtest_id: str, page: int = 0, page_size: int = 500):
             "volume": df["volume"].tolist(),
         }
     }
+
+
+@router.get("")
+def list_backtests():
+    """List all recent backtest summaries."""
+    results = []
+    if not BACKTEST_STORE.exists():
+        return results
+        
+    # Look for summary.json in each subfolder
+    for d in sorted(BACKTEST_STORE.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        if d.is_dir():
+            summary_path = d / "summary.json"
+            if summary_path.exists():
+                try:
+                    results.append(json.loads(summary_path.read_text()))
+                except Exception:
+                    continue
+    return results
