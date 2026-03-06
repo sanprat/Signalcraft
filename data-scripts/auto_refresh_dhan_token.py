@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 # Dhan API config
-DHAN_AUTH_URLS = [os.getenv("DHAN_AUTH_URL", "https://b2b.dhan.co/api/v1/login")]
+# NOTE: b2b.dhan.co was deprecated and causes NameResolutionError on VPS.
+# We exclusively stick to RenewToken or require manual re-auth via OAuth if expired.
+DHAN_AUTH_URLS = [os.getenv("DHAN_AUTH_URL", "https://api.dhan.co/v2/login")]
 REFRESH_INTERVAL_HOURS = 24  # Standard token validity is 24 hours
 PROACTIVE_REFRESH_HOURS = 2.0  # Refresh when there are 2 hours or less remaining
 
