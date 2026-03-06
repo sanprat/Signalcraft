@@ -369,3 +369,9 @@ def get_adapter(broker: str, user_id: int = None) -> BrokerAdapter:
             case "dhan":      _adapters[cache_key] = DhanAdapter(creds)
             case _: raise ValueError(f"Unknown broker: {broker}")
     return _adapters[cache_key]
+
+def clear_adapter_cache(broker: str, user_id: int):
+    cache_key = f"{broker}_{user_id}"
+    if cache_key in _adapters:
+        del _adapters[cache_key]
+        logger.info(f"Cleared broker adapter cache for {cache_key}")

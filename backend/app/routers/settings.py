@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 
 from app.routers.auth import get_current_user, UserResponse
 from app.core.database import get_broker_credentials, save_broker_credentials
+from app.core.brokers import clear_adapter_cache
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
 
@@ -49,5 +50,8 @@ def update_broker_credentials(body: BrokerCredentialsReq, current_user: UserResp
     success = save_broker_credentials(user_id, body.broker, updated_creds)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save broker credentials")
+    
+    # Clear the broker cache for this user so new adapter connections are created
+    clear_adapter_cache(body.broker, user_id)
     
     return {"status": "success", "message": f"Credentials for {body.broker} securely updated."}
