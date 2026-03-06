@@ -37,7 +37,7 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 # We exclusively stick to RenewToken or require manual re-auth via OAuth if expired.
 DHAN_AUTH_URLS = [os.getenv("DHAN_AUTH_URL", "https://api.dhan.co/v2/login")]
 REFRESH_INTERVAL_HOURS = 24  # Standard token validity is 24 hours
-PROACTIVE_REFRESH_HOURS = 2.0  # Refresh when there are 2 hours or less remaining
+PROACTIVE_REFRESH_HOURS = 6.0  # Refresh when there are 6 hours or less remaining
 
 def get_current_token_expiry():
     """Decode JWT token to get expiry timestamp."""
