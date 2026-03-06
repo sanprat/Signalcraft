@@ -216,9 +216,17 @@ export default function LiveTradingPage() {
                                 </div>
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                {JSON.parse(strat.symbols || '[]').map((s: string) => (
-                                    <span key={s} style={{ fontSize: 11, fontWeight: 600, color: T.blue, background: T.blueLight, padding: '2px 8px', borderRadius: 4, fontFamily: "'DM Mono', monospace" }}>{s}</span>
-                                ))}
+                                {(() => {
+                                    try {
+                                        const parsed = JSON.parse(strat.symbols || '[]');
+                                        const symbolArray = Array.isArray(parsed) ? parsed : [parsed];
+                                        return symbolArray.map((s: string) => (
+                                            <span key={s} style={{ fontSize: 11, fontWeight: 600, color: T.blue, background: T.blueLight, padding: '2px 8px', borderRadius: 4, fontFamily: "'DM Mono', monospace" }}>{s}</span>
+                                        ));
+                                    } catch (e) {
+                                        return <span style={{ fontSize: 11, fontWeight: 600, color: T.blue, background: T.blueLight, padding: '2px 8px', borderRadius: 4 }}>{strat.symbols}</span>;
+                                    }
+                                })()}
                             </div>
                         </Card>
                     ))}
