@@ -188,7 +188,7 @@ function DashboardContent() {
             const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
 
             // Fetch strategies
-            const strategiesRes = await fetch(`${config.apiBaseUrl}/api/strategies`, { headers })
+            const strategiesRes = await fetch(`${config.apiBaseUrl}/api/strategy`, { headers })
             if (strategiesRes.ok) {
                 const data = await strategiesRes.json()
                 setStrategies(data.strategies || [])
@@ -201,7 +201,7 @@ function DashboardContent() {
             }
 
             // Fetch recent backtests
-            const backtestsRes = await fetch(`${config.apiBaseUrl}/api/backtests/recent`, { headers })
+            const backtestsRes = await fetch(`${config.apiBaseUrl}/api/backtest`, { headers })
             if (backtestsRes.ok) {
                 const data = await backtestsRes.json()
                 setBacktests(data.backtests || [])
