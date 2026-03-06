@@ -114,6 +114,16 @@ export default function LiveTradingPage() {
         }
     }
 
+    const deleteStrategy = async (liveId: number) => {
+        if (!confirm("Permanently remove this strategy from the dashboard?")) return
+        setStrategies(prev => prev.filter(s => s.id !== liveId))
+        try {
+            await fetch(`${API}/api/live/strategy/${liveId}`, { method: 'DELETE' })
+        } catch (err) {
+            console.error("Failed to delete strategy", err)
+        }
+    }
+
     if (loading && strategies.length === 0) {
         return <div style={{ padding: 40, textAlign: 'center', color: T.textMuted }}>Loading Live Dashboard...</div>
     }
@@ -209,10 +219,16 @@ export default function LiveTradingPage() {
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', gap: 6 }}>
-                                    <button onClick={() => toggleStatus(strat.id, strat.status)} style={{ padding: '6px', borderRadius: 6, border: `1px solid ${T.border}`, background: '#fff', cursor: 'pointer', display: 'flex' }}>
-                                        {strat.status === 'PAUSED' ? '▶️' : '⏸️'}
-                                    </button>
-                                    <button onClick={() => stopStrategy(strat.id)} style={{ padding: '6px', borderRadius: 6, border: `1px solid ${T.redMid}`, background: T.redLight, color: T.red, cursor: 'pointer', display: 'flex' }}>⏹️</button>
+                                    {strat.status !== 'STOPPED' && (
+                                        <button onClick={() => toggleStatus(strat.id, strat.status)} style={{ padding: '6px', borderRadius: 6, border: `1px solid ${T.border}`, background: '#fff', cursor: 'pointer', display: 'flex' }}>
+                                            {strat.status === 'PAUSED' ? '▶️' : '⏸️'}
+                                        </button>
+                                    )}
+                                    {strat.status !== 'STOPPED' ? (
+                                        <button onClick={() => stopStrategy(strat.id)} style={{ padding: '6px', borderRadius: 6, border: `1px solid ${T.redMid}`, background: T.redLight, color: T.red, cursor: 'pointer', display: 'flex' }}>⏹️</button>
+                                    ) : (
+                                        <button onClick={() => deleteStrategy(strat.id)} style={{ padding: '6px', borderRadius: 6, border: `1px solid ${T.border}`, background: '#fff', color: T.textMuted, cursor: 'pointer', display: 'flex' }} title="Remove from Dashboard">🗑️</button>
+                                    )}
                                 </div>
                             </div>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>

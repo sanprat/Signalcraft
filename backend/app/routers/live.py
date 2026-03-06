@@ -130,6 +130,16 @@ def toggle_strategy(live_id: int, status: str):
     return {"status": status, "live_id": live_id}
 
 
+@router.delete("/strategy/{live_id}")
+def delete_live_strategy(live_id: int):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM live_strategies WHERE id = %s", (live_id,))
+        cursor.execute("COMMIT")
+        cursor.close()
+    return {"status": "deleted", "id": live_id}
+
+
 @router.post("/order")
 def place_order(body: OrderRequest):
     """Manually place a single order via a broker."""

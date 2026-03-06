@@ -55,7 +55,7 @@ class SignalMonitor:
                 SELECT id, strategy_id, name, user_id, broker, status, symbols, 
                        risk_settings, entry_conditions, exit_conditions
                 FROM live_strategies
-                WHERE status = 'ACTIVE'
+                WHERE status IN ('ACTIVE', 'PAPER')
             """)
             rows = cursor.fetchall()
             
