@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from 'next'
+import { PWAInstallPrompt } from '@/components/PWAInstallPrompt'
 
 export const metadata: Metadata = {
-    title: 'SignalCraft — Live Trading',
-    description: 'Monitor your live trading strategies.',
+    title: 'SignalCraft — Craft Your Trading Signals',
+    description: 'Build, backtest and deploy no-code trading strategies.',
     manifest: '/manifest.json',
     appleWebApp: {
         capable: true,
@@ -23,6 +24,11 @@ export const viewport: Viewport = {
     userScalable: false,
 }
 
-export default function LiveLayout({ children }: { children: React.ReactNode }) {
-    return <>{children}</>
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+    return (
+        <>
+            {children}
+            <PWAInstallPrompt />
+        </>
+    )
 }
