@@ -1,0 +1,18 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background gradient -->
+  <rect width="512" height="512" rx="100" fill="url(#gradient)"/>
+  
+  <!-- Gradient definition -->
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10B981"/>
+      <stop offset="100%" style="stop-color:#047857"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- SC Letters -->
+  <text x="256" y="320" font-family="Arial, sans-serif" font-size="200" font-weight="900" fill="white" text-anchor="middle" letter-spacing="-10">SC</text>
+  
+  <!-- Signal wave decoration -->
+  <path d="M 100 380 Q 150 360 200 380 T 300 380 T 400 380" stroke="rgba(255,255,255,0.3)" stroke-width="8" fill="none" stroke-linecap="round"/>
+</svg>
