@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation'
 import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts'
 import { useRef } from 'react'
 import Link from 'next/link'
+import { config } from '@/lib/config'
 
-const API = 'http://localhost:8001'
+const API = config.apiBaseUrl
 
 const T = {
     navy: '#0F2744', blue: '#1D4ED8', blueLight: '#EFF6FF', blueMid: '#BFDBFE',

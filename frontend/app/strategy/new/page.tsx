@@ -3,8 +3,9 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { config } from '@/lib/config'
 
-const API = 'http://localhost:8001'
+const API = config.apiBaseUrl
 
 const T = {
     navy: '#0F2744', blue: '#1D4ED8', blueLight: '#EFF6FF', blueMid: '#BFDBFE',

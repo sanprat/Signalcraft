@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { config } from '@/lib/config';
 
+const API = config.apiBaseUrl;
 const BROKERS = ["Dhan", "Shoonya", "Flattrade", "Zerodha"];
 
 const BROKER_FIELDS: Record<string, { key: string; label: string; type: string }[]> = {
@@ -58,7 +60,7 @@ export default function SettingsPage() {
         try {
             setCredentials({});
             const token = localStorage.getItem("access_token") || localStorage.getItem("sc_token");
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001"}/api/settings/broker/${broker}`, {
+            const res = await fetch(`${API}/api/settings/broker/${broker}`, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }
@@ -83,7 +85,7 @@ export default function SettingsPage() {
 
         try {
             const token = localStorage.getItem("access_token") || localStorage.getItem("sc_token");
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8001"}/api/settings/broker`, {
+            const res = await fetch(`${API}/api/settings/broker`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

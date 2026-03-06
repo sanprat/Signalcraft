@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useQuotes } from '@/hooks/useQuotes'
+import { config } from '@/lib/config'
+
+const API = config.apiBaseUrl
 
 const T = {
     navy: '#0F2744', blue: '#1D4ED8', blueLight: '#EFF6FF', blueMid: '#BFDBFE',
@@ -50,9 +53,9 @@ export default function LiveTradingPage() {
         const fetchData = async () => {
             try {
                 const [stratsRes, posRes, anaRes] = await Promise.all([
-                    fetch('http://localhost:8001/api/live/strategies'),
-                    fetch('http://localhost:8001/api/live/positions'),
-                    fetch('http://localhost:8001/api/live/analytics')
+                    fetch(`${API}/api/live/strategies`),
+                    fetch(`${API}/api/live/positions`),
+                    fetch(`${API}/api/live/analytics`)
                 ])
                 const strats = await stratsRes.json()
                 const pos = await posRes.json()
@@ -95,7 +98,7 @@ export default function LiveTradingPage() {
 
         setStrategies(prev => prev.map(s => s.id === liveId ? { ...s, status: nextStatus } : s))
         try {
-            await fetch(`http://localhost:8001/api/live/toggle/${liveId}?status=${nextStatus}`, { method: 'POST' })
+            await fetch(`${API}/api/live/toggle/${liveId}?status=${nextStatus}`, { method: 'POST' })
         } catch (err) {
             console.error("Failed to toggle status", err)
         }
@@ -105,7 +108,7 @@ export default function LiveTradingPage() {
         if (!confirm("Are you sure you want to stop this strategy? This will stop signal monitoring.")) return
         setStrategies(prev => prev.map(s => s.id === liveId ? { ...s, status: 'STOPPED' } : s))
         try {
-            await fetch(`http://localhost:8001/api/live/stop/${liveId}`, { method: 'POST' })
+            await fetch(`${API}/api/live/stop/${liveId}`, { method: 'POST' })
         } catch (err) {
             console.error("Failed to stop strategy", err)
         }
