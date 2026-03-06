@@ -53,7 +53,7 @@ def main():
         sec_id = mapping[sym]
         print(f"Downloading {sym} (ID: {sec_id})...")
         
-        for interval in ["5min", "15min"]:
+        for interval in ["1min", "5min", "15min"]:
             print(f"  -> {interval}")
             raw = client.get_intraday_candles(
                 security_id=sec_id,

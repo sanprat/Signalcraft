@@ -185,8 +185,8 @@ function Step1({ d, s, selectedStocks, fromScreener }: { d: Strategy; s: (x: Par
 
 function Step2({ d, s }: { d: Strategy; s: (x: Partial<Strategy>) => void }) {
     const timeframes = d.asset_type === 'EQUITY'
-        ? [['1D', 'Daily', 'Best for swing/positional strategies'], ['5min', '5 Minute', 'Best for intraday scalping'], ['15min', '15 Minute', 'Best for intraday trends']]
-        : [['5min', '5 Minute', 'Best for intraday scalping'], ['15min', '15 Minute', 'Best for trend strategies']]
+        ? [['1min', '1 Minute', 'Fastest - real-time scalping'], ['5min', '5 Minute', 'Best for intraday scalping'], ['15min', '15 Minute', 'Best for intraday trends'], ['1D', 'Daily', 'Best for swing/positional strategies']]
+        : [['1min', '1 Minute', 'Fastest scalping'], ['5min', '5 Minute', 'Best for intraday scalping'], ['15min', '15 Minute', 'Best for trend strategies']]
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
