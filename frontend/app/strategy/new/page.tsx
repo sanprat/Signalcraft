@@ -466,16 +466,30 @@ function NewStrategyContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             })
+            if (!res.ok) {
+                const err = await res.json()
+                alert(`Error creating strategy: ${JSON.stringify(err.detail || err)}`)
+                setLoading(false)
+                return
+            }
             const { strategy_id } = await res.json()
+
             const bt = await fetch(`${API}/api/backtest/run`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ strategy_id })
             })
+            if (!bt.ok) {
+                const err = await bt.json()
+                alert(`Error running backtest: ${JSON.stringify(err.detail || err)}`)
+                setLoading(false)
+                return
+            }
             const { backtest_id } = await bt.json()
             router.push(`/backtest/${backtest_id}`)
-        } catch {
-            alert('Error — make sure the backend is running.')
+        } catch (err: any) {
+            console.error(err)
+            alert('Error — make sure the backend is running and data is updated.')
         }
         finally {
             setLoading(false)
@@ -508,14 +522,26 @@ function NewStrategyContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             })
+            if (!sres.ok) {
+                const err = await sres.json()
+                alert(`Error saving strategy: ${JSON.stringify(err.detail || err)}`)
+                setLoading(false)
+                return
+            }
             const { strategy_id } = await sres.json()
 
             // 2. Deploy
-            await fetch(`${API}/api/live/deploy`, {
+            const dres = await fetch(`${API}/api/live/deploy`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ strategy_id, broker: selectedBroker, paper: isPaper })
             })
+            if (!dres.ok) {
+                const err = await dres.json()
+                alert(`Error deploying strategy: ${JSON.stringify(err.detail || err)}`)
+                setLoading(false)
+                return
+            }
 
             router.push('/live')
         } catch (err) {

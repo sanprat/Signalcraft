@@ -171,7 +171,7 @@ export default function BacktestResultsPage() {
                 <div>
                     <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: T.textMuted, fontSize: 12, cursor: 'pointer', marginBottom: 4, padding: 0 }}>← Back</button>
                     <h1 style={{ fontSize: 22, fontWeight: 800, color: T.navy, margin: 0, letterSpacing: '-0.5px' }}>Backtest Results</h1>
-                    <p style={{ fontSize: 13, color: T.textMuted, margin: '4px 0 0' }}>{summary.date_range} · {summary.candle_count.toLocaleString()} candles</p>
+                    <p style={{ fontSize: 13, color: T.textMuted, margin: '4px 0 0' }}>{summary.date_range} · {summary.candle_count?.toLocaleString() || '0'} candles</p>
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                     <Link href="/strategy/new" style={{ padding: '9px 16px', border: `1px solid ${T.border}`, borderRadius: 8, background: '#fff', fontSize: 13, fontWeight: 600, color: T.textMid, textDecoration: 'none' }}>✏️ Modify</Link>
@@ -190,13 +190,13 @@ export default function BacktestResultsPage() {
 
             {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
-                <Stat label="Total P&L" value={`Rs. ${summary.total_pnl.toLocaleString()}`} color={summary.total_pnl >= 0 ? T.green : T.red} />
+                <Stat label="Total P&L" value={`Rs. ${summary.total_pnl?.toLocaleString() || '0'}`} color={summary.total_pnl >= 0 ? T.green : T.red} />
                 <Stat label="Win Rate" value={`${summary.win_rate}%`} color={summary.win_rate >= 50 ? T.green : T.red} />
                 <Stat label="Total Trades" value={String(summary.total_trades)} />
-                <Stat label="Max Drawdown" value={`Rs. ${summary.max_drawdown.toLocaleString()}`} color={T.red} />
-                <Stat label="Avg Trade P&L" value={`Rs. ${summary.avg_trade_pnl.toLocaleString()}`} color={summary.avg_trade_pnl >= 0 ? T.green : T.red} />
-                <Stat label="Best Trade" value={`Rs. ${summary.best_trade.toLocaleString()}`} color={T.green} />
-                <Stat label="Worst Trade" value={`Rs. ${summary.worst_trade.toLocaleString()}`} color={T.red} />
+                <Stat label="Max Drawdown" value={`Rs. ${summary.max_drawdown?.toLocaleString() || '0'}`} color={T.red} />
+                <Stat label="Avg Trade P&L" value={`Rs. ${summary.avg_trade_pnl?.toLocaleString() || '0'}`} color={summary.avg_trade_pnl >= 0 ? T.green : T.red} />
+                <Stat label="Best Trade" value={`Rs. ${summary.best_trade?.toLocaleString() || '0'}`} color={T.green} />
+                <Stat label="Worst Trade" value={`Rs. ${summary.worst_trade?.toLocaleString() || '0'}`} color={T.red} />
                 <Stat label="Win / Loss" value={`${summary.winning_trades} / ${summary.losing_trades}`} />
             </div>
 
@@ -227,7 +227,7 @@ export default function BacktestResultsPage() {
                                     <td style={{ padding: '10px 12px 10px 0', fontFamily: "'DM Mono', monospace" }}>Rs. {t.entry_price}</td>
                                     <td style={{ padding: '10px 12px 10px 0', fontFamily: "'DM Mono', monospace", fontSize: 12 }}>{new Date(t.exit_time).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}</td>
                                     <td style={{ padding: '10px 12px 10px 0', fontFamily: "'DM Mono', monospace" }}>Rs. {t.exit_price}</td>
-                                    <td style={{ padding: '10px 12px 10px 0', fontFamily: "'DM Mono', monospace", fontWeight: 700, color: t.pnl >= 0 ? T.green : T.red }}>Rs. {t.pnl.toLocaleString()}</td>
+                                    <td style={{ padding: '10px 12px 10px 0', fontFamily: "'DM Mono', monospace", fontWeight: 700, color: t.pnl >= 0 ? T.green : T.red }}>Rs. {t.pnl?.toLocaleString() || '0'}</td>
                                     <td style={{ padding: '10px 12px 10px 0', color: t.pnl_pct >= 0 ? T.green : T.red, fontFamily: "'DM Mono', monospace" }}>{t.pnl_pct}%</td>
                                     <td style={{ padding: '10px 0' }}>
                                         <span style={{

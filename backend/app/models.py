@@ -36,7 +36,7 @@ class StrategyRequest(BaseModel):
     index: Optional[Literal["NIFTY", "BANKNIFTY", "FINNIFTY"]] = None
     option_type: Optional[Literal["CE", "PE", "BOTH"]] = None
     strike_type: Optional[Literal["ATM", "ITM1", "ITM2", "ITM3", "OTM1", "OTM2", "OTM3"]] = None
-    timeframe: Literal["5min", "15min", "1D"] = "1D"
+    timeframe: Literal["1min", "5min", "15min", "1D"] = "1D"
     entry_conditions: list[EntryCondition]
     exit_conditions: ExitCondition
     risk: RiskSettings
