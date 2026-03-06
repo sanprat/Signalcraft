@@ -5,8 +5,10 @@ import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
 
+from pathlib import Path
+
 from app.core.database import get_db
-from app.core.backtest_engine import compute_indicators
+from app.core.backtest_engine import compute_indicators, load_equity_candles
 from app.core.position_manager import position_manager
 from app.core.config import settings
 
@@ -59,16 +61,32 @@ class SignalMonitor:
             new_strategies = {}
             for row in rows:
                 strat_id_db = row[0]
+                strategy_id_str = row[1]
+                
+                # Load strategy file to get timeframe
+                strat_file = Path("strategies") / f"{strategy_id_str}.json"
+                timeframe = "1D"
+                asset_type = "EQUITY"
+                if strat_file.exists():
+                    try:
+                        strat_dict = json.loads(strat_file.read_text())
+                        timeframe = strat_dict.get("timeframe", "1D")
+                        asset_type = strat_dict.get("asset_type", "EQUITY")
+                    except Exception as e:
+                        logger.warning(f"Could not parse strategy {strategy_id_str}: {e}")
+                
                 strat_data = {
                     "id": row[0],
-                    "strategy_id": row[1],
+                    "strategy_id": strategy_id_str,
                     "name": row[2],
                     "user_id": row[3],
                     "broker": row[4],
                     "symbols": row[6] if isinstance(row[6], list) else json.loads(row[6] or "[]"),
                     "risk": row[7] if isinstance(row[7], dict) else json.loads(row[7] or "{}"),
                     "entry_conditions": row[8] if isinstance(row[8], list) else json.loads(row[8] or "[]"),
-                    "exit_conditions": row[9] if isinstance(row[9], dict) else json.loads(row[9] or "{}")
+                    "exit_conditions": row[9] if isinstance(row[9], dict) else json.loads(row[9] or "{}"),
+                    "timeframe": timeframe,
+                    "asset_type": asset_type
                 }
                 new_strategies[strat_id_db] = strat_data
                 
@@ -77,6 +95,23 @@ class SignalMonitor:
                     if symbol not in self.quote_queues:
                         self.quote_queues[symbol] = asyncio.Queue()
                         logger.info(f"Signal Monitor: Subscribed to {symbol}")
+                        
+                    if symbol not in self.candles:
+                        self.candles[symbol] = {}
+                        
+                    if timeframe not in self.candles[symbol]:
+                        logger.info(f"Signal Monitor: Loading historical data for {symbol} ({timeframe})")
+                        try:
+                            # Load last 30 days of data to be safe for EMAs etc
+                            from_date = (datetime.now(self._IST) - timedelta(days=30)).date()
+                            to_date = datetime.now(self._IST).date()
+                            df = load_equity_candles(symbol, timeframe, from_date, to_date)
+                            if not df.empty:
+                                logger.info(f"Signal Monitor: Loaded {len(df)} historical candles for {symbol} ({timeframe})")
+                            self.candles[symbol][timeframe] = df
+                        except Exception as e:
+                            logger.error(f"Failed to load historical data for {symbol}: {e}")
+                            self.candles[symbol][timeframe] = pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
             self.active_strategies = new_strategies
             self.last_sync_time = datetime.now()
@@ -110,47 +145,58 @@ class SignalMonitor:
 
     async def process_tick(self, symbol: str, price: float, timestamp: datetime):
         """Aggregate tick into candles and check for signals on candle close."""
-        # For this MVP, we only support 1m candles for live alerts
-        # In a full impl, we'd handle multiple timeframes
-        
         if symbol not in self.candles:
-            self.candles[symbol] = {"1min": pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])}
-            # Seed with some historical data if available (optional for now)
+            return
             
-        df = self.candles[symbol]["1min"]
-        
-        # Check if we need to start a new candle
-        current_minute = timestamp.replace(second=0, microsecond=0)
-        
-        if df.empty or df.iloc[-1]["time"] < current_minute:
+        # Update all timeframes we have for this symbol
+        for timeframe, df in self.candles[symbol].items():
+            self._update_candle(symbol, timeframe, df, price, timestamp)
+
+    def _update_candle(self, symbol: str, timeframe: str, df: pd.DataFrame, price: float, timestamp: datetime):
+        mins = 1
+        if timeframe == "1D":
+            current_tf_start = timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif timeframe.endswith("min"):
+            try:
+                mins = int(timeframe.replace("min", ""))
+            except:
+                mins = 1
+            aligned_minute = (timestamp.minute // mins) * mins
+            current_tf_start = timestamp.replace(minute=aligned_minute, second=0, microsecond=0)
+        else:
+            return
+
+        if df.empty or df.iloc[-1]["time"] < current_tf_start:
             # Previous candle just closed
             if not df.empty:
-                await self.on_candle_close(symbol, "1min", df)
+                asyncio.create_task(self.on_candle_close(symbol, timeframe, df.copy()))
             
             # Start new candle
             new_row = {
-                "time": current_minute,
+                "time": current_tf_start,
                 "open": price,
                 "high": price,
                 "low": price,
                 "close": price,
                 "volume": 0
             }
-            self.candles[symbol]["1min"] = pd.concat([df, pd.DataFrame([new_row])]).tail(100) # Keep last 100
+            if df.empty:
+                self.candles[symbol][timeframe] = pd.DataFrame([new_row])
+            else:
+                self.candles[symbol][timeframe] = pd.concat([df, pd.DataFrame([new_row])]).tail(200) # Keep last 200
         else:
             # Update current candle
             idx = df.index[-1]
             df.at[idx, "high"] = max(df.at[idx, "high"], price)
             df.at[idx, "low"] = min(df.at[idx, "low"], price)
             df.at[idx, "close"] = price
-            # volume incrementing skipped for indices/simulated data
 
     async def on_candle_close(self, symbol: str, interval: str, df: pd.DataFrame):
         """Evaluate strategies when a candle closes."""
         logger.debug(f"Candle closed for {symbol} ({interval}) at {df.iloc[-1]['time']}")
         
         for db_id, strategy in self.active_strategies.items():
-            if symbol in strategy["symbols"]:
+            if symbol in strategy["symbols"] and strategy.get("timeframe") == interval:
                 await self.check_signals(db_id, strategy, symbol, df)
 
     async def check_signals(self, db_id: int, strategy: dict, symbol: str, df: pd.DataFrame):

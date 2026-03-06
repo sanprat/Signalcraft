@@ -20,6 +20,7 @@ from app.routers.auth import router as auth_router
 from app.routers.admin import router as admin_router
 from app.routers.stocks import router as stocks_router
 from app.routers.screeners import router as screeners_router
+from app.routers.settings import router as settings_router
 from app.core.signal_monitor import signal_monitor
 from app.core.position_manager import position_manager
 
@@ -43,6 +44,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(stocks_router)
 app.include_router(screeners_router)
+app.include_router(settings_router)
 
 @app.on_event("startup")
 async def startup():

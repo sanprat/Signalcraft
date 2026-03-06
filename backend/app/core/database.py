@@ -102,6 +102,19 @@ def init_db():
         
         # --- Live Trading Module Tables ---
         
+        # Broker Credentials
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS broker_credentials (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                broker VARCHAR(50) NOT NULL,
+                credentials JSONB,
+                is_active BOOLEAN DEFAULT TRUE,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, broker)
+            )
+        """)
+        
         # Active live strategies configuration
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS live_strategies (
@@ -363,4 +376,33 @@ def get_user_stats() -> dict:
         stats["inactive_users"] = stats["total_users"] - stats["active_users"]
         
         cursor.close()
-        return stats
+# ── Broker Credentials Functions ─────────────────────────────────────────────
+
+def save_broker_credentials(user_id: int, broker: str, credentials_dict: dict) -> bool:
+    with get_db() as conn:
+        try:
+            import json
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO broker_credentials (user_id, broker, credentials, updated_at)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id, broker) 
+                DO UPDATE SET credentials = EXCLUDED.credentials, updated_at = CURRENT_TIMESTAMP
+            """, (user_id, broker, json.dumps(credentials_dict)))
+            cursor.execute("COMMIT")
+            cursor.close()
+            return True
+        except Exception as e:
+            print(f"Error saving broker credentials: {e}")
+            return False
+
+def get_broker_credentials(user_id: int, broker: str) -> Optional[dict]:
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT credentials FROM broker_credentials WHERE user_id = %s AND broker = %s AND is_active = TRUE", (user_id, broker))
+        row = cursor.fetchone()
+        cursor.close()
+        if row:
+            import json
+            return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+        return None

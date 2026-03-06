@@ -34,13 +34,24 @@ class BrokerAdapter(ABC):
         ...
 
     @abstractmethod
+    def get_order_status(self, order_id: str) -> dict:
+        """Return dict with 'status' (e.g. 'COMPLETE', 'REJECTED', 'PENDING') and 'average_price'"""
+        ...
+
+    @abstractmethod
+    def get_net_quantity(self, symbol: str) -> int | None:
+        """Fetch the net open quantity for a symbol. Returns 0 if closed, None on error."""
+        ...
+
+    @abstractmethod
     def get_name(self) -> str:
         ...
 
 
 # ── Shoonya ───────────────────────────────────────────────────────────────────
 class ShoonyaAdapter(BrokerAdapter):
-    def __init__(self):
+    def __init__(self, creds=None):
+        if not creds: creds = {}
         try:
             from NorenRestApiPy.NorenApi import NorenApi
             import pyotp
@@ -53,14 +64,15 @@ class ShoonyaAdapter(BrokerAdapter):
                     )
 
             self.api = ShoonyaApiPy()
-            totp = pyotp.TOTP(os.environ.get("SHOONYA_TOTP_SECRET", "")).now()
+            totp_secret = creds.get("totp_secret") or os.environ.get("SHOONYA_TOTP_SECRET", "")
+            totp = pyotp.TOTP(totp_secret).now() if totp_secret else ""
             self.api.login(
-                userid=os.environ.get("SHOONYA_USER_ID", ""),
-                password=os.environ.get("SHOONYA_PASSWORD", ""),
+                userid=creds.get("userid") or os.environ.get("SHOONYA_USER_ID", ""),
+                password=creds.get("password") or os.environ.get("SHOONYA_PASSWORD", ""),
                 twoFA=totp,
-                vendor_code=os.environ.get("SHOONYA_VENDOR_CODE", ""),
-                api_secret=os.environ.get("SHOONYA_API_SECRET", ""),
-                imei=os.environ.get("SHOONYA_IMEI", ""),
+                vendor_code=creds.get("vendor_code") or os.environ.get("SHOONYA_VENDOR_CODE", ""),
+                api_secret=creds.get("api_secret") or os.environ.get("SHOONYA_API_SECRET", ""),
+                imei=creds.get("imei") or os.environ.get("SHOONYA_IMEI", "abc1234"),
             )
             logger.info("Shoonya: connected")
         except Exception as e:
@@ -93,7 +105,36 @@ class ShoonyaAdapter(BrokerAdapter):
     def cancel_order(self, order_id):
         if not self.api:
             return False
+        return bool(self.api.single_order_history(orderno=order_id)) # Not cancel order API, wait, cancel order API is cancel_order
         return bool(self.api.cancel_order(orderno=order_id))
+
+    def get_order_status(self, order_id):
+        if not self.api:
+             return {"status": "ERROR"}
+        res = self.api.single_order_history(orderno=order_id)
+        if not res or not isinstance(res, list):
+             return {"status": "UNKNOWN"}
+        # Usually the first object is the latest status in NorenApi
+        latest = res[0]
+        st = latest.get("status", "").upper()
+        if "COMPLETE" in st:
+            st = "COMPLETE"
+        elif "REJECT" in st:
+            st = "REJECTED"
+        else:
+            st = "PENDING"
+        avg_price = float(latest.get("avgprc", 0.0))
+        return {"status": st, "average_price": avg_price}
+
+    def get_net_quantity(self, symbol):
+        if not self.api: return None
+        positions = self.api.get_positions()
+        if positions is None: return None
+        if not positions or not isinstance(positions, list): return 0
+        for p in positions:
+            if p.get("tsym", "") == symbol or symbol in p.get("tsym", ""):
+                 return int(p.get("netqty", 0))
+        return 0
 
     def get_name(self):
         return "shoonya"
@@ -103,7 +144,8 @@ class ShoonyaAdapter(BrokerAdapter):
 class FlattradeAdapter(BrokerAdapter):
     """Flattrade uses same NorenRestApiPy protocol as Shoonya."""
 
-    def __init__(self):
+    def __init__(self, creds=None):
+        if not creds: creds = {}
         try:
             from NorenRestApiPy.NorenApi import NorenApi
             import pyotp
@@ -116,13 +158,14 @@ class FlattradeAdapter(BrokerAdapter):
                     )
 
             self.api = FlattradeApiPy()
-            totp = pyotp.TOTP(os.environ.get("FLATTRADE_TOTP_SECRET", "")).now()
+            totp_secret = creds.get("totp_secret") or os.environ.get("FLATTRADE_TOTP_SECRET", "")
+            totp = pyotp.TOTP(totp_secret).now() if totp_secret else ""
             self.api.login(
-                userid=os.environ.get("FLATTRADE_USER_ID", ""),
-                password=os.environ.get("FLATTRADE_PASSWORD", ""),
+                userid=creds.get("userid") or os.environ.get("FLATTRADE_USER_ID", ""),
+                password=creds.get("password") or os.environ.get("FLATTRADE_PASSWORD", ""),
                 twoFA=totp,
-                vendor_code=os.environ.get("FLATTRADE_VENDOR_CODE", ""),
-                api_secret=os.environ.get("FLATTRADE_API_SECRET", ""),
+                vendor_code=creds.get("vendor_code") or os.environ.get("FLATTRADE_VENDOR_CODE", ""),
+                api_secret=creds.get("api_secret") or os.environ.get("FLATTRADE_API_SECRET", ""),
                 imei="",
             )
         except Exception as e:
@@ -141,16 +184,42 @@ class FlattradeAdapter(BrokerAdapter):
 
     def get_positions(self): return self.api.get_positions() if self.api else []
     def cancel_order(self, order_id): return bool(self.api.cancel_order(orderno=order_id)) if self.api else False
+    
+    def get_order_status(self, order_id):
+        if not self.api: return {"status": "ERROR"}
+        res = self.api.single_order_history(orderno=order_id)
+        if not res or not isinstance(res, list): return {"status": "UNKNOWN"}
+        latest = res[0]
+        st = latest.get("status", "").upper()
+        if "COMPLETE" in st: st = "COMPLETE"
+        elif "REJECT" in st: st = "REJECTED"
+        else: st = "PENDING"
+        avg_price = float(latest.get("avgprc", 0.0))
+        return {"status": st, "average_price": avg_price}
+
+    def get_net_quantity(self, symbol):
+        if not self.api: return 0
+        positions = self.api.get_positions()
+        if not positions or not isinstance(positions, list): return 0
+        for p in positions:
+            if p.get("tsym", "") == symbol or symbol in p.get("tsym", ""):
+                 return int(p.get("netqty", 0))
+        return 0
+
     def get_name(self): return "flattrade"
 
 
 # ── Zerodha ───────────────────────────────────────────────────────────────────
 class ZerodhaAdapter(BrokerAdapter):
-    def __init__(self):
+    def __init__(self, creds=None):
+        if not creds: creds = {}
         try:
             from kiteconnect import KiteConnect
-            self.kite = KiteConnect(api_key=os.environ.get("ZERODHA_API_KEY", ""))
-            self.kite.set_access_token(os.environ.get("ZERODHA_ACCESS_TOKEN", ""))
+            api_key = creds.get("api_key") or os.environ.get("ZERODHA_API_KEY", "")
+            access_token = creds.get("access_token") or os.environ.get("ZERODHA_ACCESS_TOKEN", "")
+            self.kite = KiteConnect(api_key=api_key)
+            if access_token:
+                self.kite.set_access_token(access_token)
             logger.info("Zerodha: KiteConnect initialized")
         except Exception as e:
             logger.error(f"Zerodha init failed: {e}")
@@ -178,6 +247,34 @@ class ZerodhaAdapter(BrokerAdapter):
         from kiteconnect import KiteConnect
         self.kite.cancel_order(KiteConnect.VARIETY_REGULAR, order_id)
         return True
+
+    def get_order_status(self, order_id):
+        if not self.kite:
+            return {"status": "ERROR"}
+        try:
+            history = self.kite.order_history(order_id=order_id)
+            if not history: return {"status": "UNKNOWN"}
+            latest = history[-1]
+            st = latest.get("status", "").upper()
+            if "COMPLETE" in st: st = "COMPLETE"
+            elif "REJECT" in st: st = "REJECTED"
+            else: st = "PENDING"
+            avg_price = float(latest.get("average_price", 0.0))
+            return {"status": st, "average_price": avg_price}
+        except Exception as e:
+            return {"status": "ERROR", "message": str(e)}
+
+    def get_net_quantity(self, symbol):
+        if not self.kite: return None
+        try:
+            positions = self.kite.positions()
+            if positions is None: return None
+            for p in positions.get("net", []):
+                if p.get("tradingsymbol") == symbol:
+                    return int(p.get("quantity", 0))
+        except: return None
+        return 0
+
     def get_name(self): return "zerodha"
 
 
@@ -185,9 +282,10 @@ class ZerodhaAdapter(BrokerAdapter):
 class DhanAdapter(BrokerAdapter):
     BASE = "https://api.dhan.co"
 
-    def __init__(self):
-        self.client_id    = os.environ.get("DHAN_CLIENT_ID", "")
-        self.access_token = os.environ.get("DHAN_ACCESS_TOKEN", "")
+    def __init__(self, creds=None):
+        if not creds: creds = {}
+        self.client_id    = creds.get("client_id") or os.environ.get("DHAN_CLIENT_ID", "")
+        self.access_token = creds.get("access_token") or os.environ.get("DHAN_ACCESS_TOKEN", "")
         self.headers = {
             "Content-Type": "application/json",
             "access-token": self.access_token,
@@ -219,18 +317,55 @@ class DhanAdapter(BrokerAdapter):
         r = requests.delete(f"{self.BASE}/orders/{order_id}", headers=self.headers, timeout=10)
         return r.status_code == 200
 
+    def get_order_status(self, order_id):
+        try:
+            r = requests.get(f"{self.BASE}/orders/{order_id}", headers=self.headers, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if "data" in data: data = data["data"]
+                st = data.get("orderStatus", "").upper()
+                if "TRADED" in st or "COMPLETE" in st: st = "COMPLETE"
+                elif "REJECT" in st or "CANCEL" in st: st = "REJECTED"
+                else: st = "PENDING"
+                avg_price = float(data.get("tradedPrice", 0.0) or 0.0)
+                return {"status": st, "average_price": avg_price}
+            return {"status": "ERROR"}
+        except Exception as e:
+            return {"status": "ERROR", "message": str(e)}
+
+    def get_net_quantity(self, symbol):
+        try:
+            r = requests.get(f"{self.BASE}/positions", headers=self.headers, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if not data: return None
+                data_list = data.get("data", [])
+                for p in data_list:
+                    if p.get("tradingSymbol") == symbol:
+                        return int(p.get("netQty", 0))
+            else:
+                return None
+        except: return None
+        return 0
+
     def get_name(self): return "dhan"
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 _adapters: dict[str, BrokerAdapter] = {}
 
-def get_adapter(broker: str) -> BrokerAdapter:
-    if broker not in _adapters:
+def get_adapter(broker: str, user_id: int = None) -> BrokerAdapter:
+    from app.core.database import get_broker_credentials
+    cache_key = f"{broker}_{user_id}" if user_id else broker
+    
+    if cache_key not in _adapters:
+        creds = get_broker_credentials(user_id, broker) if user_id else {}
+        if not creds: creds = {}
+        
         match broker.lower():
-            case "shoonya":   _adapters[broker] = ShoonyaAdapter()
-            case "flattrade": _adapters[broker] = FlattradeAdapter()
-            case "zerodha":   _adapters[broker] = ZerodhaAdapter()
-            case "dhan":      _adapters[broker] = DhanAdapter()
+            case "shoonya":   _adapters[cache_key] = ShoonyaAdapter(creds)
+            case "flattrade": _adapters[cache_key] = FlattradeAdapter(creds)
+            case "zerodha":   _adapters[cache_key] = ZerodhaAdapter(creds)
+            case "dhan":      _adapters[cache_key] = DhanAdapter(creds)
             case _: raise ValueError(f"Unknown broker: {broker}")
-    return _adapters[broker]
+    return _adapters[cache_key]

@@ -40,7 +40,7 @@ class PositionManager:
                 SELECT id, live_strategy_id, symbol, exchange, entry_price, 
                        quantity, product_type, stoploss, target, status, broker_order_id
                 FROM positions
-                WHERE status = 'OPEN'
+                WHERE status IN ('OPEN', 'PENDING')
             """)
             rows = cursor.fetchall()
             self.active_positions = []
@@ -123,7 +123,7 @@ class PositionManager:
                 cursor.close()
 
             is_paper = strat_status == "PAPER"
-            adapter = get_adapter(broker)
+            adapter = get_adapter(broker, strategy_data.get("user_id"))
             
             # TODO: Hardcoded quantity for now, should come from risk_settings
             quantity = strategy_data.get("risk", {}).get("quantity_lots", 1)
@@ -132,28 +132,47 @@ class PositionManager:
 
             if not is_paper:
                 logger.info(f"Placing BUY order for {symbol}, qty={quantity} via {broker}...")
-                # Place Order
-                order_res = adapter.place_order(
-                    symbol=symbol,
-                    exchange="NSE",
-                    action="BUY",
-                    qty=quantity,
-                    price=0, # Market
-                    order_type="MKT"
-                )
-                
-                if order_res.get("status") == "error":
-                    logger.error(f"Order placement failed: {order_res.get('message')}")
-                    return
+                # Place Order with retries
+                retries = 3
+                order_res = None
+                for attempt in range(retries):
+                    try:
+                        order_res = adapter.place_order(
+                            symbol=symbol,
+                            exchange="NSE",
+                            action="BUY",
+                            qty=quantity,
+                            price=0, # Market
+                            order_type="MKT"
+                        )
+                        if order_res and order_res.get("status") != "error":
+                            break
+                        else:
+                            msg = order_res.get("message") if order_res else "Unknown error"
+                            logger.warning(f"Attempt {attempt+1} failed checking status: {msg}")
+                    except Exception as e:
+                        logger.warning(f"Attempt {attempt+1} raised exception: {e}")
+                    
+                    if attempt == retries - 1:
+                        logger.error(f"Order placement failed after {retries} attempts.")
+                        await send_telegram_message(f"❌ *Order Placement Failed*\nStrategy: {strategy_data['name']}\nSymbol: {symbol}\nFailed after {retries} attempts.")
+                        return
+                    await asyncio.sleep(2)
 
                 broker_order_id = order_res.get("data", {}).get("orderId") or order_res.get("order_id")
+                # Wait for reconciliation
+                pos_status = "PENDING"
+                stoploss = 0.0
+                target = 0.0
+                entry_price_db = 0.0
             else:
                 logger.info(f"PAPER TRADING: Simulating BUY order for {symbol}, qty={quantity}...")
-
-            # Calculate SL/TP
-            exit_conds = strategy_data.get("exit_conditions", {})
-            stoploss = price * (1 - exit_conds.get("stoploss_pct", 1.0) / 100)
-            target = price * (1 + exit_conds.get("target_pct", 2.0) / 100)
+                pos_status = "OPEN"
+                entry_price_db = price
+                # Calculate SL/TP
+                exit_conds = strategy_data.get("exit_conditions", {})
+                stoploss = price * (1 - exit_conds.get("stoploss_pct", 1.0) / 100)
+                target = price * (1 + exit_conds.get("target_pct", 2.0) / 100)
 
             # Save to DB
             with get_db() as conn:
@@ -166,12 +185,12 @@ class PositionManager:
                     strategy_data["id"],
                     symbol,
                     "NSE",
-                    price,
+                    entry_price_db,
                     quantity,
                     stoploss,
                     target,
                     broker_order_id,
-                    "OPEN",
+                    pos_status,
                     datetime.now(self._IST)
                 ))
                 pos_id = cursor.fetchone()[0]
@@ -184,37 +203,53 @@ class PositionManager:
                 "live_strategy_id": strategy_data["id"],
                 "symbol": symbol,
                 "exchange": "NSE",
-                "entry_price": price,
+                "entry_price": entry_price_db,
                 "quantity": quantity,
                 "stoploss": stoploss,
                 "target": target,
                 "broker_order_id": broker_order_id,
-                "status": "OPEN"
+                "status": pos_status
             })
             
-            logger.info(f"✅ Position opened! ID: {pos_id}, Symbol: {symbol}, Price: {price}, SL: {stoploss:.2f}, TP: {target:.2f}")
-
-            # Send Notification
-            await send_telegram_message(
-                f"🚀 *Position Opened*\n"
-                f"Strategy: {strategy_data['name']}\n"
-                f"Symbol: {symbol}\n"
-                f"Price: ₹{price}\n"
-                f"Qty: {quantity}\n"
-                f"SL: ₹{stoploss:.2f}\n"
-                f"TP: ₹{target:.2f}"
-            )
+            if pos_status == "OPEN":
+                logger.info(f"✅ Position opened! ID: {pos_id}, Symbol: {symbol}, Price: {price}, SL: {stoploss:.2f}, TP: {target:.2f}")
+                await send_telegram_message(
+                    f"🚀 *Position Opened*\nStrategy: {strategy_data['name']}\nSymbol: {symbol}\nPrice: ₹{price}\nQty: {quantity}\nSL: ₹{stoploss:.2f}\nTP: ₹{target:.2f}"
+                )
+            else:
+                logger.info(f"⏳ Position PENDING! ID: {pos_id}, Symbol: {symbol}, waiting for broker execution...")
+                await send_telegram_message(
+                    f"⏳ *Order Sent*\nStrategy: {strategy_data['name']}\nSymbol: {symbol}\nQty: {quantity}\nWaiting for broker execution..."
+                )
 
         except Exception as e:
             logger.error(f"Error opening position: {e}")
 
     async def _monitor_loop(self):
-        """Loop to check SL/TP for all active positions."""
+        """Loop to check SL/TP for all active positions and reconcile pending orders."""
         from app.routers.quotes import _quotes
         
+        reconcile_counter = 0
+        sync_counter = 0
         while self.is_running:
             try:
+                # 1. Reconcile PENDING orders every 5 seconds
+                reconcile_counter += 1
+                if reconcile_counter >= 5:
+                    await self._reconcile_pending_orders()
+                    reconcile_counter = 0
+
+                # 2. Sync broker positions every 60 seconds
+                sync_counter += 1
+                if sync_counter >= 60:
+                    await self._sync_broker_positions()
+                    sync_counter = 0
+
+                # 3. Monitor OPEN orders for SL/TP
                 for pos in self.active_positions[:]:
+                    if pos["status"] != "OPEN":
+                        continue
+                        
                     symbol = pos["symbol"]
                     quote = _quotes.get(symbol)
                     if not quote:
@@ -228,10 +263,10 @@ class PositionManager:
                     stoploss = float(pos["stoploss"])
                     target = float(pos["target"])
                     
-                    if ltp <= stoploss:
+                    if stoploss > 0 and ltp <= stoploss:
                         await self.close_position(pos, ltp, "STOPLOSS")
                     # Check TP
-                    elif ltp >= target:
+                    elif target > 0 and ltp >= target:
                         await self.close_position(pos, ltp, "TARGET")
                 
             except Exception as e:
@@ -239,34 +274,195 @@ class PositionManager:
                 
             await asyncio.sleep(1)
 
+    async def _sync_broker_positions(self):
+        """Check if any OPEN positions were closed manually via the broker app."""
+        open_positions = [p for p in self.active_positions if p["status"] == "OPEN"]
+        if not open_positions: return
+
+        # Load brokers for positions
+        strat_info_cache = {}
+        with get_db() as conn:
+            cursor = conn.cursor()
+            for pos in open_positions:
+                sid = pos["live_strategy_id"]
+                if sid not in strat_info_cache:
+                    cursor.execute("SELECT broker, status, user_id FROM live_strategies WHERE id = %s", (sid,))
+                    row = cursor.fetchone()
+                    if row:
+                        strat_info_cache[sid] = {"broker": row[0], "status": row[1], "user_id": row[2]}
+            cursor.close()
+
+        for pos in open_positions:
+            strat_info = strat_info_cache.get(pos["live_strategy_id"])
+            if not strat_info or strat_info["status"] == "PAPER": 
+                continue # Ignore paper trades
+            
+            adapter = get_adapter(strat_info["broker"], strat_info.get("user_id"))
+            try:
+                qty = adapter.get_net_quantity(pos["symbol"])
+            except Exception as e:
+                logger.error(f"Error getting net quantity for {pos['symbol']}: {e}")
+                continue
+            
+            # If qty is None, it means the API request failed (e.g. rate limit, connection issue)
+            # We should skip to avoid falsely auto-closing positions
+            if qty is None:
+                continue
+
+            if qty == 0:
+                # The position was manually closed on the broker!
+                logger.warning(f"⚠️ Position {pos['symbol']} was manually closed on the broker app! Auto-closing in Pytrader.")
+                
+                from app.routers.quotes import _quotes
+                quote = _quotes.get(pos["symbol"])
+                exit_price = quote.get("ltp", 0.0) if quote else float(pos["entry_price"])
+                
+                pnl = (exit_price - float(pos["entry_price"])) * int(pos["quantity"])
+                pnl_pct = (pnl / (float(pos["entry_price"]) * int(pos["quantity"]))) * 100 if float(pos["entry_price"]) > 0 else 0
+                
+                # Update DB and memory
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE positions 
+                        SET status = 'CLOSED', exit_price = %s, exit_time = %s, exit_reason = %s, pnl = %s, pnl_pct = %s
+                        WHERE id = %s
+                    """, (exit_price, datetime.now(self._IST), "BROKER_SYNC", pnl, pnl_pct, pos["id"]))
+                    cursor.execute("COMMIT")
+                    cursor.close()
+                
+                try:
+                    self.active_positions.remove(pos)
+                except ValueError: pass
+                
+                await send_telegram_message(f"⚠️ *Manual Intervention Detected*\nSymbol: {pos['symbol']}\nPorted to CLOSED because net quantity on {strat_info['broker']} is 0.")
+
+    async def _reconcile_pending_orders(self):
+        """Check status of PENDING orders with the broker."""
+        pending_positions = [p for p in self.active_positions if p["status"] == "PENDING"]
+        if not pending_positions: return
+
+        # Load strategies info for their brokers and exit_conditions
+        strat_info_cache = {}
+        with get_db() as conn:
+            cursor = conn.cursor()
+            for pos in pending_positions:
+                sid = pos["live_strategy_id"]
+                if sid not in strat_info_cache:
+                    cursor.execute("SELECT broker, exit_conditions, name, user_id FROM live_strategies WHERE id = %s", (sid,))
+                    row = cursor.fetchone()
+                    if row:
+                        strat_info_cache[sid] = {
+                            "broker": row[0],
+                            "exit_conditions": row[1] if isinstance(row[1], dict) else json.loads(row[1] or "{}"),
+                            "name": row[2],
+                            "user_id": row[3]
+                        }
+            cursor.close()
+
+        for pos in pending_positions:
+            strat_info = strat_info_cache.get(pos["live_strategy_id"])
+            if not strat_info: continue
+            
+            adapter = get_adapter(strat_info["broker"], strat_info.get("user_id"))
+            broker_order_id = pos["broker_order_id"]
+            if not broker_order_id: continue
+            
+            order_res = adapter.get_order_status(broker_order_id)
+            st = order_res.get("status")
+            
+            if st == "COMPLETE":
+                # Order executed!
+                entry_price = float(order_res.get("average_price", 0.0))
+                if entry_price == 0.0:
+                    entry_price = float(pos.get("entry_price") or 0.0)
+                
+                # Calculate SL/TP
+                exit_conds = strat_info["exit_conditions"]
+                stoploss = entry_price * (1 - exit_conds.get("stoploss_pct", 1.0) / 100)
+                target = entry_price * (1 + exit_conds.get("target_pct", 2.0) / 100)
+                
+                pos["status"] = "OPEN"
+                pos["entry_price"] = entry_price
+                pos["stoploss"] = stoploss
+                pos["target"] = target
+                
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE positions
+                        SET status = 'OPEN', entry_price = %s, stoploss = %s, target = %s
+                        WHERE id = %s
+                    """, (entry_price, stoploss, target, pos["id"]))
+                    cursor.execute("COMMIT")
+                    cursor.close()
+                    
+                logger.info(f"✅ Order {broker_order_id} COMPLETE! Entry: {entry_price}, SL: {stoploss}, TP: {target}")
+                await send_telegram_message(
+                    f"✅ *Order Executed*\nStrategy: {strat_info['name']}\nSymbol: {pos['symbol']}\nPorted to OPEN status.\nAvg Price: ₹{entry_price:.2f}\nSL: ₹{stoploss:.2f}\nTP: ₹{target:.2f}"
+                )
+                
+            elif st == "REJECTED":
+                logger.warning(f"❌ Order {broker_order_id} REJECTED by broker.")
+                try:
+                    self.active_positions.remove(pos)
+                except ValueError:
+                    pass
+                with get_db() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE positions SET status = 'REJECTED' WHERE id = %s", (pos["id"],))
+                    cursor.execute("COMMIT")
+                    cursor.close()
+                await send_telegram_message(f"❌ *Order Rejected*\nStrategy: {strat_info['name']}\nSymbol: {pos['symbol']}\nOrder was rejected by the broker.")
+
     async def close_position(self, position: dict, exit_price: float, reason: str):
         """Execute exit order and update DB."""
         try:
             # 1. Get strategy details from DB
             with get_db() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT broker, status FROM live_strategies WHERE id = %s", (position["live_strategy_id"],))
+                cursor.execute("SELECT broker, status, user_id FROM live_strategies WHERE id = %s", (position["live_strategy_id"],))
                 row = cursor.fetchone()
-                broker = row[0]
-                strat_status = row[1]
+                if not row:
+                    logger.error(f"Cannot find strategy for position {position['id']}")
+                    return
+                broker, strategy_status, user_id = row[0], row[1], row[2]
                 cursor.close()
 
-            is_paper = strat_status == "PAPER"
-            adapter = get_adapter(broker)
+            is_paper = strategy_status == "PAPER"
+            adapter = get_adapter(broker, user_id)
             
             broker_exit_id = f"PAPER_EXIT_{datetime.now(self._IST).strftime('%Y%m%d%H%M%S')}"
 
             if not is_paper:
                 logger.info(f"Closing position {position['id']} ({position['symbol']}) at {exit_price} due to {reason}...")
-                # 2. Place Exit Order
-                order_res = adapter.place_order(
-                    symbol=position["symbol"],
-                    exchange=position["exchange"],
-                    action="SELL",
-                    qty=position["quantity"],
-                    price=0,
-                    order_type="MKT"
-                )
+                # 2. Place Exit Order with retries
+                retries = 3
+                order_res = None
+                for attempt in range(retries):
+                    try:
+                        order_res = adapter.place_order(
+                            symbol=position["symbol"],
+                            exchange=position["exchange"],
+                            action="SELL",
+                            qty=position["quantity"],
+                            price=0,
+                            order_type="MKT"
+                        )
+                        if order_res and order_res.get("status") != "error":
+                            break
+                        else:
+                            msg = order_res.get("message") if order_res else "Unknown error"
+                            logger.warning(f"Exit attempt {attempt+1} failed checking status: {msg}")
+                    except Exception as e:
+                        logger.warning(f"Exit attempt {attempt+1} raised exception: {e}")
+                    
+                    if attempt == retries - 1:
+                        logger.error(f"Failed to close position {position['id']} after {retries} attempts.")
+                        await send_telegram_message(f"🚨 *URGENT: Failed to Close Position*\nSymbol: {position['symbol']}\nAttempts: {retries}\nPlease check broker APP manually!")
+                        return
+                    await asyncio.sleep(2)
+                
                 broker_exit_id = order_res.get("data", {}).get("orderId") or order_res.get("order_id")
             else:
                 logger.info(f"PAPER TRADING: Simulating SELL order for {position['symbol']} at {exit_price} (Reason: {reason})...")
