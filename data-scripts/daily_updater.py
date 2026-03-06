@@ -149,6 +149,13 @@ def merge_and_save(new_df: pd.DataFrame, path: Path) -> int:
     else:
         combined = new_df
 
+    # Normalize time to Asia/Kolkata to avoid comparison errors between naive and aware timestamps
+    combined["time"] = pd.to_datetime(combined["time"])
+    if combined["time"].dt.tz is None:
+        combined["time"] = combined["time"].dt.tz_localize("UTC").dt.tz_convert("Asia/Kolkata")
+    else:
+        combined["time"] = combined["time"].dt.tz_convert("Asia/Kolkata")
+
     combined = (combined
                 .drop_duplicates("time")
                 .sort_values("time")
