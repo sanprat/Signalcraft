@@ -4,8 +4,8 @@ import './globals.css'
 import ConditionalSidebar from '@/components/ConditionalSidebar'
 
 export const metadata: Metadata = {
-    title: 'Zenalys — No-Code AI Platform for Traders',
-    description: 'Build, backtest and deploy no-code trading strategies with AI-powered insights.',
+    title: 'Zenalys — No-Code Platform for Traders',
+    description: 'Build, backtest and deploy no-code trading strategies.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
