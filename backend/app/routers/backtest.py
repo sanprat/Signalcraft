@@ -3,9 +3,10 @@
 import uuid
 import json
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from app.models import BacktestRequest, BacktestSummary
 from app.core.backtest_engine import run_backtest
+from app.routers.auth import get_current_user, UserResponse
 import pandas as pd
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
@@ -15,7 +16,7 @@ BACKTEST_STORE.mkdir(exist_ok=True)
 
 
 @router.post("/run")
-def run(body: BacktestRequest):
+def run(body: BacktestRequest, current_user: UserResponse = Depends(get_current_user)):
     strat_path = STRATEGY_STORE / f"{body.strategy_id}.json"
     if not strat_path.exists():
         raise HTTPException(404, "Strategy not found")
@@ -28,6 +29,7 @@ def run(body: BacktestRequest):
     # Store candles separately (large data)
     candles_df: pd.DataFrame = result.pop("candles", pd.DataFrame())
     result["summary"]["backtest_id"] = backtest_id
+    result["summary"]["user_id"] = current_user.id  # Store owner
 
     out_dir = BACKTEST_STORE / backtest_id
     out_dir.mkdir(exist_ok=True)
@@ -93,19 +95,22 @@ def get_candles(backtest_id: str, page: int = 0, page_size: int = 500):
 
 
 @router.get("")
-def list_backtests():
-    """List all recent backtest summaries."""
+def list_backtests(current_user: UserResponse = Depends(get_current_user)):
+    """List all recent backtests for current user only."""
     results = []
     if not BACKTEST_STORE.exists():
         return results
-        
+
     # Look for summary.json in each subfolder
     for d in sorted(BACKTEST_STORE.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
         if d.is_dir():
             summary_path = d / "summary.json"
             if summary_path.exists():
                 try:
-                    results.append(json.loads(summary_path.read_text()))
+                    summary = json.loads(summary_path.read_text())
+                    # Filter by user_id (if stored, otherwise include for backward compat)
+                    if summary.get("user_id") is None or summary.get("user_id") == current_user.id:
+                        results.append(summary)
                 except Exception:
                     continue
     return results

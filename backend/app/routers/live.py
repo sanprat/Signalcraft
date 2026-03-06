@@ -1,11 +1,12 @@
 """Live trading router — deploy strategies and manage live orders."""
 
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pathlib import Path
 from pydantic import BaseModel
 from app.core.brokers import get_adapter
 from app.core.database import get_db
+from app.routers.auth import get_current_user, UserResponse
 
 router = APIRouter(prefix="/api/live", tags=["live"])
 STRATEGY_STORE = Path("strategies")
@@ -28,26 +29,26 @@ class OrderRequest(BaseModel):
 
 
 @router.post("/deploy")
-def deploy_strategy(body: DeployRequest):
+def deploy_strategy(body: DeployRequest, current_user: UserResponse = Depends(get_current_user)):
     strat_path = STRATEGY_STORE / f"{body.strategy_id}.json"
     if not strat_path.exists():
         raise HTTPException(404, "Strategy not found")
 
     strategy = json.loads(strat_path.read_text())
-    
-    # Save to PostgreSQL
+
+    # Save to PostgreSQL with proper user_id
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO live_strategies (
-                strategy_id, name, user_id, broker, status, symbols, 
+                strategy_id, name, user_id, broker, status, symbols,
                 risk_settings, entry_conditions, exit_conditions
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """, (
             body.strategy_id,
             strategy.get("name", body.strategy_id),
-            1, # Default to user 1 for now
+            current_user.id,  # Use actual logged-in user ID
             body.broker,
             "ACTIVE" if not body.paper else "PAPER",
             json.dumps(strategy.get("symbols", [])),
@@ -69,15 +70,21 @@ def deploy_strategy(body: DeployRequest):
 
 
 @router.get("/strategies")
-def get_live_strategies():
+def get_live_strategies(current_user: UserResponse = Depends(get_current_user)):
+    """Get live strategies for the current user only."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, strategy_id, name, broker, status, symbols FROM live_strategies ORDER BY created_at DESC")
+        cursor.execute("""
+            SELECT id, strategy_id, name, broker, status, symbols 
+            FROM live_strategies 
+            WHERE user_id = %s 
+            ORDER BY created_at DESC
+        """, (current_user.id,))
         rows = cursor.fetchall()
         strategies = []
         for r in rows:
             strategies.append({
-                "id": r[0], "strategy_id": r[1], "name": r[2], 
+                "id": r[0], "strategy_id": r[1], "name": r[2],
                 "broker": r[3], "status": r[4], "symbols": r[5]
             })
         cursor.close()
@@ -85,16 +92,22 @@ def get_live_strategies():
 
 
 @router.get("/positions")
-def get_positions():
+def get_positions(current_user: UserResponse = Depends(get_current_user)):
+    """Get positions for the current user only."""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM positions ORDER BY entry_time DESC")
+        cursor.execute("""
+            SELECT p.* FROM positions p
+            JOIN live_strategies ls ON p.live_strategy_id = ls.id
+            WHERE ls.user_id = %s
+            ORDER BY p.entry_time DESC
+        """, (current_user.id,))
         rows = cursor.fetchall()
         positions = []
         for r in rows:
             positions.append({
                 "id": r[0], "live_strategy_id": r[1], "symbol": r[2], "exchange": r[3],
-                "entry_price": float(r[4]) if r[4] else 0, 
+                "entry_price": float(r[4]) if r[4] else 0,
                 "quantity": r[5], "product_type": r[6],
                 "stoploss": float(r[7]) if r[7] else None,
                 "target": float(r[8]) if r[8] else None,
@@ -110,9 +123,16 @@ def get_positions():
 
 
 @router.post("/stop/{live_id}")
-def stop_strategy(live_id: int):
+def stop_strategy(live_id: int, current_user: UserResponse = Depends(get_current_user)):
+    """Stop a live strategy (current user only)."""
     with get_db() as conn:
         cursor = conn.cursor()
+        # Verify ownership
+        cursor.execute("SELECT user_id FROM live_strategies WHERE id = %s", (live_id,))
+        row = cursor.fetchone()
+        if not row or row[0] != current_user.id:
+            cursor.close()
+            raise HTTPException(404, "Strategy not found")
         cursor.execute("UPDATE live_strategies SET status = 'STOPPED' WHERE id = %s", (live_id,))
         cursor.execute("COMMIT")
         cursor.close()
@@ -120,10 +140,16 @@ def stop_strategy(live_id: int):
 
 
 @router.post("/toggle/{live_id}")
-def toggle_strategy(live_id: int, status: str):
-    # status: ACTIVE, PAUSED, STOPPED
+def toggle_strategy(live_id: int, status: str, current_user: UserResponse = Depends(get_current_user)):
+    """Toggle strategy status (current user only)."""
     with get_db() as conn:
         cursor = conn.cursor()
+        # Verify ownership
+        cursor.execute("SELECT user_id FROM live_strategies WHERE id = %s", (live_id,))
+        row = cursor.fetchone()
+        if not row or row[0] != current_user.id:
+            cursor.close()
+            raise HTTPException(404, "Strategy not found")
         cursor.execute("UPDATE live_strategies SET status = %s WHERE id = %s", (status, live_id))
         cursor.execute("COMMIT")
         cursor.close()
@@ -131,9 +157,16 @@ def toggle_strategy(live_id: int, status: str):
 
 
 @router.delete("/strategy/{live_id}")
-def delete_live_strategy(live_id: int):
+def delete_live_strategy(live_id: int, current_user: UserResponse = Depends(get_current_user)):
+    """Delete a live strategy (current user only)."""
     with get_db() as conn:
         cursor = conn.cursor()
+        # Verify ownership
+        cursor.execute("SELECT user_id FROM live_strategies WHERE id = %s", (live_id,))
+        row = cursor.fetchone()
+        if not row or row[0] != current_user.id:
+            cursor.close()
+            raise HTTPException(404, "Strategy not found")
         cursor.execute("DELETE FROM live_strategies WHERE id = %s", (live_id,))
         cursor.execute("COMMIT")
         cursor.close()
@@ -160,22 +193,23 @@ from app.core.config import settings
 from datetime import datetime, timezone, timedelta
 
 @router.get("/analytics")
-def get_analytics():
-    """Get performance analytics and risk status."""
+def get_analytics(current_user: UserResponse = Depends(get_current_user)):
+    """Get performance analytics and risk status for current user."""
     ist = timezone(timedelta(hours=5, minutes=30))
     today_start = datetime.now(ist).replace(hour=0, minute=0, second=0, microsecond=0)
-    
+
     with get_db() as conn:
         cursor = conn.cursor()
-        
-        # 1. Equity Curve (Cumulative PnL from closed trades)
+
+        # 1. Equity Curve (Cumulative PnL from closed trades for current user)
         cursor.execute("""
-            SELECT exit_time, pnl FROM positions 
-            WHERE status = 'CLOSED' AND pnl IS NOT NULL
-            ORDER BY exit_time ASC
-        """)
+            SELECT p.exit_time, p.pnl FROM positions p
+            JOIN live_strategies ls ON p.live_strategy_id = ls.id
+            WHERE ls.user_id = %s AND p.status = 'CLOSED' AND p.pnl IS NOT NULL
+            ORDER BY p.exit_time ASC
+        """, (current_user.id,))
         rows = cursor.fetchall()
-        
+
         equity_curve = []
         cum_pnl = 0
         for r in rows:
@@ -184,29 +218,33 @@ def get_analytics():
                 "time": str(r[0]),
                 "pnl": cum_pnl
             })
-            
-        # 2. Risk Status for active strategies
-        cursor.execute("SELECT id, name, risk_settings FROM live_strategies WHERE status != 'STOPPED'")
+
+        # 2. Risk Status for current user's active strategies
+        cursor.execute("""
+            SELECT id, name, risk_settings 
+            FROM live_strategies 
+            WHERE user_id = %s AND status != 'STOPPED'
+        """, (current_user.id,))
         strats = cursor.fetchall()
-        
+
         risk_status = []
         for s_id, s_name, s_risk_json in strats:
             risk = s_risk_json if isinstance(s_risk_json, dict) else json.loads(s_risk_json)
-            
+
             # Count trades today (IST)
             cursor.execute("""
-                SELECT COUNT(*) FROM positions 
+                SELECT COUNT(*) FROM positions
                 WHERE live_strategy_id = %s AND entry_time >= %s
             """, (s_id, today_start))
             trades_today = cursor.fetchone()[0]
-            
+
             # PnL today (IST)
             cursor.execute("""
-                SELECT SUM(pnl) FROM positions 
+                SELECT SUM(pnl) FROM positions
                 WHERE live_strategy_id = %s AND exit_time >= %s AND status = 'CLOSED'
             """, (s_id, today_start))
             pnl_today = cursor.fetchone()[0] or 0.0
-            
+
             risk_status.append({
                 "id": s_id,
                 "name": s_name,
@@ -218,7 +256,7 @@ def get_analytics():
             })
 
         cursor.close()
-        
+
     return {
         "equity_curve": equity_curve,
         "risk_status": risk_status,
