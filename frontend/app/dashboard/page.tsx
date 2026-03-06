@@ -23,10 +23,14 @@ const T = {
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Strategy {
     id: number
+    strategy_id?: string
     name: string
-    segment: string
+    segment?: string
+    asset_type?: string
     status: string
-    instrument: string
+    instrument?: string
+    symbol?: string
+    symbols?: string[] | string
     pnl: number
     pnlPct: number
     orders: number
@@ -191,7 +195,7 @@ function DashboardContent() {
             const strategiesRes = await fetch(`${config.apiBaseUrl}/api/strategy`, { headers })
             if (strategiesRes.ok) {
                 const data = await strategiesRes.json()
-                setStrategies(data.strategies || [])
+                setStrategies(Array.isArray(data) ? data : (data.strategies || []))
             } else if (strategiesRes.status === 401) {
                 localStorage.removeItem(config.authTokenKey)
                 localStorage.removeItem(config.authUserKey)
@@ -204,7 +208,7 @@ function DashboardContent() {
             const backtestsRes = await fetch(`${config.apiBaseUrl}/api/backtest`, { headers })
             if (backtestsRes.ok) {
                 const data = await backtestsRes.json()
-                setBacktests(data.backtests || [])
+                setBacktests(Array.isArray(data) ? data : (data.backtests || []))
             } else if (backtestsRes.status === 401) {
                 localStorage.removeItem(config.authTokenKey)
                 localStorage.removeItem(config.authUserKey)
@@ -236,16 +240,19 @@ function DashboardContent() {
 
         if (actualPriceChanged) {
             setStrategies(prev => prev.map(s =>
-                s.status === 'live'
+                s.status?.toLowerCase() === 'live' || s.status?.toLowerCase() === 'active'
                     ? { ...s, pnl: s.pnl + (Math.random() > 0.5 ? 1 : -1) * Math.floor(Math.random() * 30) }
                     : s
             ))
         }
     }, [quotes, marketOpen])
 
-    const totalPnl = strategies.reduce((a, s) => a + s.pnl, 0)
-    const liveCount = strategies.filter(s => s.status === 'live').length
-    const totalOrders = strategies.reduce((a, s) => a + s.orders, 0)
+    const totalPnl = strategies.reduce((a, s) => a + (s.pnl || 0), 0)
+    const liveCount = strategies.filter(s => {
+        const status = s.status?.toLowerCase()
+        return status === 'live' || status === 'active' || status === 'paper'
+    }).length
+    const totalOrders = strategies.reduce((a, s) => a + (s.orders || 0), 0)
     const [today, setToday] = useState('')
 
     useEffect(() => {
@@ -382,49 +389,53 @@ function DashboardContent() {
                                         <Link href="/strategy/new" style={{ color: T.blue, fontWeight: 600 }}>Create your first strategy</Link> to get started.
                                     </div>
                                 ) : (
-                                    strategies.map(s => (
-                                        <div key={s.id} style={{
-                                            border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px', cursor: 'pointer',
-                                            background: s.status === 'live' ? T.greenLight : s.status === 'paused' ? T.amberLight : T.bg,
-                                            transition: 'all 0.15s',
-                                        }}
-                                            onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)')}
-                                            onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-                                        >
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                                                <div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                                        <StatusPill status={s.status} />
-                                                        <span style={{ background: T.blueMid, color: T.blue, borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase' }}>OPTIONS</span>
+                                    strategies.map(s => {
+                                        const status = s.status?.toLowerCase()
+                                        const segment = s.segment || s.asset_type || 'Options'
+                                        return (
+                                            <div key={s.id || s.strategy_id} style={{
+                                                border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px', cursor: 'pointer',
+                                                background: (status === 'live' || status === 'active') ? T.greenLight : status === 'paper' ? T.blueLight : status === 'paused' ? T.amberLight : T.bg,
+                                                transition: 'all 0.15s',
+                                            }}
+                                                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)')}
+                                                onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+                                            >
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                                                    <div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                                            <StatusPill status={status || 'stopped'} />
+                                                            <span style={{ background: T.blueMid, color: T.blue, borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase' }}>{segment}</span>
+                                                        </div>
+                                                        <div style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>{s.name}</div>
+                                                        <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2, fontFamily: "'DM Mono', monospace" }}>{s.instrument || s.symbol || (Array.isArray(s.symbols) ? s.symbols.join(', ') : '')}</div>
                                                     </div>
-                                                    <div style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>{s.name}</div>
-                                                    <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2, fontFamily: "'DM Mono', monospace" }}>{s.instrument}</div>
+                                                    <PnlBadge val={s.pnl} pct={s.pnlPct} />
                                                 </div>
-                                                <PnlBadge val={s.pnl} pct={s.pnlPct} />
-                                            </div>
 
-                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
-                                                {[
-                                                    { label: 'Broker', value: s.broker },
-                                                    { label: 'Last Signal', value: s.lastSignal, mono: true },
-                                                    { label: 'Status', value: s.nextCheck },
-                                                ].map(f => (
-                                                    <div key={f.label}>
-                                                        <div style={{ fontSize: 10, color: T.textMuted, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 2 }}>{f.label}</div>
-                                                        <div style={{ fontSize: 12, fontWeight: 500, color: T.text, fontFamily: f.mono ? "'DM Mono', monospace" : 'inherit' }}>{f.value}</div>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
+                                                    {[
+                                                        { label: 'Broker', value: s.broker },
+                                                        { label: 'Last Signal', value: s.lastSignal, mono: true },
+                                                        { label: 'Status', value: s.nextCheck },
+                                                    ].map(f => (
+                                                        <div key={f.label}>
+                                                            <div style={{ fontSize: 10, color: T.textMuted, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 2 }}>{f.label}</div>
+                                                            <div style={{ fontSize: 12, fontWeight: 500, color: T.text, fontFamily: f.mono ? "'DM Mono', monospace" : 'inherit' }}>{f.value}</div>
+                                                        </div>
+                                                    ))}
+                                                </div>
 
-                                            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                                                {s.status !== 'paused' && (
-                                                    <button style={{ padding: '5px 12px', border: `1px solid ${T.borderStrong}`, borderRadius: 6, background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: T.amber }}>⏸ Pause</button>
-                                                )}
-                                                <button style={{ padding: '5px 12px', border: `1px solid ${T.borderStrong}`, borderRadius: 6, background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: T.textMid }}>📊 View Chart</button>
-                                                <button style={{ padding: '5px 12px', border: `1px solid ${T.redMid}`, borderRadius: 6, background: T.redLight, fontSize: 11, fontWeight: 600, cursor: 'pointer', color: T.red }}>⏹ Stop</button>
+                                                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                                                    {status !== 'paused' && (
+                                                        <button style={{ padding: '5px 12px', border: `1px solid ${T.borderStrong}`, borderRadius: 6, background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: T.amber }}>⏸ Pause</button>
+                                                    )}
+                                                    <button style={{ padding: '5px 12px', border: `1px solid ${T.borderStrong}`, borderRadius: 6, background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: T.textMid }}>📊 View Chart</button>
+                                                    <button style={{ padding: '5px 12px', border: `1px solid ${T.redMid}`, borderRadius: 6, background: T.redLight, fontSize: 11, fontWeight: 600, cursor: 'pointer', color: T.red }}>⏹ Stop</button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))
+                                        )
+                                    })
                                 )}
                             </div>
                         </Card>
