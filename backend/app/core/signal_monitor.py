@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.backtest_engine import compute_indicators, load_equity_candles
 from app.core.position_manager import position_manager
 from app.core.config import settings
+from app.routers.quotes import _handle_dynamic_sub # Added this
 
 logger = logging.getLogger(__name__)
 
@@ -75,13 +76,25 @@ class SignalMonitor:
                     except Exception as e:
                         logger.warning(f"Could not parse strategy {strategy_id_str}: {e}")
                 
+                # Robust symbol parsing
+                symbols_raw = row[6] or "[]"
+                if isinstance(symbols_raw, list):
+                    symbols = symbols_raw
+                else:
+                    try:
+                        parsed = json.loads(symbols_raw)
+                        symbols = parsed if isinstance(parsed, list) else [str(parsed)]
+                    except:
+                        # Fallback for comma-separated or single symbols
+                        symbols = [s.strip() for s in str(symbols_raw).split(",") if s.strip()]
+
                 strat_data = {
                     "id": row[0],
                     "strategy_id": strategy_id_str,
                     "name": row[2],
                     "user_id": row[3],
                     "broker": row[4],
-                    "symbols": row[6] if isinstance(row[6], list) else json.loads(row[6] or "[]"),
+                    "symbols": symbols,
                     "risk": row[7] if isinstance(row[7], dict) else json.loads(row[7] or "{}"),
                     "entry_conditions": row[8] if isinstance(row[8], list) else json.loads(row[8] or "[]"),
                     "exit_conditions": row[9] if isinstance(row[9], dict) else json.loads(row[9] or "{}"),
@@ -90,12 +103,15 @@ class SignalMonitor:
                 }
                 new_strategies[strat_id_db] = strat_data
                 
-                # Initialize quote queues for new symbols
+                # Initialize quote queues and ensure subscription
                 for symbol in strat_data["symbols"]:
                     if symbol not in self.quote_queues:
                         self.quote_queues[symbol] = asyncio.Queue()
-                        logger.info(f"Signal Monitor: Subscribed to {symbol}")
-                        
+                        logger.info(f"Signal Monitor: New symbol detected -> {symbol}")
+                    
+                    # Ensure quotes.py is actually tracking/fetching this symbol
+                    asyncio.create_task(_handle_dynamic_sub(symbol))
+
                     if symbol not in self.candles:
                         self.candles[symbol] = {}
                         
