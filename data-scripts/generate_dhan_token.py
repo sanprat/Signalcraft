@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 # Dhan API endpoint
-DHAN_AUTH_URLS = [os.getenv("DHAN_AUTH_URL", "https://b2b.dhan.co/api/v1/login")]
+DHAN_AUTH_URLS = [os.getenv("DHAN_AUTH_URL", "https://api.dhan.co/v2/login")]
 
 def generate_token():
     client_id = os.getenv("DHAN_CLIENT_ID", "").strip()
