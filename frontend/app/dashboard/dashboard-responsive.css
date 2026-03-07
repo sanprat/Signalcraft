@@ -9,6 +9,11 @@
         display: block !important;
     }
     
+    /* Hide sidebar on mobile - use hamburger menu instead */
+    aside {
+        display: none !important;
+    }
+    
     /* Make grids stack on mobile */
     .index-grid,
     .stats-grid {
