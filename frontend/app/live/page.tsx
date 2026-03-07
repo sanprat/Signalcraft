@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useQuotes } from '@/hooks/useQuotes'
 import { config } from '@/lib/config'
+import { BackButton } from '@/components/BackButton'
 
 const API = config.apiBaseUrl
 
@@ -132,11 +133,14 @@ export default function LiveTradingPage() {
         <div style={{ padding: 24, fontFamily: "'DM Sans', sans-serif", background: T.bg, minHeight: '100vh' }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-                <div>
-                    <h1 style={{ fontSize: 24, fontWeight: 800, color: T.navy, letterSpacing: '-0.5px', margin: 0 }}>Live Trading Dashboard</h1>
-                    <p style={{ fontSize: 13, color: T.textMuted, marginTop: 4 }}>
-                        {strategies.filter(s => s.status === 'ACTIVE' || s.status === 'PAPER').length} active · {strategies.length} total strategies
-                    </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <BackButton defaultBack="/dashboard" />
+                    <div>
+                        <h1 style={{ fontSize: 24, fontWeight: 800, color: T.navy, letterSpacing: '-0.5px', margin: 0 }}>Live Trading Dashboard</h1>
+                        <p style={{ fontSize: 13, color: T.textMuted, marginTop: 4 }}>
+                            {strategies.filter(s => s.status === 'ACTIVE' || s.status === 'PAPER').length} active · {strategies.length} total strategies
+                        </p>
+                    </div>
                 </div>
                 <div style={{ display: 'flex', gap: 12 }}>
                     <div style={{ padding: '8px 16px', background: '#fff', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>

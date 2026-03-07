@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { config } from '@/lib/config'
+import { BackButton } from '@/components/BackButton'
 
 const API = config.apiBaseUrl
 
@@ -55,9 +56,12 @@ export default function BacktestListPage() {
     return (
         <div style={{ maxWidth: 1000, margin: '0 auto', padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                <div>
-                    <h1 style={{ fontSize: 22, fontWeight: 800, color: T.navy, margin: 0, letterSpacing: '-0.5px' }}>Backtest History</h1>
-                    <p style={{ fontSize: 13, color: T.textMuted, margin: '4px 0 0' }}>View and analyze your past strategy simulations.</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <BackButton defaultBack="/dashboard" />
+                    <div>
+                        <h1 style={{ fontSize: 22, fontWeight: 800, color: T.navy, margin: 0, letterSpacing: '-0.5px' }}>Backtest History</h1>
+                        <p style={{ fontSize: 13, color: T.textMuted, margin: '4px 0 0' }}>View and analyze your past strategy simulations.</p>
+                    </div>
                 </div>
                 <Link href="/strategy/new" style={{ padding: '10px 20px', background: T.blue, color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 700, textDecoration: 'none' }}>
                     + New Strategy

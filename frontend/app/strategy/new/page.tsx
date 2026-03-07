@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { config } from '@/lib/config'
+import { BackButton } from '@/components/BackButton'
 
 const API = config.apiBaseUrl
 
@@ -561,9 +562,14 @@ function NewStrategyContent() {
 
     return (
         <div style={{ maxWidth: 680, margin: '0 auto', padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
-            {/* Header */}
+            {/* Header with Back Button */}
             <div style={{ marginBottom: 24 }}>
-                <h1 style={{ fontSize: 22, fontWeight: 800, color: T.navy, margin: '0 0 14px', letterSpacing: '-0.5px' }}>Build Your Strategy</h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                    <BackButton defaultBack="/dashboard" />
+                    <h1 style={{ fontSize: 22, fontWeight: 800, color: T.navy, margin: 0, letterSpacing: '-0.5px' }}>
+                        Build Your Strategy
+                    </h1>
+                </div>
                 <input placeholder="Strategy name (e.g. RELIANCE EMA Breakout)" value={data.name} onChange={e => set({ name: e.target.value })}
                     style={{ width: '100%', padding: '11px 14px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", color: T.navy, outline: 'none' }} />
             </div>

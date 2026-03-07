@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { config } from '@/lib/config'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const T = {
     navy: '#0F2744',
@@ -26,6 +26,41 @@ export function MobileNav({ userName }: MobileNavProps) {
     const pathname = usePathname()
     const router = useRouter()
     const [showLogout, setShowLogout] = useState(false)
+    const [showInstall, setShowInstall] = useState(false)
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+
+    // Listen for PWA install prompt
+    useEffect(() => {
+        const handleBeforeInstallPrompt = (e: Event) => {
+            e.preventDefault()
+            setDeferredPrompt(e)
+            setShowInstall(true)
+        }
+
+        const handleAppInstalled = () => {
+            setShowInstall(false)
+            setDeferredPrompt(null)
+        }
+
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+        window.addEventListener('appinstalled', handleAppInstalled)
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+            window.removeEventListener('appinstalled', handleAppInstalled)
+        }
+    }, [])
+
+    const handleInstall = async () => {
+        if (!deferredPrompt) return
+        deferredPrompt.prompt()
+        const { outcome } = await deferredPrompt.userChoice
+        if (outcome === 'accepted') {
+            console.log('[PWA] User accepted')
+        }
+        setShowInstall(false)
+        setDeferredPrompt(null)
+    }
 
     const handleLogout = async () => {
         try {
@@ -51,6 +86,70 @@ export function MobileNav({ userName }: MobileNavProps) {
 
     return (
         <>
+            {/* PWA Install Banner - shows at top on mobile */}
+            {showInstall && (
+                <div style={{
+                    position: 'fixed',
+                    top: 'max(16px, env(safe-area-inset-top))',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'linear-gradient(135deg, #10B981, #047857)',
+                    color: '#fff',
+                    padding: '12px 16px',
+                    borderRadius: 12,
+                    boxShadow: '0 4px 20px rgba(16, 185, 129, 0.3)',
+                    zIndex: 10001,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    maxWidth: '90%',
+                    width: 340,
+                    animation: 'slideDown 0.3s ease-out',
+                }}>
+                    <div style={{ fontSize: 20 }}>📲</div>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>
+                            Install SignalCraft
+                        </div>
+                        <div style={{ fontSize: 11, opacity: 0.9 }}>
+                            Add to home screen
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                            onClick={() => setShowInstall(false)}
+                            style={{
+                                padding: '6px 10px',
+                                background: 'rgba(255,255,255,0.15)',
+                                border: 'none',
+                                borderRadius: 6,
+                                color: '#fff',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                fontSize: 11,
+                            }}
+                        >
+                            Later
+                        </button>
+                        <button
+                            onClick={handleInstall}
+                            style={{
+                                padding: '6px 10px',
+                                background: '#fff',
+                                border: 'none',
+                                borderRadius: 6,
+                                color: '#047857',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                fontSize: 11,
+                            }}
+                        >
+                            Install
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div style={{
                 position: 'fixed',
                 bottom: 0,
