@@ -114,7 +114,10 @@ export function PWAInstallPrompt() {
     }
   }, [pathname])
 
-  const handleInstall = async () => {
+  const handleInstall = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
     if (deferredPrompt) {
       try {
         deferredPrompt.prompt()
@@ -136,17 +139,23 @@ export function PWAInstallPrompt() {
     setShowHowTo(true)
   }
 
-  const handleDismiss = () => {
+  const handleDismiss = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
     setShowPrompt(false)
     setShowHowTo(false)
     localStorage.setItem('pwa-install-dismissed', Date.now().toString())
   }
 
-  const closeHowTo = () => {
+  const closeHowTo = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
     setShowHowTo(false)
   }
 
   if (isInstalled) return null
+
+  if (!showPrompt) return null
 
   return (
     <>

@@ -7,7 +7,7 @@ import ConditionalSidebar from '@/components/ConditionalSidebar'
 export const metadata: Metadata = {
     title: 'Zenalys — No-Code Platform for Traders',
     description: 'Build, backtest and deploy no-code trading strategies.',
-    manifest: '/manifest.json',
+    manifest: '/manifest.json?v=2',
     appleWebApp: {
         capable: true,
         statusBarStyle: 'black-translucent',
@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     return (
         <html lang="en">
             <head>
-                <link rel="manifest" href="/manifest.json" />
+                <link rel="manifest" href="/manifest.json?v=2" />
                 <meta name="theme-color" content="#10B981" />
                 <meta name="apple-mobile-web-app-capable" content="yes" />
                 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
