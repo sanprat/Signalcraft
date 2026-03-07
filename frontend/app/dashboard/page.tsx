@@ -7,8 +7,7 @@ import { config } from '@/lib/config'
 import { useQuotes } from '@/hooks/useQuotes'
 import { StocksView } from '@/components/dashboard/StocksView'
 import { IndicesView } from '@/components/dashboard/IndicesView'
-import { MobileNav, MobileHeader } from '@/components/dashboard/MobileNav'
-import { MobileSidebar } from '@/components/dashboard/MobileSidebar'
+import { AppShell } from '@/components/AppShell'
 import './dashboard-responsive.css'
 
 // ── Colour tokens ─────────────────────────────────────────────────────────────
@@ -280,25 +279,15 @@ function DashboardContent() {
     }, [])
 
     return (
-        <div className="dashboard-content" style={{ 
-            padding: 24, 
-            fontFamily: "'DM Sans', sans-serif",
-            paddingBottom: '80px', // Space for mobile nav
+        <AppShell title="Dashboard" onRefresh={async () => {
+            await fetchDashboardData()
         }}>
-            {/* Mobile Sidebar */}
-            <MobileSidebar 
-                isOpen={mobileSidebarOpen} 
-                onClose={() => setMobileSidebarOpen(false)} 
-                userName={userName} 
-            />
-
-            {/* Mobile Header - only visible on small screens */}
-            <div className="mobile-only">
-                <MobileHeader userName={userName} onMenuClick={() => setMobileSidebarOpen(true)} />
-            </div>
-
-            {/* Top bar - hidden on mobile */}
-            <div className="desktop-only top-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+            <div className="dashboard-content" style={{
+                padding: 24,
+                fontFamily: "'DM Sans', sans-serif",
+            }}>
+                {/* Top bar - hidden on mobile */}
+                <div className="desktop-only top-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                 <div>
                     <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: T.navy, letterSpacing: '-0.5px' }}>
                         Hello, {userName} 👋
@@ -559,10 +548,8 @@ function DashboardContent() {
                 <span>⚠</span>
                 <span><strong>Disclaimer:</strong> SignalCraft is a technology tool only. Past backtest performance does not guarantee future results. All trading decisions are your own responsibility.</span>
             </div>
-
-            {/* Mobile Navigation */}
-            <MobileNav userName={userName} />
-        </div>
+            </div>
+        </AppShell>
     )
 }
 
