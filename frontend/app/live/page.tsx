@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useQuotes } from '@/hooks/useQuotes'
 import { config } from '@/lib/config'
 import { BackButton } from '@/components/BackButton'
+import { AppShell } from '@/components/AppShell'
 
 const API = config.apiBaseUrl
 
@@ -126,11 +127,16 @@ export default function LiveTradingPage() {
     }
 
     if (loading && strategies.length === 0) {
-        return <div style={{ padding: 40, textAlign: 'center', color: T.textMuted }}>Loading Live Dashboard...</div>
+        return (
+            <AppShell title="Live Trading" showBack defaultBack="/dashboard">
+                <div style={{ padding: 40, textAlign: 'center', color: T.textMuted }}>Loading Live Dashboard...</div>
+            </AppShell>
+        )
     }
 
     return (
-        <div style={{ padding: 24, fontFamily: "'DM Sans', sans-serif", background: T.bg, minHeight: '100vh' }}>
+        <AppShell title="Live Trading" showBack defaultBack="/dashboard">
+            <div style={{ padding: 24, fontFamily: "'DM Sans', sans-serif", background: T.bg, minHeight: '100vh' }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -341,6 +347,7 @@ export default function LiveTradingPage() {
                     )}
                 </Card>
             </section>
-        </div>
+            </div>
+        </AppShell>
     )
 }
