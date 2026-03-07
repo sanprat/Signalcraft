@@ -1,0 +1,57 @@
+/* Mobile-first responsive styles for dashboard */
+
+@media (max-width: 768px) {
+    .desktop-only {
+        display: none !important;
+    }
+    
+    .mobile-only {
+        display: block !important;
+    }
+    
+    /* Make grids stack on mobile */
+    .index-grid,
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+    }
+    
+    /* Two column layout becomes single column */
+    .two-column-layout {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+    
+    /* Adjust padding on mobile */
+    .dashboard-content {
+        padding: 12px !important;
+        padding-bottom: 80px !important;
+    }
+    
+    /* Make top header stack on mobile */
+    .top-header {
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+    }
+    
+    /* Adjust button sizes for touch */
+    button {
+        min-height: 44px !important;
+        min-width: 44px !important;
+    }
+    
+    /* Make strategy cards full width */
+    .strategy-card {
+        margin-bottom: 8px !important;
+    }
+}
+
+@media (min-width: 769px) {
+    .desktop-only {
+        display: flex !important;
+    }
+    
+    .mobile-only {
+        display: none !important;
+    }
+}

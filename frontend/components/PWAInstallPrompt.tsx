@@ -12,34 +12,38 @@ export function PWAInstallPrompt() {
   const pathname = usePathname()
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [showPrompt, setShowPrompt] = useState(false)
+  const [isInstalled, setIsInstalled] = useState(false)
 
   useEffect(() => {
-    // Only show install prompt on login page
-    if (pathname !== '/login') {
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true)
+      return
+    }
+
+    // Only show install prompt on login and dashboard pages
+    if (pathname !== '/login' && pathname !== '/dashboard' && !pathname.startsWith('/dashboard')) {
       return
     }
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
-      
+
       // Check if user hasn't dismissed before
       const dismissed = localStorage.getItem('pwa-install-dismissed')
-      if (!dismissed) {
+      const dismissedAt = dismissed ? parseInt(dismissed) : 0
+      const sevenDays = 7 * 24 * 60 * 60 * 1000
+      
+      if (Date.now() - dismissedAt > sevenDays) {
         setShowPrompt(true)
       }
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    
-    // Auto-dismiss after 7 days
-    const timer = setTimeout(() => {
-      setShowPrompt(false)
-    }, 7 * 24 * 60 * 60 * 1000)
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-      clearTimeout(timer)
     }
   }, [pathname])
 
@@ -48,21 +52,22 @@ export function PWAInstallPrompt() {
 
     deferredPrompt.prompt()
     const { outcome } = await deferredPrompt.userChoice
-    
+
     if (outcome === 'accepted') {
       console.log('User accepted the install prompt')
+      setIsInstalled(true)
     }
-    
+
     setDeferredPrompt(null)
     setShowPrompt(false)
   }
 
   const handleDismiss = () => {
     setShowPrompt(false)
-    localStorage.setItem('pwa-install-dismissed', 'true')
+    localStorage.setItem('pwa-install-dismissed', Date.now().toString())
   }
 
-  if (!showPrompt) return null
+  if (!showPrompt || isInstalled) return null
 
   return (
     <div style={{
@@ -72,53 +77,53 @@ export function PWAInstallPrompt() {
       transform: 'translateX(-50%)',
       background: 'linear-gradient(135deg, #10B981, #047857)',
       color: '#fff',
-      padding: '16px 24px',
+      padding: '16px 20px',
       borderRadius: 16,
       boxShadow: '0 10px 40px rgba(16, 185, 129, 0.4)',
-      zIndex: 1000,
+      zIndex: 10000,
       display: 'flex',
       alignItems: 'center',
-      gap: 16,
-      maxWidth: '90%',
-      width: 400,
+      gap: 12,
+      maxWidth: '95%',
+      width: 380,
       animation: 'slideUp 0.3s ease-out',
     }}>
       <div style={{
-        width: 48,
-        height: 48,
+        width: 44,
+        height: 44,
         background: 'rgba(255,255,255,0.2)',
         borderRadius: 12,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 24,
+        fontSize: 22,
         fontWeight: 900,
         flexShrink: 0,
       }}>
         SC
       </div>
-      
+
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-          Install SignalCraft
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>
+          📲 Install SignalCraft
         </div>
-        <div style={{ fontSize: 13, opacity: 0.9, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 12, opacity: 0.95, lineHeight: 1.3 }}>
           Add to home screen for quick access
         </div>
       </div>
-      
-      <div style={{ display: 'flex', gap: 8 }}>
+
+      <div style={{ display: 'flex', gap: 6 }}>
         <button
           onClick={handleDismiss}
           style={{
-            padding: '8px 16px',
-            background: 'rgba(255,255,255,0.2)',
+            padding: '8px 12px',
+            background: 'rgba(255,255,255,0.15)',
             border: 'none',
             borderRadius: 8,
             color: '#fff',
             fontWeight: 600,
             cursor: 'pointer',
-            fontSize: 13,
+            fontSize: 12,
           }}
         >
           Later
@@ -126,14 +131,14 @@ export function PWAInstallPrompt() {
         <button
           onClick={handleInstall}
           style={{
-            padding: '8px 16px',
+            padding: '8px 14px',
             background: '#fff',
             border: 'none',
             borderRadius: 8,
             color: '#047857',
             fontWeight: 700,
             cursor: 'pointer',
-            fontSize: 13,
+            fontSize: 12,
           }}
         >
           Install
@@ -149,6 +154,13 @@ export function PWAInstallPrompt() {
           to {
             opacity: 1;
             transform: translateX(-50%) translateY(0);
+          }
+        }
+        
+        @media (max-width: 480px) {
+          .pwa-prompt {
+            width: 95% !important;
+            padding: 12px 16px !important;
           }
         }
       `}</style>

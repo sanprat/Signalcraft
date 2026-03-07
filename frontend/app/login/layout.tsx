@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from 'next'
-import { PWAInstallPrompt } from '@/components/PWAInstallPrompt'
 
 export const metadata: Metadata = {
     title: 'SignalCraft — Craft Your Trading Signals',
@@ -13,7 +12,6 @@ export const metadata: Metadata = {
     formatDetection: {
         telephone: false,
     },
-    themeColor: '#10B981',
 }
 
 export const viewport: Viewport = {
@@ -25,10 +23,5 @@ export const viewport: Viewport = {
 }
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-    return (
-        <>
-            {children}
-            <PWAInstallPrompt />
-        </>
-    )
+    return <>{children}</>
 }

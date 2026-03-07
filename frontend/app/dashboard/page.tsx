@@ -7,6 +7,8 @@ import { config } from '@/lib/config'
 import { useQuotes } from '@/hooks/useQuotes'
 import { StocksView } from '@/components/dashboard/StocksView'
 import { IndicesView } from '@/components/dashboard/IndicesView'
+import { MobileNav, MobileHeader } from '@/components/dashboard/MobileNav'
+import './dashboard-responsive.css'
 
 // ── Colour tokens ─────────────────────────────────────────────────────────────
 const T = {
@@ -276,10 +278,18 @@ function DashboardContent() {
     }, [])
 
     return (
-        <div style={{ padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
+        <div className="dashboard-content" style={{ 
+            padding: 24, 
+            fontFamily: "'DM Sans', sans-serif",
+            paddingBottom: '80px', // Space for mobile nav
+        }}>
+            {/* Mobile Header - only visible on small screens */}
+            <div className="mobile-only">
+                <MobileHeader userName={userName} />
+            </div>
 
-            {/* Top bar */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+            {/* Top bar - hidden on mobile */}
+            <div className="desktop-only top-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
                 <div>
                     <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: T.navy, letterSpacing: '-0.5px' }}>
                         Hello, {userName} 👋
@@ -347,7 +357,7 @@ function DashboardContent() {
             ) : (
                 <>
                     {/* Index strip — live from WebSocket */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
+                    <div className="index-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 20 }}>
                         {Object.entries(quotes).map(([sym, q]) => (
                             <Card key={sym} style={{ padding: '12px 16px' }}>
                                 <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 4 }}>
@@ -367,7 +377,7 @@ function DashboardContent() {
                     </div>
 
                     {/* Summary stats */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 20 }}>
+                    <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 20 }}>
                         {[
                             { label: "Today's P&L", type: 'pnl' },
                             { label: 'Active Strategies', value: liveCount, sub: `of ${strategies.length} total`, color: T.blue },
@@ -391,7 +401,7 @@ function DashboardContent() {
                     </div>
 
                     {/* Two column layout */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16 }}>
+                    <div className="two-column-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16 }}>
 
                         {/* LEFT: Active strategies */}
                         <Card>
@@ -540,6 +550,9 @@ function DashboardContent() {
                 <span>⚠</span>
                 <span><strong>Disclaimer:</strong> SignalCraft is a technology tool only. Past backtest performance does not guarantee future results. All trading decisions are your own responsibility.</span>
             </div>
+
+            {/* Mobile Navigation */}
+            <MobileNav userName={userName} />
         </div>
     )
 }
