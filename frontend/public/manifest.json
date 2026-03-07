@@ -3,13 +3,18 @@
   "name": "SignalCraft — Algorithmic Trading Platform",
   "short_name": "SignalCraft",
   "description": "Build, backtest and deploy no-code trading strategies",
-  "version": "1.0.1",
-  "start_url": "/dashboard",
+  "version": "1.0.2",
+  "start_url": "/dashboard?source=pwa",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "background_color": "#0A0A0A",
   "theme_color": "#10B981",
   "orientation": "portrait-primary",
   "scope": "/",
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "icons": [
     {
       "src": "/icons/icon-72x72.png",
