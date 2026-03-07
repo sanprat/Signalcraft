@@ -39,7 +39,7 @@ export function PWAInstallPrompt() {
       }
 
       try {
-        const registration = await navigator.serviceWorker?.getRegistration('/sw.js')
+        const registration = await navigator.serviceWorker?.getRegistration('/')
         if (registration) {
           console.log('[PWA] Service worker registered:', registration.scope)
           setSwReady(true)
