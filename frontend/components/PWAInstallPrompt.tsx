@@ -15,9 +15,16 @@ export function PWAInstallPrompt() {
   const [isInstalled, setIsInstalled] = useState(false)
 
   useEffect(() => {
-    // Check if already installed
+    // Check if already installed (running in standalone mode)
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true)
+      return
+    }
+
+    // Check if running on HTTPS or localhost (required for PWA)
+    const isSecure = window.location.protocol === 'https:' || window.location.hostname === 'localhost'
+    if (!isSecure) {
+      console.log('[PWA] Not installing: requires HTTPS or localhost')
       return
     }
 
@@ -28,6 +35,7 @@ export function PWAInstallPrompt() {
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
+      console.log('[PWA] beforeinstallprompt event fired')
       setDeferredPrompt(e as BeforeInstallPromptEvent)
 
       // Check if user hasn't dismissed before
@@ -35,31 +43,52 @@ export function PWAInstallPrompt() {
       const dismissedAt = dismissed ? parseInt(dismissed) : 0
       const sevenDays = 7 * 24 * 60 * 60 * 1000
       
-      if (Date.now() - dismissedAt > sevenDays) {
+      // Show prompt if never dismissed or dismissed more than 7 days ago
+      if (!dismissed || Date.now() - dismissedAt > sevenDays) {
+        console.log('[PWA] Showing install prompt')
         setShowPrompt(true)
+      } else {
+        console.log('[PWA] Prompt dismissed recently, not showing')
       }
     }
 
+    const handleAppInstalled = () => {
+      console.log('[PWA] App installed!')
+      setIsInstalled(true)
+      setShowPrompt(false)
+    }
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+    window.addEventListener('appinstalled', handleAppInstalled)
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
     }
   }, [pathname])
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return
-
-    deferredPrompt.prompt()
-    const { outcome } = await deferredPrompt.userChoice
-
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt')
-      setIsInstalled(true)
+    if (!deferredPrompt) {
+      console.log('[PWA] No install prompt available')
+      return
     }
 
-    setDeferredPrompt(null)
-    setShowPrompt(false)
+    try {
+      deferredPrompt.prompt()
+      const { outcome } = await deferredPrompt.userChoice
+
+      if (outcome === 'accepted') {
+        console.log('[PWA] User accepted the install prompt')
+        setIsInstalled(true)
+      } else {
+        console.log('[PWA] User dismissed the install prompt')
+      }
+    } catch (error) {
+      console.error('[PWA] Error showing prompt:', error)
+    } finally {
+      setDeferredPrompt(null)
+      setShowPrompt(false)
+    }
   }
 
   const handleDismiss = () => {
@@ -70,14 +99,14 @@ export function PWAInstallPrompt() {
   if (!showPrompt || isInstalled) return null
 
   return (
-    <div style={{
+    <div className="pwa-prompt" style={{
       position: 'fixed',
-      bottom: 20,
+      bottom: 80, // Above the mobile nav
       left: '50%',
       transform: 'translateX(-50%)',
       background: 'linear-gradient(135deg, #10B981, #047857)',
       color: '#fff',
-      padding: '16px 20px',
+      padding: '14px 18px',
       borderRadius: 16,
       boxShadow: '0 10px 40px rgba(16, 185, 129, 0.4)',
       zIndex: 10000,
@@ -85,18 +114,18 @@ export function PWAInstallPrompt() {
       alignItems: 'center',
       gap: 12,
       maxWidth: '95%',
-      width: 380,
+      width: 360,
       animation: 'slideUp 0.3s ease-out',
     }}>
       <div style={{
-        width: 44,
-        height: 44,
+        width: 40,
+        height: 40,
         background: 'rgba(255,255,255,0.2)',
-        borderRadius: 12,
+        borderRadius: 10,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: 900,
         flexShrink: 0,
       }}>
@@ -116,14 +145,14 @@ export function PWAInstallPrompt() {
         <button
           onClick={handleDismiss}
           style={{
-            padding: '8px 12px',
+            padding: '6px 10px',
             background: 'rgba(255,255,255,0.15)',
             border: 'none',
-            borderRadius: 8,
+            borderRadius: 6,
             color: '#fff',
             fontWeight: 600,
             cursor: 'pointer',
-            fontSize: 12,
+            fontSize: 11,
           }}
         >
           Later
@@ -131,14 +160,14 @@ export function PWAInstallPrompt() {
         <button
           onClick={handleInstall}
           style={{
-            padding: '8px 14px',
+            padding: '6px 12px',
             background: '#fff',
             border: 'none',
-            borderRadius: 8,
+            borderRadius: 6,
             color: '#047857',
             fontWeight: 700,
             cursor: 'pointer',
-            fontSize: 12,
+            fontSize: 11,
           }}
         >
           Install
@@ -154,13 +183,6 @@ export function PWAInstallPrompt() {
           to {
             opacity: 1;
             transform: translateX(-50%) translateY(0);
-          }
-        }
-        
-        @media (max-width: 480px) {
-          .pwa-prompt {
-            width: 95% !important;
-            padding: 12px 16px !important;
           }
         }
       `}</style>

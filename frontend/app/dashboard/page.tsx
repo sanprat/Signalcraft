@@ -8,6 +8,7 @@ import { useQuotes } from '@/hooks/useQuotes'
 import { StocksView } from '@/components/dashboard/StocksView'
 import { IndicesView } from '@/components/dashboard/IndicesView'
 import { MobileNav, MobileHeader } from '@/components/dashboard/MobileNav'
+import { MobileSidebar } from '@/components/dashboard/MobileSidebar'
 import './dashboard-responsive.css'
 
 // ── Colour tokens ─────────────────────────────────────────────────────────────
@@ -272,6 +273,7 @@ function DashboardContent() {
     }).length
     const totalOrders = analytics?.total_orders || liveStrategies.reduce((a, s) => a + (s.orders || 0), 0)
     const [today, setToday] = useState('')
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
     useEffect(() => {
         setToday(new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }))
@@ -283,9 +285,16 @@ function DashboardContent() {
             fontFamily: "'DM Sans', sans-serif",
             paddingBottom: '80px', // Space for mobile nav
         }}>
+            {/* Mobile Sidebar */}
+            <MobileSidebar 
+                isOpen={mobileSidebarOpen} 
+                onClose={() => setMobileSidebarOpen(false)} 
+                userName={userName} 
+            />
+
             {/* Mobile Header - only visible on small screens */}
             <div className="mobile-only">
-                <MobileHeader userName={userName} />
+                <MobileHeader userName={userName} onMenuClick={() => setMobileSidebarOpen(true)} />
             </div>
 
             {/* Top bar - hidden on mobile */}
