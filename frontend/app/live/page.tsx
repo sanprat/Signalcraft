@@ -50,21 +50,35 @@ export default function LiveTradingPage() {
 
     const { quotes, marketOpen } = useQuotes()
 
-    // 1. Fetch data on load
+    // 1. Fetch data on load with authentication
     useEffect(() => {
         const fetchData = async () => {
             try {
+                const token = localStorage.getItem(config.authTokenKey)
+                const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
+
                 const [stratsRes, posRes, anaRes] = await Promise.all([
-                    fetch(`${API}/api/live/strategies`),
-                    fetch(`${API}/api/live/positions`),
-                    fetch(`${API}/api/live/analytics`)
+                    fetch(`${API}/api/live/strategies`, { headers }),
+                    fetch(`${API}/api/live/positions`, { headers }),
+                    fetch(`${API}/api/live/analytics`, { headers })
                 ])
+
+                // Handle 401 - redirect to login
+                if (stratsRes.status === 401 || posRes.status === 401 || anaRes.status === 401) {
+                    localStorage.removeItem(config.authTokenKey)
+                    localStorage.removeItem(config.authUserKey)
+                    window.location.href = '/login'
+                    return
+                }
+
                 const strats = await stratsRes.json()
                 const pos = await posRes.json()
                 const ana = await anaRes.json()
-                setStrategies(strats)
-                setPositions(pos)
-                setAnalytics(ana)
+
+                // Ensure arrays are arrays (fix h.filter error)
+                setStrategies(Array.isArray(strats) ? strats : [])
+                setPositions(Array.isArray(pos) ? pos : [])
+                setAnalytics(ana || null)
             } catch (err) {
                 console.error("Failed to fetch live data", err)
             } finally {
