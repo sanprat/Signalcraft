@@ -127,10 +127,50 @@ Implemented comprehensive mobile responsiveness with a dedicated mobile navigati
 
 #### **Files Created/Modified:**
 ```
-frontend/components/dashboard/MobileNav.tsx       | +95 lines (new)
+frontend/components/dashboard/MobileNav.tsx       | +230 lines (enhanced)
 frontend/app/dashboard/dashboard-responsive.css   | +55 lines (new)
 frontend/app/dashboard/page.tsx                   | +40 lines (responsive integration)
 frontend/app/layout.tsx                           | +10 lines (viewport meta)
+```
+
+---
+
+### 3b. Mobile Sidebar Toggle & Logout Button (March 7, 2026 - Afternoon)
+
+#### **Issue**
+Users reported missing the logout button on mobile and having no way to open/close the sidebar on mobile devices.
+
+#### **Resolution**
+Added a hamburger menu button to toggle the sidebar and moved the logout button to the mobile bottom navigation.
+
+**New Components:**
+| Component | Purpose |
+|-----------|---------|
+| `MobileSidebar.tsx` | Full sidebar overlay with hamburger menu trigger, ESC key support |
+| `MobileHeader` (enhanced) | Added hamburger menu button (☰) to open sidebar |
+| `MobileNav` (enhanced) | Added logout button (🚪) with confirmation modal |
+
+**Features:**
+- ✅ **Hamburger Menu Button**: Tap ☰ to open sidebar
+- ✅ **Sidebar Overlay**: Slides in from left with dark overlay
+- ✅ **ESC Key Support**: Press ESC to close sidebar
+- ✅ **Logout Button**: Added to bottom nav row (6th position)
+- ✅ **Logout Confirmation**: Modal dialog before logging out
+- ✅ **Auto-close**: Sidebar closes when navigating
+- ✅ **Segment Toggle**: Options/Stocks toggle works in mobile sidebar
+
+**PWA Install Prompt Improvements:**
+- ✅ **Positioned Above Nav**: Moved from bottom:80px to avoid overlap
+- ✅ **HTTPS Check**: Only shows on secure contexts (HTTPS or localhost)
+- ✅ **Better Logging**: Console logs for debugging PWA installation
+- ✅ **Event Listeners**: Added `appinstalled` event handler
+
+#### **Files Created/Modified:**
+```
+frontend/components/dashboard/MobileSidebar.tsx  | +260 lines (new)
+frontend/components/dashboard/MobileNav.tsx      | +100 lines (logout button)
+frontend/app/dashboard/page.tsx                  | +15 lines (sidebar state)
+frontend/components/PWAInstallPrompt.tsx         | +50 lines (HTTPS check, positioning)
 ```
 
 ---
@@ -1345,13 +1385,15 @@ Phase 4: Production Readiness (IN PROGRESS)
 ## Session Metadata
 
 - **Date:** 2026-03-07
-- **Time:** 12:30 IST
+- **Time:** 13:00 IST
 - **Features Implemented:**
   - ✅ User Data Isolation (Security Fix)
   - ✅ PWA Support with Install Prompt (login + dashboard)
   - ✅ Zenalys/SignalCraft Branding Refresh
   - ✅ Mobile-Responsive Dashboard (bottom nav, responsive grids)
   - ✅ Touch-Friendly UI (44px minimum buttons)
+  - ✅ Mobile Sidebar Toggle (hamburger menu ☰)
+  - ✅ Logout Button on Mobile Navigation (🚪)
   - ✅ Dhan Broker Token Stability
   - ✅ Data Pipeline Robustness (1min fallback, PyArrow fixes)
   - ✅ Live Trading Bug Fixes
@@ -1361,14 +1403,16 @@ Phase 4: Production Readiness (IN PROGRESS)
   - `backend/app/routers/live.py`, `backend/app/routers/strategy.py`, `backend/app/routers/backtest.py` (user isolation)
   - `frontend/app/layout.tsx` (root PWA meta tags)
   - `frontend/components/PWAInstallPrompt.tsx` (enhanced install prompt)
-  - `frontend/components/dashboard/MobileNav.tsx` (new - mobile navigation)
-  - `frontend/app/dashboard/page.tsx` (responsive integration)
-  - `frontend/app/dashboard/dashboard-responsive.css` (new - mobile styles)
+  - `frontend/components/dashboard/MobileNav.tsx` (added logout button)
+  - `frontend/components/dashboard/MobileSidebar.tsx` (new - sidebar overlay)
+  - `frontend/app/dashboard/page.tsx` (responsive + sidebar toggle)
+  - `frontend/app/dashboard/dashboard-responsive.css` (mobile styles)
   - `frontend/public/manifest.json` (app shortcuts, icons)
   - `frontend/app/page.tsx` + all layout files (branding)
   - `backend/app/core/dhan_service.py` (token refresh)
   - `backend/scripts/daily_updater.py`, `backend/scripts/check_data_coverage.py` (data pipeline)
-- **Build Status:** ✅ Frontend builds successfully; PWA installable; Mobile-responsive verified
+  - `progress_report.md` (comprehensive update)
+- **Build Status:** ✅ Frontend builds successfully; PWA installable; Mobile-responsive verified; Sidebar toggle working
 
 ---
 
