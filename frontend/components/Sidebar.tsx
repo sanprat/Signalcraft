@@ -33,6 +33,17 @@ export default function Sidebar() {
     const searchParams = useSearchParams()
 
     const currentSegment = searchParams.get('segment') || 'Options'
+    const [isMobile, setIsMobile] = useState(false)
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+    useEffect(() => {
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth < 768)
+        }
+        checkMobile()
+        window.addEventListener('resize', checkMobile)
+        return () => window.removeEventListener('resize', checkMobile)
+    }, [])
 
     const handleSegmentChange = (seg: string) => {
         const params = new URLSearchParams(searchParams.toString())
@@ -58,7 +69,6 @@ export default function Sidebar() {
     }
 
     useEffect(() => {
-        // Get user from localStorage
         const storedUser = localStorage.getItem('sc_user')
         if (storedUser) {
             try {
@@ -72,116 +82,184 @@ export default function Sidebar() {
     const userEmail = user?.full_name || user?.email?.split('@')[0] || 'User'
     const userInitial = user?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'
 
+    const sidebarContent = (
+        <>
+            {/* Logo */}
+            <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${T.border}` }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
+                    Signal<span style={{ color: T.blue }}>Craft</span>
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                    Craft your trading signals
+                </div>
+            </div>
+
+            {/* Segment toggle */}
+            <div style={{ padding: '14px 16px', borderBottom: `1px solid ${T.border}` }}>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 8 }}>Segment</div>
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 3 }}>
+                    {['Options', 'Stocks'].map(seg => (
+                        <button
+                            key={seg}
+                            onClick={() => handleSegmentChange(seg)}
+                            style={{
+                                flex: 1, padding: '5px 0', border: 'none', borderRadius: 6,
+                                fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
+                                background: seg === currentSegment ? 'rgba(255,255,255,0.12)' : 'transparent',
+                                color: seg === currentSegment ? '#fff' : 'rgba(255,255,255,0.4)',
+                            }}
+                        >
+                            {seg}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Nav */}
+            <nav style={{ flex: 1, padding: '12px 10px' }}>
+                {navItems.map(item => {
+                    const active = pathname === item.href || (item.href !== '/dashboard' && item.href !== '/' && pathname.startsWith(item.href))
+                    return (
+                        <Link key={item.id} href={item.href} onClick={() => setMobileMenuOpen(false)} style={{
+                            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                            padding: '9px 12px', border: 'none', borderRadius: 8, cursor: 'pointer',
+                            textAlign: 'left', marginBottom: 2, transition: 'all 0.15s', textDecoration: 'none',
+                            background: active ? T.activeBg : 'transparent',
+                            color: active ? T.activeText : T.inactiveText,
+                            fontSize: 13, fontWeight: active ? 600 : 400,
+                        }}>
+                            <span style={{ fontSize: 15 }}>{item.icon}</span>
+                            {item.label}
+                            {item.id === 'live' && liveCount > 0 && (
+                                <span style={{
+                                    marginLeft: 'auto', background: T.green, color: '#fff',
+                                    borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700,
+                                }}>{liveCount}</span>
+                            )}
+                        </Link>
+                    )
+                })}
+            </nav>
+
+            {/* Emergency stop */}
+            <div style={{ padding: '14px 16px', borderTop: `1px solid ${T.border}` }}>
+                <button onClick={() => { setEmergencyModal(true); setMobileMenuOpen(false); }} style={{
+                    width: '100%', padding: 9, background: T.redLight,
+                    border: `1px solid ${T.redBorder}`, borderRadius: 8,
+                    color: T.redText, fontSize: 12, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.3px',
+                }}>⏹ Emergency Stop All</button>
+            </div>
+
+            {/* User */}
+            <div style={{
+                padding: '14px 16px', borderTop: `1px solid ${T.border}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{
+                        width: 32, height: 32, borderRadius: '50%', background: 'rgba(56,189,248,0.2)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 13, fontWeight: 700, color: T.blue,
+                    }}>{userInitial}</div>
+                    <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>{userEmail}</div>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>User</div>
+                    </div>
+                </div>
+                <button
+                    onClick={handleLogout}
+                    title="Logout"
+                    style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'rgba(255,255,255,0.5)',
+                        cursor: 'pointer',
+                        fontSize: '18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        transition: 'color 0.2s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = T.redText; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; e.currentTarget.style.background = 'transparent' }}
+                >
+                    ⎋
+                </button>
+            </div>
+        </>
+    )
+
+    // Mobile: hamburger menu
+    if (isMobile) {
+        return (
+            <>
+                {/* Hamburger button - fixed top left */}
+                <button
+                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                    style={{
+                        position: 'fixed',
+                        top: 12,
+                        left: 12,
+                        zIndex: 999,
+                        background: T.navy,
+                        border: 'none',
+                        borderRadius: 8,
+                        padding: '8px 12px',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                    }}
+                >
+                    <span style={{ fontSize: 18 }}>☰</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>Menu</span>
+                </button>
+
+                {/* Slide-out menu */}
+                {mobileMenuOpen && (
+                    <>
+                        {/* Backdrop */}
+                        <div
+                            onClick={() => setMobileMenuOpen(false)}
+                            style={{
+                                position: 'fixed',
+                                inset: 0,
+                                background: 'rgba(0,0,0,0.5)',
+                                zIndex: 998,
+                            }}
+                        />
+                        {/* Menu panel */}
+                        <aside style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            width: 280,
+                            maxWidth: '85%',
+                            height: '100vh',
+                            background: T.navy,
+                            zIndex: 999,
+                            overflowY: 'auto',
+                            WebkitOverflowScrolling: 'touch',
+                        }}>
+                            {sidebarContent}
+                        </aside>
+                    </>
+                )}
+            </>
+        )
+    }
+
+    // Desktop: fixed sidebar
     return (
         <>
             <aside style={{
                 width: 220, background: T.navy, display: 'flex', flexDirection: 'column',
                 flexShrink: 0, borderRight: `1px solid ${T.border}`, height: '100vh',
             }}>
-                {/* Logo */}
-                <div style={{ padding: '24px 20px 20px', borderBottom: `1px solid ${T.border}` }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
-                        Signal<span style={{ color: T.blue }}>Craft</span>
-                    </div>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2, letterSpacing: '1px', textTransform: 'uppercase' }}>
-                        Craft your trading signals
-                    </div>
-                </div>
-
-                {/* Segment toggle */}
-                <div style={{ padding: '14px 16px', borderBottom: `1px solid ${T.border}` }}>
-                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 8 }}>Segment</div>
-                    <div style={{ display: 'flex', background: 'rgba(255,255,255,0.06)', borderRadius: 8, padding: 3 }}>
-                        {['Options', 'Stocks'].map(seg => (
-                            <button
-                                key={seg}
-                                onClick={() => handleSegmentChange(seg)}
-                                style={{
-                                    flex: 1, padding: '5px 0', border: 'none', borderRadius: 6,
-                                    fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                                    background: seg === currentSegment ? 'rgba(255,255,255,0.12)' : 'transparent',
-                                    color: seg === currentSegment ? '#fff' : 'rgba(255,255,255,0.4)',
-                                }}
-                            >
-                                {seg}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Nav */}
-                <nav style={{ flex: 1, padding: '12px 10px' }}>
-                    {navItems.map(item => {
-                        const active = pathname === item.href || (item.href !== '/dashboard' && item.href !== '/' && pathname.startsWith(item.href))
-                        return (
-                            <Link key={item.id} href={item.href} style={{
-                                width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                                padding: '9px 12px', border: 'none', borderRadius: 8, cursor: 'pointer',
-                                textAlign: 'left', marginBottom: 2, transition: 'all 0.15s', textDecoration: 'none',
-                                background: active ? T.activeBg : 'transparent',
-                                color: active ? T.activeText : T.inactiveText,
-                                fontSize: 13, fontWeight: active ? 600 : 400,
-                            }}>
-                                <span style={{ fontSize: 15 }}>{item.icon}</span>
-                                {item.label}
-                                {item.id === 'live' && liveCount > 0 && (
-                                    <span style={{
-                                        marginLeft: 'auto', background: T.green, color: '#fff',
-                                        borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700,
-                                    }}>{liveCount}</span>
-                                )}
-                            </Link>
-                        )
-                    })}
-                </nav>
-
-                {/* Emergency stop */}
-                <div style={{ padding: '14px 16px', borderTop: `1px solid ${T.border}` }}>
-                    <button onClick={() => setEmergencyModal(true)} style={{
-                        width: '100%', padding: 9, background: T.redLight,
-                        border: `1px solid ${T.redBorder}`, borderRadius: 8,
-                        color: T.redText, fontSize: 12, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.3px',
-                    }}>⏹ Emergency Stop All</button>
-                </div>
-
-                {/* User */}
-                <div style={{
-                    padding: '14px 16px', borderTop: `1px solid ${T.border}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                            width: 32, height: 32, borderRadius: '50%', background: 'rgba(56,189,248,0.2)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 13, fontWeight: 700, color: T.blue,
-                        }}>{userInitial}</div>
-                        <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>{userEmail}</div>
-                            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>User</div>
-                        </div>
-                    </div>
-                    <button
-                        onClick={handleLogout}
-                        title="Logout"
-                        style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'rgba(255,255,255,0.5)',
-                            cursor: 'pointer',
-                            fontSize: '18px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '4px',
-                            borderRadius: '4px',
-                            transition: 'color 0.2s',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = T.redText; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; e.currentTarget.style.background = 'transparent' }}
-                    >
-                        ⎋
-                    </button>
-                </div>
+                {sidebarContent}
             </aside>
 
             {/* Emergency modal */}

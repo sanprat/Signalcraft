@@ -5,16 +5,7 @@ export function middleware(request: NextRequest) {
     const token = request.cookies.get('sc_token')?.value || request.headers.get('x-sc-token')
     const isAdmin = request.cookies.get('sc_admin')?.value === 'true'
 
-    // Debug logging (remove in production)
-    console.log('Middleware debug:', {
-        path: request.nextUrl.pathname,
-        hasToken: !!token,
-        isAdmin: isAdmin,
-        cookieScToken: request.cookies.get('sc_token')?.value ? 'exists' : 'missing',
-        cookieScAdmin: request.cookies.get('sc_admin')?.value
-    })
-
-    const publicPaths = ['/login', '/register', '/admin/login', '/api/auth']
+    const publicPaths = ['/login', '/register', '/admin/login', '/api/auth', '/manifest.json', '/sw.js', '/sw-custom.js', '/icons', '/_next/static', '/_next/image', '/favicon.ico']
     const adminPaths = ['/admin']
 
     const isPublicPath = publicPaths.some(path => request.nextUrl.pathname.startsWith(path))
@@ -23,12 +14,11 @@ export function middleware(request: NextRequest) {
     // Protect admin routes
     if (isAdminPath && !request.nextUrl.pathname.startsWith('/admin/login')) {
         if (!isAdmin || !token) {
-            console.log('Redirecting to admin login - missing auth')
             return NextResponse.redirect(new URL('/admin/login', request.url))
         }
     }
 
-    // Protect regular routes
+    // Protect regular routes (but not API routes - they're handled by publicPaths)
     if (!isAdminPath && !token && !isPublicPath && request.nextUrl.pathname !== '/') {
         return NextResponse.redirect(new URL('/login', request.url))
     }
@@ -37,5 +27,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-    matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+    matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|sw-custom.js|icons/|api/).*)'],
 }

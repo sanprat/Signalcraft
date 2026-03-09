@@ -16,47 +16,12 @@ export default function LoginPage() {
     const [password, setPassword] = useState('')
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
-    const [showInstall, setShowInstall] = useState(false)
-    const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+    const [isSmallScreen, setIsSmallScreen] = useState(false)
     const router = useRouter()
 
-    // PWA Install Prompt on Login Page
     useEffect(() => {
-        const handleBeforeInstallPrompt = (e: Event) => {
-            e.preventDefault()
-            console.log('[PWA Login] Install prompt available')
-            setDeferredPrompt(e)
-            setShowInstall(true)
-        }
-
-        const handleAppInstalled = () => {
-            console.log('[PWA Login] App installed!')
-            setShowInstall(false)
-            setDeferredPrompt(null)
-        }
-
-        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-        window.addEventListener('appinstalled', handleAppInstalled)
-
-        return () => {
-            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-            window.removeEventListener('appinstalled', handleAppInstalled)
-        }
+        setIsSmallScreen(window.innerWidth < 400)
     }, [])
-
-    const handleInstall = async () => {
-        if (!deferredPrompt) return
-        try {
-            deferredPrompt.prompt()
-            const { outcome } = await deferredPrompt.userChoice
-            console.log('[PWA Login] User choice:', outcome)
-        } catch (error) {
-            console.error('[PWA Login] Error:', error)
-        } finally {
-            setShowInstall(false)
-            setDeferredPrompt(null)
-        }
-    }
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -90,85 +55,16 @@ export default function LoginPage() {
             minHeight: '100vh', display: 'flex', flexDirection: 'column',
             background: '#F8FAFC', fontFamily: "'DM Sans', sans-serif",
         }}>
-            {/* PWA Install Banner - Shows on Login Page */}
-            {showInstall && (
-                <div style={{
-                    position: 'fixed',
-                    top: 'max(20px, env(safe-area-inset-top))',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    background: 'linear-gradient(135deg, #10B981, #047857)',
-                    color: '#fff',
-                    padding: '14px 18px',
-                    borderRadius: 14,
-                    boxShadow: '0 8px 30px rgba(16, 185, 129, 0.4)',
-                    zIndex: 10001,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    maxWidth: '95%',
-                    width: 380,
-                    animation: 'slideDown 0.4s ease-out',
-                }}>
-                    <div style={{
-                        width: 44,
-                        height: 44,
-                        background: 'rgba(255,255,255,0.2)',
-                        borderRadius: 12,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 22,
-                        fontWeight: 900,
-                        flexShrink: 0,
-                    }}>
-                        SC
-                    </div>
-                    <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 3 }}>
-                            📲 Install SignalCraft
-                        </div>
-                        <div style={{ fontSize: 12, opacity: 0.95, lineHeight: 1.3 }}>
-                            Add app to home screen for quick access
-                        </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        <button
-                            onClick={() => setShowInstall(false)}
-                            style={{
-                                padding: '8px 14px',
-                                background: 'rgba(255,255,255,0.15)',
-                                border: 'none',
-                                borderRadius: 8,
-                                color: '#fff',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                fontSize: 12,
-                            }}
-                        >
-                            Later
-                        </button>
-                        <button
-                            onClick={handleInstall}
-                            style={{
-                                padding: '8px 16px',
-                                background: '#fff',
-                                border: 'none',
-                                borderRadius: 8,
-                                color: '#047857',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                fontSize: 12,
-                            }}
-                        >
-                            Install
-                        </button>
-                    </div>
-                </div>
-            )}
-
             {/* Nav */}
-            <nav style={{ background: T.navy, padding: '0 48px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <nav style={{ 
+                background: T.navy, 
+                padding: '0 24px', 
+                height: 56, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                flexShrink: 0,
+            }}>
                 <Link href="/" style={{ fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px', textDecoration: 'none' }}>
                     Signal<span style={{ color: '#38BDF8' }}>Craft</span>
                 </Link>
@@ -176,17 +72,39 @@ export default function LoginPage() {
             </nav>
 
             {/* Card */}
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <div style={{ 
+                flex: 1, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                padding: 24,
+                overflow: 'auto',
+            }}>
                 <div style={{ width: '100%', maxWidth: 400 }}>
-                    <div style={{ background: '#fff', borderRadius: 16, border: `1px solid ${T.border}`, boxShadow: '0 4px 24px rgba(0,0,0,0.06)', padding: 40 }}>
+                    <div style={{ 
+                        background: '#fff', 
+                        borderRadius: 16, 
+                        border: `1px solid ${T.border}`, 
+                        boxShadow: '0 4px 24px rgba(0,0,0,0.06)', 
+                        padding: isSmallScreen ? 24 : 40,
+                    }}>
 
                         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-                            <div style={{ fontSize: 22, fontWeight: 800, color: T.navy, marginBottom: 6 }}>Welcome back</div>
+                            <div style={{ fontSize: isSmallScreen ? 18 : 22, fontWeight: 800, color: T.navy, marginBottom: 6 }}>Welcome back</div>
                             <div style={{ fontSize: 13, color: T.textMuted }}>Sign in to your SignalCraft account</div>
                         </div>
 
                         {error && (
-                            <div style={{ background: T.redLight, border: `1px solid #FECACA`, borderRadius: 8, padding: '10px 14px', fontSize: 13, color: T.red, marginBottom: 20 }}>
+                            <div style={{ 
+                                background: T.redLight, 
+                                border: `1px solid #FECACA`, 
+                                borderRadius: 8, 
+                                padding: '10px 14px', 
+                                fontSize: 13, 
+                                color: T.red, 
+                                marginBottom: 20,
+                                wordWrap: 'break-word',
+                            }}>
                                 {error}
                             </div>
                         )}
@@ -219,26 +137,11 @@ export default function LoginPage() {
                         </div>
                     </div>
 
-                    <div style={{ marginTop: 20, textAlign: 'center', fontSize: 11, color: T.textMuted, lineHeight: 1.6 }}>
+                    <div style={{ marginTop: 20, textAlign: 'center', fontSize: 11, color: T.textMuted, lineHeight: 1.6, padding: '0 12px' }}>
                         SignalCraft is a personal trading tool. All data stays on your machine.
                     </div>
                 </div>
             </div>
-
-            <style dangerouslySetInnerHTML={{
-                __html: `
-                    @keyframes slideDown {
-                        from {
-                            opacity: 0;
-                            transform: translateX(-50%) translateY(-30px);
-                        }
-                        to {
-                            opacity: 1;
-                            transform: translateX(-50%) translateY(0);
-                        }
-                    }
-                `
-            }} />
         </div>
     )
 }
