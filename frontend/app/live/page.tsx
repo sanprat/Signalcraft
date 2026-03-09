@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useQuotes } from '@/hooks/useQuotes'
 import { config } from '@/lib/config'
 import { BackButton } from '@/components/BackButton'
-import { AppShell } from '@/components/AppShell'
 
 const API = config.apiBaseUrl
 
@@ -50,35 +49,21 @@ export default function LiveTradingPage() {
 
     const { quotes, marketOpen } = useQuotes()
 
-    // 1. Fetch data on load with authentication
+    // 1. Fetch data on load
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const token = localStorage.getItem(config.authTokenKey)
-                const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {}
-
                 const [stratsRes, posRes, anaRes] = await Promise.all([
-                    fetch(`${API}/api/live/strategies`, { headers }),
-                    fetch(`${API}/api/live/positions`, { headers }),
-                    fetch(`${API}/api/live/analytics`, { headers })
+                    fetch(`${API}/api/live/strategies`),
+                    fetch(`${API}/api/live/positions`),
+                    fetch(`${API}/api/live/analytics`)
                 ])
-
-                // Handle 401 - redirect to login
-                if (stratsRes.status === 401 || posRes.status === 401 || anaRes.status === 401) {
-                    localStorage.removeItem(config.authTokenKey)
-                    localStorage.removeItem(config.authUserKey)
-                    window.location.href = '/login'
-                    return
-                }
-
                 const strats = await stratsRes.json()
                 const pos = await posRes.json()
                 const ana = await anaRes.json()
-
-                // Ensure arrays are arrays (fix h.filter error)
-                setStrategies(Array.isArray(strats) ? strats : [])
-                setPositions(Array.isArray(pos) ? pos : [])
-                setAnalytics(ana || null)
+                setStrategies(strats)
+                setPositions(pos)
+                setAnalytics(ana)
             } catch (err) {
                 console.error("Failed to fetch live data", err)
             } finally {
@@ -141,16 +126,11 @@ export default function LiveTradingPage() {
     }
 
     if (loading && strategies.length === 0) {
-        return (
-            <AppShell title="Live Trading" showBack defaultBack="/dashboard">
-                <div style={{ padding: 40, textAlign: 'center', color: T.textMuted }}>Loading Live Dashboard...</div>
-            </AppShell>
-        )
+        return <div style={{ padding: 40, textAlign: 'center', color: T.textMuted }}>Loading Live Dashboard...</div>
     }
 
     return (
-        <AppShell title="Live Trading" showBack defaultBack="/dashboard">
-            <div style={{ padding: 24, fontFamily: "'DM Sans', sans-serif", background: T.bg, minHeight: '100vh' }}>
+        <div style={{ padding: 24, fontFamily: "'DM Sans', sans-serif", background: T.bg, minHeight: '100vh' }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -361,7 +341,6 @@ export default function LiveTradingPage() {
                     )}
                 </Card>
             </section>
-            </div>
-        </AppShell>
+        </div>
     )
 }

@@ -13,20 +13,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Mobile responsive utilities */
-@media (max-width: 768px) {
-  /* Allow text to wrap on mobile */
-  p, h1, h2, h3, h4, h5, h6 {
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-  }
-  
-  /* Prevent horizontal scroll */
-  body {
-    overflow-x: hidden;
-  }
-}
-
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;

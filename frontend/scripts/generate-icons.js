@@ -1,58 +1,53 @@
-const sharp = require('sharp');
+#!/usr/bin/env node
+// Simple icon generator for PWA
 const fs = require('fs');
 const path = require('path');
 
+// Create placeholder PNG icons (in production, use real icon files)
 const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
-const outputDir = path.join(__dirname, '../public/icons');
+const iconsDir = path.join(__dirname, 'public/icons');
 
-// Create output directory if it doesn't exist
-if (!fs.existsSync(outputDir)) {
-  fs.mkdirSync(outputDir, { recursive: true });
-}
-
-// Create a simple SVG icon with "SC" text
-const createSVG = (size) => {
-  return `
-    <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" style="stop-color:#10B981;stop-opacity:1" />
-          <stop offset="100%" style="stop-color:#047857;stop-opacity:1" />
-        </linearGradient>
-      </defs>
-      <rect width="${size}" height="${size}" rx="${size * 0.2}" fill="url(#grad)"/>
-      <text x="50%" y="50%" 
-            font-family="Arial, sans-serif" 
-            font-size="${size * 0.4}" 
-            font-weight="bold"
-            fill="white" 
-            text-anchor="middle" 
-            dominant-baseline="central">SC</text>
-    </svg>
-  `;
-};
-
-async function generateIcons() {
-  console.log('Generating PWA icons...');
-  
-  for (const size of sizes) {
-    const svg = createSVG(size);
-    const filename = path.join(outputDir, `icon-${size}x${size}.png`);
+// Create a simple colored square as placeholder
+function createPlaceholderIcon(size) {
+    // Minimal valid PNG (1x1 emerald green pixel, will be scaled)
+    // This is a placeholder - in production use real icons
+    const pngHeader = Buffer.from([
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+        0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+        0x54, 0x08, 0xD7, 0x63, 0x10, 0x15, 0x15, 0x05,
+        0x00, 0x01, 0x11, 0x00, 0x7D, 0xC4, 0x52, 0x8E,
+        0x51, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+        0x44, 0xAE, 0x42, 0x60, 0x82
+    ]);
     
-    try {
-      await sharp(Buffer.from(svg))
-        .resize(size, size)
-        .png()
-        .toFile(filename);
-      
-      const stats = fs.statSync(filename);
-      console.log(`✓ Generated icon-${size}x${size}.png (${(stats.size / 1024).toFixed(1)} KB)`);
-    } catch (error) {
-      console.error(`✗ Failed to generate icon-${size}x${size}.png:`, error.message);
-    }
-  }
-  
-  console.log('\nAll icons generated successfully!');
+    // For now, just create a note that real icons are needed
+    const notePath = path.join(iconsDir, 'README.md');
+    fs.writeFileSync(notePath, `# PWA Icons
+
+Generate icons in the following sizes:
+${sizes.join(', ')}
+
+You can use:
+1. Online generators: https://realfavicongenerator.net/
+2. Figma/Sketch: Export at each size
+3. ImageMagick: convert icon.svg -resize ${size}x${size} icon-${size}x${size}.png
+
+Icon should be:
+- Emerald green gradient background (#10B981 to #047857)
+- White "SC" letters in center
+- Rounded corners (handled by maskable purpose)
+`);
 }
 
-generateIcons().catch(console.error);
+sizes.forEach(size => {
+    const iconPath = path.join(iconsDir, `icon-${size}x${size}.png`);
+    if (!fs.existsSync(iconPath)) {
+        console.log(`Placeholder needed: ${iconPath}`);
+    }
+});
+
+createPlaceholderIcon();
+console.log('Icon generation note created. Please add real PNG icons for production.');
