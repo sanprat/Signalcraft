@@ -74,6 +74,10 @@ FnO_Platform_Architecture.docx
 ADMIN_PANEL_README.md
 POSTGRES_QUICKSTART.md
 QWEN.md
+AGENTS.md
+
+# Agent Memory (local AI assistant context)
+.agent_memory/
 
 # Large Data Exclusions
 data/
