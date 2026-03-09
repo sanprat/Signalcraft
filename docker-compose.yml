@@ -52,7 +52,6 @@ services:
       - DB_USER=signalcraft
       - DB_PASSWORD=signalcraft_dev_pass
       - DB_NAME=signalcraft
-      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
       - REDIS_URL=redis://redis:6379/1
     depends_on:
       postgres:
