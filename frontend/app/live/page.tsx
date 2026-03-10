@@ -46,6 +46,7 @@ export default function LiveTradingPage() {
     const [positions, setPositions] = useState<any[]>([])
     const [analytics, setAnalytics] = useState<any>(null)
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
 
     const { quotes, marketOpen } = useQuotes()
 
@@ -58,14 +59,30 @@ export default function LiveTradingPage() {
                     fetch(`${API}/api/live/positions`),
                     fetch(`${API}/api/live/analytics`)
                 ])
+                
+                // Check if responses are OK
+                if (!stratsRes.ok || !posRes.ok || !anaRes.ok) {
+                    if (stratsRes.status === 401 || posRes.status === 401 || anaRes.status === 401) {
+                        setError('Please log in to view live trading data')
+                    } else {
+                        setError('Failed to fetch live trading data')
+                    }
+                    setLoading(false)
+                    return
+                }
+                
                 const strats = await stratsRes.json()
                 const pos = await posRes.json()
                 const ana = await anaRes.json()
-                setStrategies(strats)
-                setPositions(pos)
+                
+                // Ensure arrays
+                setStrategies(Array.isArray(strats) ? strats : [])
+                setPositions(Array.isArray(pos) ? pos : [])
                 setAnalytics(ana)
+                setError(null)
             } catch (err) {
                 console.error("Failed to fetch live data", err)
+                setError('Network error. Please check your connection.')
             } finally {
                 setLoading(false)
             }
@@ -127,6 +144,19 @@ export default function LiveTradingPage() {
 
     if (loading && strategies.length === 0) {
         return <div style={{ padding: 40, textAlign: 'center', color: T.textMuted }}>Loading Live Dashboard...</div>
+    }
+
+    if (error) {
+        return (
+            <div style={{ padding: 40, textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+                <h2 style={{ color: T.navy, marginBottom: 8 }}>Access Required</h2>
+                <p style={{ color: T.textMuted, marginBottom: 24 }}>{error}</p>
+                <Link href="/login" style={{ padding: '10px 20px', background: T.blue, color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 600 }}>
+                    Go to Login
+                </Link>
+            </div>
+        )
     }
 
     return (
