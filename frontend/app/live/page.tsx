@@ -54,10 +54,11 @@ export default function LiveTradingPage() {
     useEffect(() => {
         const fetchData = async () => {
             try {
+                const fetchOptions = { credentials: 'include' as const }
                 const [stratsRes, posRes, anaRes] = await Promise.all([
-                    fetch(`${API}/api/live/strategies`),
-                    fetch(`${API}/api/live/positions`),
-                    fetch(`${API}/api/live/analytics`)
+                    fetch(`${API}/api/live/strategies`, fetchOptions),
+                    fetch(`${API}/api/live/positions`, fetchOptions),
+                    fetch(`${API}/api/live/analytics`, fetchOptions)
                 ])
                 
                 // Check if responses are OK
@@ -116,7 +117,10 @@ export default function LiveTradingPage() {
 
         setStrategies(prev => prev.map(s => s.id === liveId ? { ...s, status: nextStatus } : s))
         try {
-            await fetch(`${API}/api/live/toggle/${liveId}?status=${nextStatus}`, { method: 'POST' })
+            await fetch(`${API}/api/live/toggle/${liveId}?status=${nextStatus}`, { 
+                method: 'POST',
+                credentials: 'include'
+            })
         } catch (err) {
             console.error("Failed to toggle status", err)
         }
@@ -126,7 +130,10 @@ export default function LiveTradingPage() {
         if (!confirm("Are you sure you want to stop this strategy? This will stop signal monitoring.")) return
         setStrategies(prev => prev.map(s => s.id === liveId ? { ...s, status: 'STOPPED' } : s))
         try {
-            await fetch(`${API}/api/live/stop/${liveId}`, { method: 'POST' })
+            await fetch(`${API}/api/live/stop/${liveId}`, { 
+                method: 'POST',
+                credentials: 'include'
+            })
         } catch (err) {
             console.error("Failed to stop strategy", err)
         }
@@ -136,7 +143,10 @@ export default function LiveTradingPage() {
         if (!confirm("Permanently remove this strategy from the dashboard?")) return
         setStrategies(prev => prev.filter(s => s.id !== liveId))
         try {
-            await fetch(`${API}/api/live/strategy/${liveId}`, { method: 'DELETE' })
+            await fetch(`${API}/api/live/strategy/${liveId}`, { 
+                method: 'DELETE',
+                credentials: 'include'
+            })
         } catch (err) {
             console.error("Failed to delete strategy", err)
         }
