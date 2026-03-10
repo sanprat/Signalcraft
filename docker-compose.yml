@@ -67,6 +67,8 @@ services:
       - ./backend:/app # Useful for development, will be ignored in prod if we don't map it.
       - ./data/candles:/app/data/candles
       - ./data/underlying:/app/data/underlying
+      - ./data-scripts:/app/data-scripts
+      - ./strategies:/app/strategies
 
   # Next.js Frontend
   frontend:

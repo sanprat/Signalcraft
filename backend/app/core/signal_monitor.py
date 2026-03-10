@@ -1,10 +1,10 @@
 import asyncio
 import json
 import logging
+import os
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any
-
 from pathlib import Path
 
 from app.core.database import get_db
@@ -12,6 +12,9 @@ from app.core.backtest_engine import compute_indicators, load_equity_candles
 from app.core.position_manager import position_manager
 from app.core.config import settings
 from app.routers.quotes import _handle_dynamic_sub # Added this
+
+# Path to Strategy JSON files
+STRATEGIES_DIR = Path(os.environ.get("STRATEGIES_DIR", Path(__file__).parent.parent.parent / "strategies"))
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +68,7 @@ class SignalMonitor:
                 strategy_id_str = row[1]
                 
                 # Load strategy file to get timeframe
-                strat_file = Path("strategies") / f"{strategy_id_str}.json"
+                strat_file = STRATEGIES_DIR / f"{strategy_id_str}.json"
                 timeframe = "1D"
                 asset_type = "EQUITY"
                 if strat_file.exists():

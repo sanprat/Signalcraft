@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import struct
+from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
 import websockets
@@ -26,12 +27,19 @@ logger = logging.getLogger(__name__)
 # ── Symbol mapping for Nifty 500 ──
 SYMBOL_MAP = {}
 try:
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-    mapping_path = os.path.join(base_dir, "data-scripts", "nifty500_dhan_mapping.json")
-    if os.path.exists(mapping_path):
+    # Look for mapping in common locations: inside /app or relative to script
+    potential_paths = [
+        Path("/app/data-scripts/nifty500_dhan_mapping.json"),
+        Path(__file__).parent.parent.parent / "data-scripts" / "nifty500_dhan_mapping.json"
+    ]
+    mapping_path = next((p for p in potential_paths if p.exists()), None)
+    
+    if mapping_path:
         with open(mapping_path, "r") as f:
             SYMBOL_MAP = json.load(f)
-        logger.info(f"Loaded {len(SYMBOL_MAP)} stock mappings from nifty500_dhan_mapping.json")
+        logger.info(f"Loaded {len(SYMBOL_MAP)} stock mappings from {mapping_path}")
+    else:
+        logger.error(f"Could not find nifty500_dhan_mapping.json in {potential_paths}")
 except Exception as e:
     logger.error(f"Error loading stock mappings: {e}")
 
