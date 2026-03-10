@@ -50,15 +50,22 @@ export default function LiveTradingPage() {
 
     const { quotes, marketOpen } = useQuotes()
 
+    // Helper to get auth headers
+    const getAuthHeaders = (): HeadersInit => {
+        if (typeof window === 'undefined') return {}
+        const token = localStorage.getItem(config.authTokenKey) || localStorage.getItem('access_token')
+        return token ? { Authorization: `Bearer ${token}` } : {}
+    }
+
     // 1. Fetch data on load
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const fetchOptions = { credentials: 'include' as const }
+                const headers = getAuthHeaders()
                 const [stratsRes, posRes, anaRes] = await Promise.all([
-                    fetch(`${API}/api/live/strategies`, fetchOptions),
-                    fetch(`${API}/api/live/positions`, fetchOptions),
-                    fetch(`${API}/api/live/analytics`, fetchOptions)
+                    fetch(`${API}/api/live/strategies`, { headers }),
+                    fetch(`${API}/api/live/positions`, { headers }),
+                    fetch(`${API}/api/live/analytics`, { headers })
                 ])
                 
                 // Check if responses are OK
@@ -119,7 +126,7 @@ export default function LiveTradingPage() {
         try {
             await fetch(`${API}/api/live/toggle/${liveId}?status=${nextStatus}`, { 
                 method: 'POST',
-                credentials: 'include'
+                headers: getAuthHeaders()
             })
         } catch (err) {
             console.error("Failed to toggle status", err)
@@ -132,7 +139,7 @@ export default function LiveTradingPage() {
         try {
             await fetch(`${API}/api/live/stop/${liveId}`, { 
                 method: 'POST',
-                credentials: 'include'
+                headers: getAuthHeaders()
             })
         } catch (err) {
             console.error("Failed to stop strategy", err)
@@ -145,7 +152,7 @@ export default function LiveTradingPage() {
         try {
             await fetch(`${API}/api/live/strategy/${liveId}`, { 
                 method: 'DELETE',
-                credentials: 'include'
+                headers: getAuthHeaders()
             })
         } catch (err) {
             console.error("Failed to delete strategy", err)
