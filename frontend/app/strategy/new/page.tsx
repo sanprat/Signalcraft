@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { config } from '@/lib/config'
+import { config, getAuthHeaders } from '@/lib/config'
 import { BackButton } from '@/components/BackButton'
 
 const API = config.apiBaseUrl
@@ -464,7 +464,7 @@ function NewStrategyContent() {
 
             const res = await fetch(`${API}/api/strategy`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify(payload)
             })
             if (!res.ok) {
@@ -477,7 +477,7 @@ function NewStrategyContent() {
 
             const bt = await fetch(`${API}/api/backtest/run`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify({ strategy_id })
             })
             if (!bt.ok) {
@@ -520,7 +520,7 @@ function NewStrategyContent() {
 
             const sres = await fetch(`${API}/api/strategy`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify(payload)
             })
             if (!sres.ok) {
@@ -534,7 +534,7 @@ function NewStrategyContent() {
             // 2. Deploy
             const dres = await fetch(`${API}/api/live/deploy`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify({ strategy_id, broker: selectedBroker, paper: isPaper })
             })
             if (!dres.ok) {

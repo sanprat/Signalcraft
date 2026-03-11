@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts'
 import { useRef } from 'react'
 import Link from 'next/link'
-import { config } from '@/lib/config'
+import { config, getAuthHeaders } from '@/lib/config'
 
 const API = config.apiBaseUrl
 
@@ -153,7 +153,7 @@ export default function BacktestResultsPage() {
         try {
             await fetch(`${API}/api/live/deploy`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify({ strategy_id: summary?.strategy_id, broker, paper: false }),
             })
             setDeployed(true)

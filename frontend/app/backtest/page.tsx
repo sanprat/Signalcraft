@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { config } from '@/lib/config'
+import { config, getAuthHeaders } from '@/lib/config'
 import { BackButton } from '@/components/BackButton'
 
 const API = config.apiBaseUrl
@@ -37,7 +37,7 @@ export default function BacktestListPage() {
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        fetch(`${API}/api/backtest`)
+        fetch(`${API}/api/backtest`, { headers: getAuthHeaders() })
             .then(r => r.json())
             .then(data => {
                 setBacktests(Array.isArray(data) ? data : [])
