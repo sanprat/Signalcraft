@@ -71,6 +71,15 @@ SCHEMA = pa.schema([
     ("volume", pa.int64()),
 ])
 
+# FnO options use OHLC only — volume from Dhan is unreliable for options
+FNO_SCHEMA = pa.schema([
+    ("time",  pa.timestamp("s", tz="Asia/Kolkata")),
+    ("open",  pa.float32()),
+    ("high",  pa.float32()),
+    ("low",   pa.float32()),
+    ("close", pa.float32()),
+])
+
 LOG_DIR = PROJECT_ROOT / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -133,8 +142,15 @@ def candles_to_df_daily(raw: list) -> pd.DataFrame:
     return df.drop_duplicates("time").sort_values("time").reset_index(drop=True)
 
 
-def merge_and_save(new_df: pd.DataFrame, path: Path) -> int:
-    """Merge new data with existing Parquet file, dedup, and save."""
+def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA) -> int:
+    """Merge new data with existing Parquet file, dedup, and save.
+
+    Args:
+        new_df:  New candle data to append.
+        path:    Destination parquet file.
+        schema:  Arrow schema to enforce on write (default: SCHEMA with volume;
+                 pass FNO_SCHEMA for options which store OHLC only).
+    """
     if new_df.empty:
         return 0
 
@@ -149,26 +165,29 @@ def merge_and_save(new_df: pd.DataFrame, path: Path) -> int:
     else:
         combined = new_df
 
-    # Normalize time to Asia/Kolkata to avoid comparison errors between naive and aware timestamps
-    combined["time"] = pd.to_datetime(combined["time"])
-    if combined["time"].dt.tz is None:
-        combined["time"] = combined["time"].dt.tz_localize("UTC").dt.tz_convert("Asia/Kolkata")
-    else:
-        combined["time"] = combined["time"].dt.tz_convert("Asia/Kolkata")
+    # Normalize time to Asia/Kolkata — use utc=True to safely handle mixed
+    # tz-aware / tz-naive timestamps (avoids ValueError in pandas 2.x)
+    combined["time"] = pd.to_datetime(combined["time"], utc=True).dt.tz_convert("Asia/Kolkata")
 
     combined = (combined
                 .drop_duplicates("time")
                 .sort_values("time")
                 .reset_index(drop=True))
 
-    combined["time"]   = combined["time"].astype("datetime64[s, Asia/Kolkata]")
-    combined["open"]   = combined["open"].astype("float32")
-    combined["high"]   = combined["high"].astype("float32")
-    combined["low"]    = combined["low"].astype("float32")
-    combined["close"]  = combined["close"].astype("float32")
-    combined["volume"] = combined["volume"].astype("int64")
+    # Cast columns present in the target schema
+    combined["time"]  = combined["time"].astype("datetime64[s, Asia/Kolkata]")
+    combined["open"]  = combined["open"].astype("float32")
+    combined["high"]  = combined["high"].astype("float32")
+    combined["low"]   = combined["low"].astype("float32")
+    combined["close"] = combined["close"].astype("float32")
+    if "volume" in [f.name for f in schema]:
+        combined["volume"] = combined["volume"].astype("int64")
 
-    table = pa.Table.from_pandas(combined, schema=SCHEMA, preserve_index=False)
+    # Keep only the columns defined in the schema
+    cols = [f.name for f in schema]
+    combined = combined[[c for c in cols if c in combined.columns]]
+
+    table = pa.Table.from_pandas(combined, schema=schema, preserve_index=False)
     pq.write_table(table, path, compression="lz4")
     return len(combined)
 
@@ -411,7 +430,8 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
                         for strike, rows in by_strike.items():
                             df = pd.DataFrame(rows)
                             df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
-                            df = (df[["time", "open", "high", "low", "close", "volume"]]
+                            # FnO: store OHLC only (volume excluded — unreliable for options)
+                            df = (df[["time", "open", "high", "low", "close"]]
                                   .drop_duplicates(subset=["time"])
                                   .sort_values("time")
                                   .reset_index(drop=True))
@@ -421,7 +441,7 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
                             out_dir.mkdir(parents=True, exist_ok=True)
                             out_path = out_dir / f"dhan_ec{expiry_code}_{strike}.parquet"
 
-                            merge_and_save(df, out_path)
+                            merge_and_save(df, out_path, schema=FNO_SCHEMA)
 
                         downloaded += 1
                     else:
