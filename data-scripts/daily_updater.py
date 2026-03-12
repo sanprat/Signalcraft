@@ -71,15 +71,6 @@ SCHEMA = pa.schema([
     ("volume", pa.int64()),
 ])
 
-# FnO options use OHLC only — volume from Dhan is unreliable for options
-FNO_SCHEMA = pa.schema([
-    ("time",  pa.timestamp("s", tz="Asia/Kolkata")),
-    ("open",  pa.float32()),
-    ("high",  pa.float32()),
-    ("low",   pa.float32()),
-    ("close", pa.float32()),
-])
-
 LOG_DIR = PROJECT_ROOT / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -430,8 +421,7 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
                         for strike, rows in by_strike.items():
                             df = pd.DataFrame(rows)
                             df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
-                            # FnO: store OHLC only (volume excluded — unreliable for options)
-                            df = (df[["time", "open", "high", "low", "close"]]
+                            df = (df[["time", "open", "high", "low", "close", "volume"]]
                                   .drop_duplicates(subset=["time"])
                                   .sort_values("time")
                                   .reset_index(drop=True))
@@ -441,7 +431,7 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
                             out_dir.mkdir(parents=True, exist_ok=True)
                             out_path = out_dir / f"dhan_ec{expiry_code}_{strike}.parquet"
 
-                            merge_and_save(df, out_path, schema=FNO_SCHEMA)
+                            merge_and_save(df, out_path)
 
                         downloaded += 1
                     else:
@@ -451,6 +441,91 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
                         log.info(f"  FnO progress: {downloaded} data | {empty} empty")
 
     log.info(f"  FnO done: {downloaded} with data | {empty} empty")
+
+
+def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = False):
+    """Fetch current-week (unexpired) options using expiry_code=0.
+
+    This captures live data for the contract expiring THIS week — the gap
+    between the last expired contract and today.  Runs independently of
+    update_fno_options() which only covers already-expired contracts.
+
+    Files saved as: data/candles/{INDEX}/{CE|PE}/{interval}/dhan_ec0_{strike}.parquet
+    (separate from expired ec1_* files to avoid mixing live vs settled prices)
+    """
+    log.info("=" * 60)
+    log.info("  FnO LIVE (CURRENT-WEEK) OPTIONS UPDATE  [expiry_code=0]")
+    log.info("=" * 60)
+
+    fno_indices = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+    expiry_code = 0  # 0 = currently active / unexpired weekly contract
+
+    # Date window: start of this expiry week → today
+    EXPIRY_WD = {"NIFTY": 3, "BANKNIFTY": 2, "FINNIFTY": 1}
+    today = date.today()
+
+    if dry_run:
+        total = len(fno_indices) * len(FNO_OFFSETS) * len(FNO_OPT_TYPES) * len(FNO_INTERVALS)
+        log.info(f"  Would download {total} live jobs (expiry_code=0)")
+        return
+
+    downloaded = 0
+    empty = 0
+
+    for idx in fno_indices:
+        # Find the upcoming/current expiry day for this index
+        target_wd = EXPIRY_WD[idx]
+        days_until = (target_wd - today.weekday()) % 7
+        if days_until == 0:
+            days_until = 0  # expiry is today
+        current_expiry = today + timedelta(days=days_until)
+        # Start of this contract's trading week (prev Friday + 1 = Monday, roughly)
+        week_start = current_expiry - timedelta(days=6)
+
+        log.info(f"  {idx}: live week {week_start} → {end_date}  (expires {current_expiry})")
+
+        for opt in FNO_OPT_TYPES:
+            for interval in FNO_INTERVALS:
+                for offset in FNO_OFFSETS:
+                    candles = client.get_expired_options_full(
+                        index=idx,
+                        strike_offset=offset,
+                        option_type=opt,
+                        expiry_flag="WEEK",
+                        expiry_code=expiry_code,
+                        start=week_start,
+                        end=end_date,
+                        interval=interval,
+                    )
+
+                    if candles:
+                        by_strike = defaultdict(list)
+                        for c in candles:
+                            by_strike[int(c["strike"])].append(c)
+
+                        for strike, rows in by_strike.items():
+                            df = pd.DataFrame(rows)
+                            df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
+                            df = (df[["time", "open", "high", "low", "close", "volume"]]
+                                  .drop_duplicates(subset=["time"])
+                                  .sort_values("time")
+                                  .reset_index(drop=True))
+                            df["time"] = df["time"].dt.tz_localize("Asia/Kolkata")
+
+                            out_dir = FNO_DIR / idx / opt / interval
+                            out_dir.mkdir(parents=True, exist_ok=True)
+                            # ec0 = live contract (kept separate from ec1 expired files)
+                            out_path = out_dir / f"dhan_ec0_{strike}.parquet"
+
+                            merge_and_save(df, out_path)
+                        downloaded += 1
+                    else:
+                        empty += 1
+
+                    if (downloaded + empty) % 100 == 0:
+                        log.info(f"  Live FnO progress: {downloaded} data | {empty} empty")
+
+    log.info(f"  Live FnO done: {downloaded} with data | {empty} empty")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -466,7 +541,9 @@ def parse_args():
     p.add_argument("--indices-only", action="store_true",
                    help="Only update index underlying")
     p.add_argument("--fno-only", action="store_true",
-                   help="Only update FnO expired options")
+                   help="Only update FnO expired options (expiry_code=1)")
+    p.add_argument("--fno-live-only", action="store_true",
+                   help="Only update current-week live options (expiry_code=0)")
     p.add_argument("--limit", type=int,
                    help="Process first N stocks only (for testing)")
     return p.parse_args()
@@ -475,7 +552,7 @@ def parse_args():
 def main():
     args = parse_args()
     end_date = date.fromisoformat(args.end)
-    do_all = not (args.stocks_only or args.indices_only or args.fno_only)
+    do_all = not (args.stocks_only or args.indices_only or args.fno_only or args.fno_live_only)
 
     client = DhanClient(
         os.environ["DHAN_CLIENT_ID"].strip(),
@@ -487,11 +564,16 @@ def main():
             log.error("Dhan connection failed — check DHAN_ACCESS_TOKEN in .env")
             sys.exit(1)
 
+    mode = ('ALL' if do_all
+            else 'stocks' if args.stocks_only
+            else 'indices' if args.indices_only
+            else 'fno-live' if args.fno_live_only
+            else 'fno')
     log.info("=" * 60)
     log.info("  DAILY INCREMENTAL UPDATER")
     log.info(f"  End date : {end_date}")
     log.info(f"  Dry run  : {args.dry_run}")
-    log.info(f"  Mode     : {'ALL' if do_all else 'stocks' if args.stocks_only else 'indices' if args.indices_only else 'fno'}")
+    log.info(f"  Mode     : {mode}")
     log.info("=" * 60)
 
     start_time = time.time()
@@ -504,6 +586,9 @@ def main():
 
     if do_all or args.fno_only:
         update_fno_options(client, end_date, args.dry_run)
+
+    if do_all or args.fno_live_only:
+        update_fno_live_options(client, end_date, args.dry_run)
 
     elapsed = time.time() - start_time
     log.info("=" * 60)
