@@ -3,12 +3,6 @@ import type { Metadata, Viewport } from 'next'
 export const metadata: Metadata = {
     title: 'SignalCraft — Craft Your Trading Signals',
     description: 'Build, backtest and deploy no-code trading strategies.',
-    manifest: '/manifest.json',
-    appleWebApp: {
-        capable: true,
-        statusBarStyle: 'black-translucent',
-        title: 'SignalCraft',
-    },
     formatDetection: {
         telephone: false,
     },

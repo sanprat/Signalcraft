@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends
 from app.models import StrategyRequest, StrategyResponse
 from app.routers.auth import get_current_user, UserResponse
+from app.core.database import get_db
 
 router = APIRouter(prefix="/api/strategy", tags=["strategy"])
 STORE = Path("strategies")
@@ -77,6 +78,8 @@ def list_strategies(current_user: UserResponse = Depends(get_current_user)):
         strategy = json.loads(f.read_text())
         # Filter by user_id (if stored, otherwise include for backward compat)
         if strategy.get("user_id") is None or strategy.get("user_id") == current_user.id:
+            if "strategy_id" not in strategy:
+                strategy["strategy_id"] = f.stem
             strategies.append(strategy)
     return strategies
 
@@ -95,9 +98,11 @@ def update_strategy(strategy_id: str, body: StrategyRequest, current_user: UserR
         raise HTTPException(403, "Not authorized to modify this strategy")
         
     # Prevent modification if the strategy is currently Live/Paper
-    # To do this robustly, we'd need to check the DB. Since `routers/strategy.py` is mostly json based for the builder,
-    # the frontend must enforce stopping it first before sending the PUT request, or we could add a DB lookup here.
-    # For now, we trust the frontend logic to enforce it, but update the JSON store here.
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT status FROM live_strategies WHERE strategy_id = %s AND status IN ('ACTIVE', 'PAPER')", (strategy_id,))
+        if cursor.fetchone():
+            raise HTTPException(400, "Cannot modify a strategy that is currently ACTIVE or PAPER trading. Please stop it first.")
         
     payload = body.model_dump()
     payload["strategy_id"] = strategy_id
@@ -141,6 +146,13 @@ def delete_strategy(strategy_id: str, current_user: UserResponse = Depends(get_c
     if strategy.get("user_id") is not None and strategy.get("user_id") != current_user.id:
         raise HTTPException(403, "Not authorized to delete this strategy")
         
+    # Prevent deletion if the strategy is currently Live/Paper
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT status FROM live_strategies WHERE strategy_id = %s AND status IN ('ACTIVE', 'PAPER')", (strategy_id,))
+        if cursor.fetchone():
+            raise HTTPException(400, "Cannot delete a strategy that is currently ACTIVE or PAPER trading. Please stop it first.")
+
     path.unlink()
     
     return {"status": "success", "message": "Strategy deleted successfully"}
