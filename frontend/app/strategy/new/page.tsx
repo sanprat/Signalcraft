@@ -416,11 +416,42 @@ function NewStrategyContent() {
         }))
     }, [])
 
-    // Handle URL params from screener
+    // Handle URL params from screener and edit
     useEffect(() => {
         const stocksParam = searchParams.get('stocks')
         const source = searchParams.get('source')
-        if (stocksParam && source === 'screener') {
+        const editId = searchParams.get('edit')
+
+        if (editId) {
+            // Edit mode
+            setLoading(true)
+            fetch(`${API}/api/strategy/${editId}`, { headers: getAuthHeaders() })
+                .then(res => {
+                    if (!res.ok) throw new Error('Failed to fetch strategy')
+                    return res.json()
+                })
+                .then(strategy => {
+                    setData({
+                        name: strategy.name || '',
+                        asset_type: strategy.asset_type || 'EQUITY',
+                        symbol: (strategy.symbols && strategy.symbols.length > 0) ? strategy.symbols[0] : (strategy.symbol || ''),
+                        index: strategy.index || 'NIFTY',
+                        option_type: strategy.option_type || 'CE',
+                        strike_type: strategy.strike_type || 'ATM',
+                        timeframe: strategy.timeframe || '1D',
+                        entry_conditions: strategy.entry_conditions || [],
+                        exit_conditions: strategy.exit_conditions || { target_pct: 5, stoploss_pct: 3, trailing_sl_pct: 0, time_exit: '15:15' },
+                        risk: strategy.risk || { max_trades_per_day: 3, max_loss_per_day: 5000, quantity_lots: 10, lot_size: 1, reentry_after_sl: false },
+                        backtest_from: strategy.backtest_from || new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0],
+                        backtest_to: strategy.backtest_to || new Date().toISOString().split('T')[0],
+                    })
+                })
+                .catch(err => {
+                    console.error("Error loading strategy to edit:", err)
+                    alert("Could not load strategy for editing.")
+                })
+                .finally(() => setLoading(false))
+        } else if (stocksParam && source === 'screener') {
             const stocks = stocksParam.split(',').filter(Boolean)
             if (stocks.length > 0) {
                 setSelectedStocks(stocks)
@@ -443,6 +474,8 @@ function NewStrategyContent() {
         }
 
         setLoading(true)
+        const editId = searchParams.get('edit')
+        
         try {
             const payload: any = {
                 name: data.name,
@@ -462,8 +495,11 @@ function NewStrategyContent() {
                 payload.strike_type = data.strike_type
             }
 
-            const res = await fetch(`${API}/api/strategy`, {
-                method: 'POST',
+            const url = editId ? `${API}/api/strategy/${editId}` : `${API}/api/strategy`
+            const method = editId ? 'PUT' : 'POST'
+
+            const res = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify(payload)
             })
@@ -500,6 +536,8 @@ function NewStrategyContent() {
     const deployLive = async () => {
         if (!data.name.trim()) { alert('Please enter a strategy name'); return }
         setLoading(true)
+        const editId = searchParams.get('edit')
+        
         try {
             // 1. Save strategy first
             const payload: any = {
@@ -518,8 +556,11 @@ function NewStrategyContent() {
                 payload.strike_type = data.strike_type
             }
 
-            const sres = await fetch(`${API}/api/strategy`, {
-                method: 'POST',
+            const url = editId ? `${API}/api/strategy/${editId}` : `${API}/api/strategy`
+            const method = editId ? 'PUT' : 'POST'
+
+            const sres = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
                 body: JSON.stringify(payload)
             })

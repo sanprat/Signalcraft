@@ -394,14 +394,14 @@ function DashboardContent() {
 
                             {/* LEFT: Active strategies */}
                             <Card>
-                                <SectionHeader title="Active Strategies" actionLabel="View all" />
+                                <SectionHeader title="Active Strategies" actionLabel="View all" action={() => router.push('/strategy')} />
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     {loading ? (
                                         <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 13 }}>Loading strategies...</div>
                                     ) : liveStrategies.length === 0 ? (
                                         <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 13 }}>
                                             No active strategies.<br />
-                                            <Link href="/strategy/new" style={{ color: T.blue, fontWeight: 600 }}>Create your first strategy</Link> to get started.
+                                            <Link href="/strategy" style={{ color: T.blue, fontWeight: 600 }}>Browse all strategies</Link> to get started.
                                         </div>
                                     ) : (
                                         liveStrategies.map(s => {
@@ -468,7 +468,8 @@ function DashboardContent() {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                         {[
                                             { label: '⚡  Build New Options Strategy', href: '/strategy/new', color: T.blue, bg: T.blueLight },
-                                            { label: '↩  Run Backtest on Saved Strategy', href: '/backtest', color: T.navy, bg: T.pill },
+                                            { label: '📁  Browse All Built Strategies', href: '/strategy', color: T.navy, bg: T.pill },
+                                            { label: '↩  Run Backtest on Saved Strategy', href: '/backtest', color: T.textMid, bg: T.surfaceHover },
                                             { label: '◉  Go Live with Approved Strategy', href: '/live', color: T.green, bg: T.greenLight },
                                         ].map(a => (
                                             <Link key={a.label} href={a.href} style={{
