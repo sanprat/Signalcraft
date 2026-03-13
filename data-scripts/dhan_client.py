@@ -326,7 +326,11 @@ class DhanClient:
                 })
             return normalized
         except requests.exceptions.HTTPError as e:
-            logger.warning(f"Dhan historical HTTP {e.response.status_code}: {e.response.text[:200]}")
+            if e.response.status_code == 400 and "DH-905" in e.response.text:
+                # Silently fail as this is an expected fallback condition for recent dates
+                pass
+            else:
+                logger.warning(f"Dhan historical HTTP {e.response.status_code}: {e.response.text[:200]}")
         except Exception as e:
             logger.warning(f"Dhan historical error: {e}")
         return []
