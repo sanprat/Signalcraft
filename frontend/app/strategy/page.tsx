@@ -25,6 +25,7 @@ type Strategy = {
     entry_conditions: any[]
     exit_conditions: any
     created_at: string
+    creation_prices?: Record<string, number>
 }
 
 type LiveStatus = {
@@ -221,6 +222,14 @@ function StrategiesContent() {
                                                 <td style={{ padding: '16px 20px' }}>
                                                     <div style={{ fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueLight, padding: '2px 6px', borderRadius: 4, display: 'inline-block', marginBottom: 4 }}>{s.asset_type}</div>
                                                     <div style={{ fontSize: 12, fontWeight: 600, color: T.textMid, fontFamily: "'DM Mono', monospace" }}>{displaySymbol}</div>
+                                                    {s.creation_prices && Object.keys(s.creation_prices).length > 0 && (
+                                                        <div style={{ fontSize: 10, color: T.textMuted, marginTop: 4 }}>
+                                                            {Object.keys(s.creation_prices).length === 1 
+                                                                ? `Built at: ₹${Object.values(s.creation_prices)[0]}`
+                                                                : `Prices captured for ${Object.keys(s.creation_prices).length} stocks`
+                                                            }
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td style={{ padding: '16px 20px' }}>
                                                     <div style={{ fontSize: 12, color: T.text }}>TF: <b>{s.timeframe}</b></div>

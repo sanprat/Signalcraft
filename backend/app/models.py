@@ -42,6 +42,7 @@ class StrategyRequest(BaseModel):
     risk: RiskSettings
     backtest_from: Optional[date] = None
     backtest_to: Optional[date] = None
+    creation_prices: Optional[dict[str, float]] = None
 
 
 class StrategyResponse(BaseModel):
@@ -49,6 +50,7 @@ class StrategyResponse(BaseModel):
     name: str
     created_at: str
     symbols: Optional[List[str]] = None  # Return list of symbols
+    creation_prices: Optional[dict[str, float]] = None
 
 
 class BacktestRequest(BaseModel):

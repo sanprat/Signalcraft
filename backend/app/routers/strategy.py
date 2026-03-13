@@ -9,10 +9,26 @@ from app.models import StrategyRequest, StrategyResponse
 from app.routers.auth import get_current_user, UserResponse
 from app.core.database import get_db
 
+import pandas as pd
+
 router = APIRouter(prefix="/api/strategy", tags=["strategy"])
 STORE = Path("strategies")
 STORE.mkdir(exist_ok=True)
 DATA_DIR = Path(__file__).parent.parent.parent / "data" / "candles"
+
+def get_latest_prices(asset_type: str, symbols: list[str]) -> dict:
+    prices = {}
+    if asset_type == "EQUITY":
+        for sym in symbols:
+            pfile = DATA_DIR / "NIFTY500" / sym / "1D.parquet"
+            if pfile.exists():
+                try:
+                    df = pd.read_parquet(pfile)
+                    if not df.empty:
+                        prices[sym] = float(df.iloc[-1]["close"])
+                except Exception:
+                    pass
+    return prices
 
 
 @router.get("/symbols")
@@ -44,6 +60,8 @@ def create_strategy(body: StrategyRequest, current_user: UserResponse = Depends(
     for k in ("backtest_from", "backtest_to"):
         if payload.get(k):
             payload[k] = str(payload[k])
+
+    payload["creation_prices"] = get_latest_prices(payload["asset_type"], payload["symbols"])
 
     (STORE / f"{strategy_id}.json").write_text(json.dumps(payload, indent=2))
 
@@ -123,13 +141,18 @@ def update_strategy(strategy_id: str, body: StrategyRequest, current_user: UserR
         if payload.get(k):
             payload[k] = str(payload[k])
 
+    # Keep old creation prices if we are just updating config, or update it?
+    # Usually better to update to latest if they modify the strategy
+    payload["creation_prices"] = get_latest_prices(payload["asset_type"], payload["symbols"])
+
     path.write_text(json.dumps(payload, indent=2))
 
     return StrategyResponse(
         strategy_id=strategy_id,
         name=body.name,
         created_at=payload["created_at"],
-        symbols=payload["symbols"]
+        symbols=payload["symbols"],
+        creation_prices=payload.get("creation_prices")
     )
 
 
