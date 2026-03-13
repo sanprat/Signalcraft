@@ -1,7 +1,8 @@
 import pandas as pd
 import os
+from pathlib import Path
 
-base_dir = '/Users/sanim/Downloads/sunny/Python/AIML/Pybankers/Pytrader/data/underlying'
+base_dir = Path(__file__).parent / 'data' / 'underlying'
 indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
 timeframes = ['1min.parquet', '5min.parquet', '15min.parquet']
 

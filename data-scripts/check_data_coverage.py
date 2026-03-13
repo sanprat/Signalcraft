@@ -26,9 +26,11 @@ for sym in sample:
         if pq.name.startswith('._'):
             continue
         try:
-            df = pd.read_parquet(pq, engine='pyarrow')
+            try:
+                df = pd.read_parquet(pq)
+            except Exception:
+                df = pd.read_parquet(pq, engine='fastparquet')
             if 'time' in df.columns:
-                # Force strictly to standard UTC datetime regardless of input type to avoid timezone NoneType errors
                 times = pd.to_datetime(df['time'], utc=True, errors='coerce')
                 print(f"{sym:20s} {pq.stem:10s} {str(times.min())[:10]:12s} {str(times.max())[:10]:12s} {len(df):8,d}")
         except Exception as e:
@@ -43,7 +45,10 @@ for sym in symbols:
     pq_1d = nifty500_dir / sym / "1D.parquet"
     if pq_1d.exists():
         try:
-            df = pd.read_parquet(pq_1d, engine='pyarrow')
+            try:
+                df = pd.read_parquet(pq_1d)
+            except Exception:
+                df = pd.read_parquet(pq_1d, engine='fastparquet')
             if 'time' in df.columns:
                 last_dates.append(pd.to_datetime(df['time'], utc=True, errors='coerce').max())
         except:
@@ -68,7 +73,10 @@ if underlying.exists():
                 if pq.name.startswith('._'):
                     continue
                 try:
-                    df = pd.read_parquet(pq, engine='pyarrow')
+                    try:
+                        df = pd.read_parquet(pq)
+                    except Exception:
+                        df = pd.read_parquet(pq, engine='fastparquet')
                     if 'time' in df.columns:
                         times = pd.to_datetime(df['time'], utc=True, errors='coerce')
                         print(f"  {idx.name:15s} {pq.stem:10s} {str(times.min())[:10]} → {str(times.max())[:19]}  ({len(df):,} rows)")
