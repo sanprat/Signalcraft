@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -6,6 +7,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv(dotenv_path="../.env")
+
+# ── Configure root logger so ALL app module logs appear in Docker output ──
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+# Suppress noisy third-party loggers
+logging.getLogger("websockets").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from app.core.config import settings
 from app.routers import strategy, backtest, live
