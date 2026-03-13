@@ -102,12 +102,17 @@ for idx in ["NIFTY", "BANKNIFTY", "FINNIFTY"]:
                             max_d = None
                             for pq in latest:
                                 try:
-                                    df = pd.read_parquet(pq)
+                                    try:
+                                        df = pd.read_parquet(pq, engine='fastparquet')
+                                    except Exception:
+                                        df = pd.read_parquet(pq)
                                     if 'time' in df.columns:
-                                        d = pd.to_datetime(df['time']).max()
-                                        if max_d is None or d > max_d:
-                                            max_d = d
-                                except:
+                                        times = pd.to_datetime(df['time'], utc=True, errors='coerce')
+                                        d = times.max()
+                                        if pd.notna(d):
+                                            if max_d is None or d > max_d:
+                                                max_d = d
+                                except Exception:
                                     pass
                             print(f"  {idx:10s} {opt_dir.name:4s} {iv_dir.name:8s} {len(pq_files):5d} files  latest → {str(max_d)[:10] if max_d else 'N/A'}")
     else:
@@ -132,11 +137,16 @@ if ds_candles.exists():
                                 max_d = None
                                 for pq in latest:
                                     try:
-                                        df = pd.read_parquet(pq)
+                                        try:
+                                            df = pd.read_parquet(pq, engine='fastparquet')
+                                        except Exception:
+                                            df = pd.read_parquet(pq)
                                         if 'time' in df.columns:
-                                            d = pd.to_datetime(df['time']).max()
-                                            if max_d is None or d > max_d:
-                                                max_d = d
-                                    except:
+                                            times = pd.to_datetime(df['time'], utc=True, errors='coerce')
+                                            d = times.max()
+                                            if pd.notna(d):
+                                                if max_d is None or d > max_d:
+                                                    max_d = d
+                                    except Exception:
                                         pass
                                 print(f"  {idx:10s} {opt_dir.name:4s} {iv_dir.name:8s} {len(pq_files):5d} files  latest → {str(max_d)[:10] if max_d else 'N/A'}")

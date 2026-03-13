@@ -18,13 +18,17 @@ for index in indices:
         file_path = os.path.join(index_dir, tf)
         if os.path.exists(file_path):
             try:
-                df = pd.read_parquet(file_path)
+                try:
+                    df = pd.read_parquet(file_path)
+                except Exception:
+                    df = pd.read_parquet(file_path, engine='fastparquet')
                 if df.empty:
                     print(f"  {tf}: Empty File")
                 else:
                     if 'time' in df.columns:
-                        start_date = df['time'].min().strftime('%Y-%m-%d')
-                        end_date = df['time'].max().strftime('%Y-%m-%d')
+                        times = pd.to_datetime(df['time'], utc=True, errors='coerce')
+                        start_date = times.min().strftime('%Y-%m-%d')
+                        end_date = times.max().strftime('%Y-%m-%d')
                         print(f"  {tf}: {len(df)} rows | {start_date} to {end_date}")
                     else:
                         print(f"  {tf}: 'time' column missing. Columns: {df.columns}")
