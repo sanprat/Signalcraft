@@ -10,14 +10,22 @@ from app.routers.auth import get_current_user, UserResponse
 from app.core.database import get_db
 
 import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/strategy", tags=["strategy"])
 STORE = Path("strategies")
 STORE.mkdir(exist_ok=True)
 DATA_DIR = Path(__file__).parent.parent.parent / "data" / "candles"
 
-def get_latest_prices(asset_type: str, symbols: list[str]) -> dict:
-    prices = {}
+def get_latest_prices(asset_type: str, symbols: list[str]) -> dict[str, float]:
+    \"\"\"
+    Fetch the latest closing prices for the given symbols from local Parquet data.
+    Returns a dictionary mapping symbol to its last close price.
+    Currently only supports 'EQUITY' asset types (NIFTY500). Non-EQUITY returns an empty dict.
+    \"\"\"
+    prices: dict[str, float] = {}
     if asset_type == "EQUITY":
         for sym in symbols:
             pfile = DATA_DIR / "NIFTY500" / sym / "1D.parquet"
@@ -26,8 +34,10 @@ def get_latest_prices(asset_type: str, symbols: list[str]) -> dict:
                     df = pd.read_parquet(pfile)
                     if not df.empty:
                         prices[sym] = float(df.iloc[-1]["close"])
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Failed to load latest price for {sym} from parquet: {str(e)}")
+            else:
+                logger.warning(f"No parquet data found to fetch latest price for {sym}")
     return prices
 
 
@@ -141,9 +151,12 @@ def update_strategy(strategy_id: str, body: StrategyRequest, current_user: UserR
         if payload.get(k):
             payload[k] = str(payload[k])
 
-    # Keep old creation prices if we are just updating config, or update it?
-    # Usually better to update to latest if they modify the strategy
-    payload["creation_prices"] = get_latest_prices(payload["asset_type"], payload["symbols"])
+    # Preserve the original creation prices so it remains a snapshot of when the strategy was first built
+    # We only fetch new prices if none existed previously (e.g. for old legacy strategies)
+    if "creation_prices" in existing_strategy and existing_strategy["creation_prices"]:
+        payload["creation_prices"] = existing_strategy["creation_prices"]
+    else:
+        payload["creation_prices"] = get_latest_prices(payload["asset_type"], payload["symbols"])
 
     path.write_text(json.dumps(payload, indent=2))
 
