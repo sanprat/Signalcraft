@@ -20,11 +20,11 @@ STORE.mkdir(exist_ok=True)
 DATA_DIR = Path(__file__).parent.parent.parent / "data" / "candles"
 
 def get_latest_prices(asset_type: str, symbols: list[str]) -> dict[str, float]:
-    \"\"\"
+    """
     Fetch the latest closing prices for the given symbols from local Parquet data.
     Returns a dictionary mapping symbol to its last close price.
     Currently only supports 'EQUITY' asset types (NIFTY500). Non-EQUITY returns an empty dict.
-    \"\"\"
+    """
     prices: dict[str, float] = {}
     if asset_type == "EQUITY":
         for sym in symbols:
