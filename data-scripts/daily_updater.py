@@ -43,33 +43,35 @@ load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 sys.path.insert(0, str(Path(__file__).parent))
 from dhan_client import DhanClient
 
-PROJECT_ROOT  = Path(__file__).parent.parent
-NIFTY500_DIR  = PROJECT_ROOT / "data" / "candles" / "NIFTY500"
+PROJECT_ROOT = Path(__file__).parent.parent
+NIFTY500_DIR = PROJECT_ROOT / "data" / "candles" / "NIFTY500"
 UNDERLYING_DIR = PROJECT_ROOT / "data" / "underlying"
-FNO_DIR       = PROJECT_ROOT / "data" / "candles"
-MAPPING_FILE  = Path(__file__).parent / "nifty500_dhan_mapping.json"
+FNO_DIR = PROJECT_ROOT / "data" / "candles"
+MAPPING_FILE = Path(__file__).parent / "nifty500_dhan_mapping.json"
 
-STOCK_INTERVALS    = ["1D", "5min", "15min"]
-INDEX_INTERVALS    = ["1min", "5min", "15min"]
-FNO_INTERVALS      = ["1min", "5min", "15min"]
-FNO_OFFSETS        = list(range(-10, 11))  # ATM-10 to ATM+10
-FNO_OPT_TYPES      = ["CE", "PE"]
+STOCK_INTERVALS = ["1D", "5min", "15min"]
+INDEX_INTERVALS = ["1min", "5min", "15min"]
+FNO_INTERVALS = ["1min", "5min", "15min"]
+FNO_OFFSETS = list(range(-10, 11))  # ATM-10 to ATM+10
+FNO_OPT_TYPES = ["CE", "PE"]
 
 INDICES = {
-    "NIFTY":     {"id": "13", "segment": "IDX_I", "instrument": "INDEX"},
+    "NIFTY": {"id": "13", "segment": "IDX_I", "instrument": "INDEX"},
     "BANKNIFTY": {"id": "25", "segment": "IDX_I", "instrument": "INDEX"},
-    "FINNIFTY":  {"id": "27", "segment": "IDX_I", "instrument": "INDEX"},
+    "FINNIFTY": {"id": "27", "segment": "IDX_I", "instrument": "INDEX"},
     "GIFTNIFTY": {"id": "5024", "segment": "IDX_I", "instrument": "INDEX"},
 }
 
-SCHEMA = pa.schema([
-    ("time",   pa.timestamp("s", tz="Asia/Kolkata")),
-    ("open",   pa.float32()),
-    ("high",   pa.float32()),
-    ("low",    pa.float32()),
-    ("close",  pa.float32()),
-    ("volume", pa.int64()),
-])
+SCHEMA = pa.schema(
+    [
+        ("time", pa.timestamp("s", tz="Asia/Kolkata")),
+        ("open", pa.float32()),
+        ("high", pa.float32()),
+        ("low", pa.float32()),
+        ("close", pa.float32()),
+        ("volume", pa.int64()),
+    ]
+)
 
 LOG_DIR = PROJECT_ROOT / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -80,11 +82,12 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler(LOG_DIR / "daily_update.log"),
-    ]
+    ],
 )
 log = logging.getLogger(__name__)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def get_last_date(parquet_path: Path) -> date | None:
     """Read a Parquet file and return the last date present."""
@@ -112,13 +115,17 @@ def candles_to_df_intraday(raw: list) -> pd.DataFrame:
     if not raw:
         return pd.DataFrame()
     df = pd.DataFrame(raw)[["time", "open", "high", "low", "close", "volume"]]
-    df["time"] = pd.to_datetime(df["time"], utc=False).dt.tz_localize(None).dt.tz_localize("Asia/Kolkata")
+    df["time"] = (
+        pd.to_datetime(df["time"], utc=False)
+        .dt.tz_localize(None)
+        .dt.tz_localize("Asia/Kolkata")
+    )
     # Filter market hours
     t = df["time"]
     if t.dt.hour.max() > 0:
         df = df[
-            ((t.dt.hour > 9) | ((t.dt.hour == 9) & (t.dt.minute >= 15))) &
-            ((t.dt.hour < 15) | ((t.dt.hour == 15) & (t.dt.minute <= 30)))
+            ((t.dt.hour > 9) | ((t.dt.hour == 9) & (t.dt.minute >= 15)))
+            & ((t.dt.hour < 15) | ((t.dt.hour == 15) & (t.dt.minute <= 30)))
         ]
     return df.drop_duplicates("time").sort_values("time").reset_index(drop=True)
 
@@ -128,7 +135,11 @@ def candles_to_df_daily(raw: list) -> pd.DataFrame:
     if not raw:
         return pd.DataFrame()
     df = pd.DataFrame(raw)[["time", "open", "high", "low", "close", "volume"]]
-    df["time"] = pd.to_datetime(df["time"], utc=False).dt.tz_localize(None).dt.tz_localize("Asia/Kolkata")
+    df["time"] = (
+        pd.to_datetime(df["time"], utc=False)
+        .dt.tz_localize(None)
+        .dt.tz_localize("Asia/Kolkata")
+    )
     df["time"] = df["time"].dt.normalize()
     return df.drop_duplicates("time").sort_values("time").reset_index(drop=True)
 
@@ -158,18 +169,19 @@ def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA)
 
     # Normalize time to Asia/Kolkata — use utc=True to safely handle mixed
     # tz-aware / tz-naive timestamps (avoids ValueError in pandas 2.x)
-    combined["time"] = pd.to_datetime(combined["time"], utc=True).dt.tz_convert("Asia/Kolkata")
+    combined["time"] = pd.to_datetime(combined["time"], utc=True).dt.tz_convert(
+        "Asia/Kolkata"
+    )
 
-    combined = (combined
-                .drop_duplicates("time")
-                .sort_values("time")
-                .reset_index(drop=True))
+    combined = (
+        combined.drop_duplicates("time").sort_values("time").reset_index(drop=True)
+    )
 
     # Cast columns present in the target schema
-    combined["time"]  = combined["time"].astype("datetime64[s, Asia/Kolkata]")
-    combined["open"]  = combined["open"].astype("float32")
-    combined["high"]  = combined["high"].astype("float32")
-    combined["low"]   = combined["low"].astype("float32")
+    combined["time"] = combined["time"].astype("datetime64[s, Asia/Kolkata]")
+    combined["open"] = combined["open"].astype("float32")
+    combined["high"] = combined["high"].astype("float32")
+    combined["low"] = combined["low"].astype("float32")
     combined["close"] = combined["close"].astype("float32")
     if "volume" in [f.name for f in schema]:
         combined["volume"] = combined["volume"].astype("int64")
@@ -185,7 +197,10 @@ def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA)
 
 # ── Update Functions ──────────────────────────────────────────────────────────
 
-def update_nifty500_stocks(client: DhanClient, end_date: date, dry_run: bool = False, limit: int = None):
+
+def update_nifty500_stocks(
+    client: DhanClient, end_date: date, dry_run: bool = False, limit: int = None
+):
     """Update NIFTY500 stocks with missing data."""
     log.info("=" * 60)
     log.info("  NIFTY500 STOCKS UPDATE")
@@ -202,12 +217,21 @@ def update_nifty500_stocks(client: DhanClient, end_date: date, dry_run: bool = F
     if limit:
         symbols = symbols[:limit]
 
+    total_symbols = len(symbols)
+    start_time = time.time()
+
     total_updated = 0
     total_skipped = 0
+    method_stats = {"daily": 0, "intraday_d": 0, "intraday_1min": 0, "failed": 0}
+    failed_symbols = []
+
+    log.info(f"Starting NIFTY500 update: {total_symbols} symbols")
 
     for i, sym in enumerate(symbols, 1):
         sec_id = mapping[sym]
         sym_updated = False
+        method_used = None
+        attempted_1d = False
 
         for interval in STOCK_INTERVALS:
             out_path = NIFTY500_DIR / sym / f"{interval}.parquet"
@@ -223,24 +247,31 @@ def update_nifty500_stocks(client: DhanClient, end_date: date, dry_run: bool = F
                 continue
 
             if dry_run:
-                log.info(f"  [{i}/{len(symbols)}] {sym} {interval}: would download {start} → {end_date}")
+                log.info(
+                    f"  [{i}/{len(symbols)}] {sym} {interval}: would download {start} → {end_date}"
+                )
                 continue
 
             # Fetch data
             if interval == "1D":
                 # The daily historical endpoint (get_historical_daily_candles) trails by a few days
-                # and throws DH-905 for very recent dates. 
+                # and throws DH-905 for very recent dates.
                 # We use it first, but fallback to get_intraday_candles with 'D' interval if needed.
+                attempted_1d = True
                 raw = client.get_historical_daily_candles(
                     security_id=sec_id,
                     exchange_segment="NSE_EQ",
                     instrument="EQUITY",
                     from_date=start.strftime("%Y-%m-%d"),
                     to_date=end_date.strftime("%Y-%m-%d"),
-                    expiry_code=0
+                    expiry_code=0,
                 )
                 time.sleep(1.2)
-                
+
+                # Track method: daily endpoint succeeded
+                if raw:
+                    method_used = "daily"
+
                 # Fallback to intraday endpoint natively supporting 'D' interval up to 90 days
                 if not raw:
                     raw = client.get_intraday_candles(
@@ -252,10 +283,15 @@ def update_nifty500_stocks(client: DhanClient, end_date: date, dry_run: bool = F
                         to_datetime=f"{end_date} 16:00:00",
                     )
                     time.sleep(1.0)
-                    
+
+                    # Track method: intraday D fallback succeeded
+                    if raw:
+                        method_used = "intraday_d"
+
                 # Secondary fallback: fetch 1-minute data and aggregate it into daily candles
                 if not raw:
-                    log.info(f"  [{i}/{len(symbols)}] {sym}: 1D API failed, aggregating 1min data as fallback")
+                    # Track method: 1min aggregation fallback
+                    method_used = "intraday_1min"
                     raw_1m = client.get_intraday_candles(
                         security_id=sec_id,
                         exchange_segment="NSE_EQ",
@@ -267,28 +303,42 @@ def update_nifty500_stocks(client: DhanClient, end_date: date, dry_run: bool = F
                     time.sleep(1.0)
                     if raw_1m:
                         df_1m = pd.DataFrame(raw_1m)
-                        df_1m["time"] = pd.to_datetime(df_1m["time"]).dt.tz_localize(None).dt.tz_localize("Asia/Kolkata")
-                        
+                        df_1m["time"] = (
+                            pd.to_datetime(df_1m["time"])
+                            .dt.tz_localize(None)
+                            .dt.tz_localize("Asia/Kolkata")
+                        )
+
                         # Apply market hours filter
                         t = df_1m["time"]
                         df_1m = df_1m[
-                            ((t.dt.hour > 9) | ((t.dt.hour == 9) & (t.dt.minute >= 15))) &
-                            ((t.dt.hour < 15) | ((t.dt.hour == 15) & (t.dt.minute <= 30)))
+                            ((t.dt.hour > 9) | ((t.dt.hour == 9) & (t.dt.minute >= 15)))
+                            & (
+                                (t.dt.hour < 15)
+                                | ((t.dt.hour == 15) & (t.dt.minute <= 30))
+                            )
                         ]
-                        
+
                         if not df_1m.empty:
                             df_1m.set_index("time", inplace=True)
-                            df_daily = df_1m.resample("D").agg({
-                                "open": "first",
-                                "high": "max",
-                                "low": "min",
-                                "close": "last",
-                                "volume": "sum"
-                            }).dropna().reset_index()
+                            df_daily = (
+                                df_1m.resample("D")
+                                .agg(
+                                    {
+                                        "open": "first",
+                                        "high": "max",
+                                        "low": "min",
+                                        "close": "last",
+                                        "volume": "sum",
+                                    }
+                                )
+                                .dropna()
+                                .reset_index()
+                            )
                             merge_and_save(df_daily, out_path)
                             sym_updated = True
-                            continue # skip the normal df save
-                    
+                            continue  # skip the normal df save
+
                 if raw:
                     df = candles_to_df_daily(raw)
                     if not df.empty:
@@ -313,11 +363,52 @@ def update_nifty500_stocks(client: DhanClient, end_date: date, dry_run: bool = F
 
         if sym_updated:
             total_updated += 1
+            # Track method stats
+            if method_used:
+                method_stats[method_used] = method_stats.get(method_used, 0) + 1
+        else:
+            # Mark as failed if we attempted 1D but didn't get any update
+            if attempted_1d and not sym_updated:
+                method_stats["failed"] = method_stats.get("failed", 0) + 1
+                failed_symbols.append(sym)
 
-        if i % 50 == 0:
-            log.info(f"  Progress: {i}/{len(symbols)} symbols processed, {total_updated} updated")
+        # Calculate ETA and log progress for each symbol
+        elapsed = time.time() - start_time
+        avg_time = elapsed / i
+        remaining = total_symbols - i
+        eta_seconds = avg_time * remaining
+        eta_str = (datetime.now() + timedelta(seconds=eta_seconds)).strftime("%H:%M:%S")
 
-    log.info(f"  NIFTY500 done: {total_updated} updated, {total_skipped} already up-to-date")
+        # Log progress for every symbol (method: ✓ or ✗)
+        status_icon = "✓" if sym_updated else "✗"
+        method_str = method_used if method_used else "none"
+        log.info(
+            f"  [{i}/{total_symbols}] {sym:15} {status_icon} ({method_str:12}) | "
+            f"ETA: {eta_str} | Avg: {avg_time:.1f}s/symbol"
+        )
+
+    # Summary report
+    total_elapsed = time.time() - start_time
+    log.info("=" * 60)
+    log.info("  NIFTY500 UPDATE COMPLETE")
+    log.info("=" * 60)
+    log.info(f"  Total symbols:     {total_symbols}")
+    log.info(f"  Updated:           {total_updated}")
+    log.info(f"  Skipped (up-to-date): {total_skipped}")
+    log.info("-" * 60)
+    log.info("  Method breakdown:")
+    log.info(f"    - daily endpoint:      {method_stats.get('daily', 0)}")
+    log.info(f"    - intraday (D):        {method_stats.get('intraday_d', 0)}")
+    log.info(f"    - intraday (1min agg): {method_stats.get('intraday_1min', 0)}")
+    log.info(f"    - failed:              {method_stats.get('failed', 0)}")
+    log.info("-" * 60)
+    log.info(f"  Total time:        {timedelta(seconds=int(total_elapsed))}")
+    log.info(f"  Avg time/symbol:   {total_elapsed / total_symbols:.1f} seconds")
+    if failed_symbols:
+        log.warning(f"  Failed symbols: {', '.join(failed_symbols[:10])}")
+        if len(failed_symbols) > 10:
+            log.warning(f"                    ... and {len(failed_symbols) - 10} more")
+    log.info("=" * 60)
 
 
 def update_index_underlying(client: DhanClient, end_date: date, dry_run: bool = False):
@@ -359,7 +450,9 @@ def update_index_underlying(client: DhanClient, end_date: date, dry_run: bool = 
                 df = candles_to_df_intraday(raw)
                 if not df.empty:
                     total = merge_and_save(df, out_path)
-                    log.info(f"  {index} {interval}: +{len(df)} candles (total: {total:,})")
+                    log.info(
+                        f"  {index} {interval}: +{len(df)} candles (total: {total:,})"
+                    )
                     total_updated += 1
             else:
                 log.warning(f"  {index} {interval}: no data for {start} → {end_date}")
@@ -377,7 +470,9 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
     expiry_code = 1
     fno_indices = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 
-    total_jobs = len(fno_indices) * len(FNO_OFFSETS) * len(FNO_OPT_TYPES) * len(FNO_INTERVALS)
+    total_jobs = (
+        len(fno_indices) * len(FNO_OFFSETS) * len(FNO_OPT_TYPES) * len(FNO_INTERVALS)
+    )
 
     if dry_run:
         log.info(f"  Would download {total_jobs} jobs (expiry_code={expiry_code})")
@@ -421,15 +516,19 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
                         for strike, rows in by_strike.items():
                             df = pd.DataFrame(rows)
                             df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
-                            df = (df[["time", "open", "high", "low", "close", "volume"]]
-                                  .drop_duplicates(subset=["time"])
-                                  .sort_values("time")
-                                  .reset_index(drop=True))
+                            df = (
+                                df[["time", "open", "high", "low", "close", "volume"]]
+                                .drop_duplicates(subset=["time"])
+                                .sort_values("time")
+                                .reset_index(drop=True)
+                            )
                             df["time"] = df["time"].dt.tz_localize("Asia/Kolkata")
 
                             out_dir = FNO_DIR / idx / opt / interval
                             out_dir.mkdir(parents=True, exist_ok=True)
-                            out_path = out_dir / f"dhan_ec{expiry_code}_{strike}.parquet"
+                            out_path = (
+                                out_dir / f"dhan_ec{expiry_code}_{strike}.parquet"
+                            )
 
                             merge_and_save(df, out_path)
 
@@ -465,7 +564,12 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
     today = date.today()
 
     if dry_run:
-        total = len(fno_indices) * len(FNO_OFFSETS) * len(FNO_OPT_TYPES) * len(FNO_INTERVALS)
+        total = (
+            len(fno_indices)
+            * len(FNO_OFFSETS)
+            * len(FNO_OPT_TYPES)
+            * len(FNO_INTERVALS)
+        )
         log.info(f"  Would download {total} live jobs (expiry_code=0)")
         return
 
@@ -482,7 +586,9 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
         # Start of this contract's trading week (prev Friday + 1 = Monday, roughly)
         week_start = current_expiry - timedelta(days=6)
 
-        log.info(f"  {idx}: live week {week_start} → {end_date}  (expires {current_expiry})")
+        log.info(
+            f"  {idx}: live week {week_start} → {end_date}  (expires {current_expiry})"
+        )
 
         for opt in FNO_OPT_TYPES:
             for interval in FNO_INTERVALS:
@@ -506,10 +612,12 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
                         for strike, rows in by_strike.items():
                             df = pd.DataFrame(rows)
                             df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
-                            df = (df[["time", "open", "high", "low", "close", "volume"]]
-                                  .drop_duplicates(subset=["time"])
-                                  .sort_values("time")
-                                  .reset_index(drop=True))
+                            df = (
+                                df[["time", "open", "high", "low", "close", "volume"]]
+                                .drop_duplicates(subset=["time"])
+                                .sort_values("time")
+                                .reset_index(drop=True)
+                            )
                             df["time"] = df["time"].dt.tz_localize("Asia/Kolkata")
 
                             out_dir = FNO_DIR / idx / opt / interval
@@ -523,36 +631,50 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
                         empty += 1
 
                     if (downloaded + empty) % 100 == 0:
-                        log.info(f"  Live FnO progress: {downloaded} data | {empty} empty")
+                        log.info(
+                            f"  Live FnO progress: {downloaded} data | {empty} empty"
+                        )
 
     log.info(f"  Live FnO done: {downloaded} with data | {empty} empty")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def parse_args():
     p = argparse.ArgumentParser(description="Daily Incremental Data Updater")
-    p.add_argument("--end", default=str(date.today()),
-                   help="End date for update (default: today)")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Preview without downloading")
-    p.add_argument("--stocks-only", action="store_true",
-                   help="Only update NIFTY500 stocks")
-    p.add_argument("--indices-only", action="store_true",
-                   help="Only update index underlying")
-    p.add_argument("--fno-only", action="store_true",
-                   help="Only update FnO expired options (expiry_code=1)")
-    p.add_argument("--fno-live-only", action="store_true",
-                   help="Only update current-week live options (expiry_code=0)")
-    p.add_argument("--limit", type=int,
-                   help="Process first N stocks only (for testing)")
+    p.add_argument(
+        "--end", default=str(date.today()), help="End date for update (default: today)"
+    )
+    p.add_argument("--dry-run", action="store_true", help="Preview without downloading")
+    p.add_argument(
+        "--stocks-only", action="store_true", help="Only update NIFTY500 stocks"
+    )
+    p.add_argument(
+        "--indices-only", action="store_true", help="Only update index underlying"
+    )
+    p.add_argument(
+        "--fno-only",
+        action="store_true",
+        help="Only update FnO expired options (expiry_code=1)",
+    )
+    p.add_argument(
+        "--fno-live-only",
+        action="store_true",
+        help="Only update current-week live options (expiry_code=0)",
+    )
+    p.add_argument(
+        "--limit", type=int, help="Process first N stocks only (for testing)"
+    )
     return p.parse_args()
 
 
 def main():
     args = parse_args()
     end_date = date.fromisoformat(args.end)
-    do_all = not (args.stocks_only or args.indices_only or args.fno_only or args.fno_live_only)
+    do_all = not (
+        args.stocks_only or args.indices_only or args.fno_only or args.fno_live_only
+    )
 
     client = DhanClient(
         os.environ["DHAN_CLIENT_ID"].strip(),
@@ -564,11 +686,17 @@ def main():
             log.error("Dhan connection failed — check DHAN_ACCESS_TOKEN in .env")
             sys.exit(1)
 
-    mode = ('ALL' if do_all
-            else 'stocks' if args.stocks_only
-            else 'indices' if args.indices_only
-            else 'fno-live' if args.fno_live_only
-            else 'fno')
+    mode = (
+        "ALL"
+        if do_all
+        else "stocks"
+        if args.stocks_only
+        else "indices"
+        if args.indices_only
+        else "fno-live"
+        if args.fno_live_only
+        else "fno"
+    )
     log.info("=" * 60)
     log.info("  DAILY INCREMENTAL UPDATER")
     log.info(f"  End date : {end_date}")
@@ -592,7 +720,7 @@ def main():
 
     elapsed = time.time() - start_time
     log.info("=" * 60)
-    log.info(f"  DAILY UPDATE COMPLETE in {elapsed/60:.1f} minutes")
+    log.info(f"  DAILY UPDATE COMPLETE in {elapsed / 60:.1f} minutes")
     log.info("=" * 60)
 
 
