@@ -283,13 +283,10 @@ class DhanClient:
             "securityId":       security_id,
             "exchangeSegment":  exchange_segment,
             "instrument":       instrument,
+            "expiryCode":       expiry_code,
             "fromDate":         from_date,
             "toDate":           to_date,
         }
-        
-        # Dhan throws DH-905 if we pass expiryCode=0 for equities or live options.
-        if expiry_code > 0:
-            payload["expiryCode"] = expiry_code
         try:
             resp = self.session.post(
                 f"{BASE_URL}/charts/historical",
