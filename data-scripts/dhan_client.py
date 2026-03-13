@@ -119,7 +119,6 @@ class DhanClient:
             "instrument":      "OPTIDX",
             "securityId":      SECURITY_IDS[index],
             "expiryFlag":      expiry_flag,
-            "expiryCode":      expiry_code,
             "strike":          strike_label(strike_offset),
             "drvOptionType":   OPTION_TYPE_MAP[option_type],
             "interval":        INTERVAL_MAP[interval],
@@ -127,6 +126,11 @@ class DhanClient:
             "fromDate":        from_date.strftime("%Y-%m-%d"),
             "toDate":          to_date.strftime("%Y-%m-%d"),
         }
+        
+        # Dhan API throws DH-905 if expiryCode is 0. Docs say it's 1-indexed for expired.
+        # So we omit it for live options (0) to get current expiry.
+        if expiry_code > 0:
+            payload["expiryCode"] = expiry_code
 
         try:
             resp = self.session.post(
