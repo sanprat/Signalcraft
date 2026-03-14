@@ -185,137 +185,168 @@ def _is_market_open() -> bool:
 
 # ── Dhan WebSocket connection ─────────────────────────────────────────────────
 async def _dhan_feed():
-    """Try Dhan WebSocket; fall back to simulation permanently if it fails twice."""
+    """Connect to Dhan WebSocket with automatic token refresh and REST fallback."""
     global _using_simulation
 
     client_id = os.getenv("DHAN_CLIENT_ID", "").strip()
-    access_token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
 
-    if not client_id or not access_token:
+    if not client_id or not os.getenv("DHAN_ACCESS_TOKEN", "").strip():
         logger.warning("DHAN credentials missing — simulation-only mode")
         _using_simulation = True
         return
-
-    # Try to refresh token if expired
-    try:
-        refresh_result = refresh_token_if_needed()
-        if refresh_result.get("refreshed"):
-            access_token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
-            logger.info("Dhan token refreshed")
-        elif not refresh_result.get("success"):
-            logger.warning(f"Token refresh: {refresh_result.get('message')}")
-    except Exception as e:
-        logger.warning(f"Token refresh error: {e}")
 
     # Set open prices the first time
     for sym, q in _quotes.items():
         if sym not in _OPEN:
             _OPEN[sym] = q["ltp"]
 
-    fail_count = 0
-    dhan_ws_url = f"wss://api-feed.dhan.co?version=2&token={access_token}&clientId={client_id}&authType=2"
+    while True:  # Outer loop: never permanently give up
+        # ── Refresh token before each WebSocket attempt cycle ──
+        access_token = await _refresh_dhan_token()
+        if not access_token:
+            logger.error("Cannot obtain valid Dhan token — waiting 60s before retry")
+            await asyncio.sleep(60)
+            continue
 
-    while fail_count < 3:
-        try:
-            logger.info(f"Connecting to Dhan WebSocket V2 (attempt {fail_count + 1})...")
-            async with websockets.connect(
-                dhan_ws_url,
-                ping_interval=20,
-                open_timeout=15,
-            ) as ws:
-                # Subscribe to index LTP
-                sub_payload = json.dumps({
-                    "RequestCode": FEED_REQUEST_CODE,
-                    "InstrumentCount": len(DHAN_TOKENS),
-                    "InstrumentList": [
-                        {
-                            "ExchangeSegment": v["exchange_segment"],
-                            "SecurityId": str(v["security_id"]),
-                        }
-                        for v in DHAN_TOKENS.values()
-                    ]
-                })
-                await ws.send(sub_payload)
-                _using_simulation = False
-                logger.info(
-                    f"Dhan WebSocket: subscribed to initial indices (RequestCode={FEED_REQUEST_CODE})"
+        dhan_ws_url = f"wss://api-feed.dhan.co?version=2&token={access_token}&clientId={client_id}&authType=2"
+        fail_count = 0
+
+        # ── WebSocket connection loop (3 attempts per cycle) ──
+        while fail_count < 3:
+            try:
+                logger.info(f"Connecting to Dhan WebSocket V2 (attempt {fail_count + 1})...")
+                async with websockets.connect(
+                    dhan_ws_url,
+                    ping_interval=20,
+                    open_timeout=15,
+                ) as ws:
+                    # Subscribe to index LTP
+                    sub_payload = json.dumps({
+                        "RequestCode": FEED_REQUEST_CODE,
+                        "InstrumentCount": len(DHAN_TOKENS),
+                        "InstrumentList": [
+                            {
+                                "ExchangeSegment": v["exchange_segment"],
+                                "SecurityId": str(v["security_id"]),
+                            }
+                            for v in DHAN_TOKENS.values()
+                        ]
+                    })
+                    await ws.send(sub_payload)
+                    _using_simulation = False
+                    logger.info(
+                        f"Dhan WebSocket: subscribed to initial indices (RequestCode={FEED_REQUEST_CODE})"
+                    )
+                    fail_count = 0  # reset on successful connect + subscribe
+
+                    # Sub-task to handle dynamic subscriptions from queue
+                    async def sub_sender():
+                        while True:
+                            payload = await _sub_queue.get()
+                            try:
+                                await ws.send(json.dumps(payload))
+                                logger.info(f"Dhan WebSocket: Sent dynamic sub for {payload.get('InstrumentList')}")
+                            except Exception as e:
+                                logger.error(f"Error sending dynamic sub: {e}")
+                            finally:
+                                _sub_queue.task_done()
+
+                    sender_task = asyncio.create_task(sub_sender())
+
+                    try:
+                        async for raw in ws:
+                            _parse_dhan_packet(raw)
+                    finally:
+                        sender_task.cancel()
+
+            except asyncio.TimeoutError:
+                logger.warning("Dhan WebSocket connection timed out")
+                fail_count += 1
+            except Exception as e:
+                logger.error(f"Dhan WebSocket error: {e}")
+                fail_count += 1
+                # Exponential backoff: 5s, 15s, 45s
+                backoff = 5 * (3 ** (fail_count - 1))
+                logger.info(f"Waiting {backoff}s before next attempt...")
+                await asyncio.sleep(backoff)
+
+        # ── WebSocket failed 3 times — try REST fallback with token refresh ──
+        logger.warning("Dhan WebSocket failed 3 times — switching to REST API polling")
+        _using_simulation = True
+
+        rest_fail_count = 0
+        while rest_fail_count < 20:  # Don't poll REST forever, cycle back to WebSocket
+            try:
+                import requests as req_lib
+                token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
+                cid = os.getenv("DHAN_CLIENT_ID", "").strip()
+
+                r = req_lib.post(
+                    "https://api.dhan.co/v2/marketfeed/ltp",
+                    headers={"access-token": token, "client-id": cid, "Content-Type": "application/json"},
+                    json={"IDX_I": [13, 25, 27]},
+                    timeout=5
                 )
-                fail_count = 0  # reset on successful connect + subscribe
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("status") == "success" and "data" in data and "IDX_I" in data["data"]:
+                        idx_data = data["data"]["IDX_I"]
+                        if "13" in idx_data:
+                            ltp = float(idx_data["13"]["last_price"])
+                            _quotes["NIFTY 50"]["ltp"] = ltp
+                            _quotes["NIFTY 50"]["up"] = ltp >= _OPEN.get("NIFTY 50", ltp)
+                        if "25" in idx_data:
+                            ltp = float(idx_data["25"]["last_price"])
+                            _quotes["BANKNIFTY"]["ltp"] = ltp
+                            _quotes["BANKNIFTY"]["up"] = ltp >= _OPEN.get("BANKNIFTY", ltp)
+                        if "27" in idx_data:
+                            ltp = float(idx_data["27"]["last_price"])
+                            _quotes["FINNIFTY"]["ltp"] = ltp
+                            _quotes["FINNIFTY"]["up"] = ltp >= _OPEN.get("FINNIFTY", ltp)
 
-                # Sub-task to handle dynamic subscriptions from queue
-                async def sub_sender():
-                    while True:
-                        payload = await _sub_queue.get()
-                        try:
-                            await ws.send(json.dumps(payload))
-                            logger.info(f"Dhan WebSocket: Sent dynamic sub for {payload.get('InstrumentList')}")
-                        except Exception as e:
-                            logger.error(f"Error sending dynamic sub: {e}")
-                        finally:
-                            _sub_queue.task_done()
+                    _save_quotes_to_redis()
+                    _broadcast_event.set()
+                    rest_fail_count = 0  # Reset on success
 
-                sender_task = asyncio.create_task(sub_sender())
+                elif r.status_code == 401:
+                    # Token expired! Refresh immediately and break to retry WebSocket
+                    logger.warning("REST fallback got 401 — token expired, refreshing...")
+                    new_token = await _refresh_dhan_token()
+                    if new_token:
+                        logger.info("Token refreshed after 401 — retrying WebSocket connection")
+                        break  # Break out of REST loop → outer loop will retry WebSocket
+                    else:
+                        logger.error("Token refresh failed after 401 — waiting 60s")
+                        await asyncio.sleep(60)
+                        rest_fail_count += 1
+                else:
+                    logger.warning(f"REST fallback failed: {r.status_code} {r.text[:100]}")
+                    rest_fail_count += 1
+            except Exception as e:
+                logger.error(f"REST fallback error: {e}")
+                rest_fail_count += 1
 
-                try:
-                    async for raw in ws:
-                        _parse_dhan_packet(raw)
-                finally:
-                    sender_task.cancel()
+            await asyncio.sleep(3)
 
-        except asyncio.TimeoutError:
-            logger.warning("Dhan WebSocket connection timed out")
-            fail_count += 1
-        except Exception as e:
-            logger.error(f"Dhan WebSocket error: {e}")
-            fail_count += 1
-            await asyncio.sleep(5)
+        # Loop back to top: refresh token and retry WebSocket
+        logger.info("Cycling back to WebSocket connection with fresh token...")
 
-    logger.warning("Dhan WebSocket failed 3 times — using REST API polling fallback")
-    _using_simulation = True
-    
-    # Fallback loop: Poll REST API every 3 seconds
-    while True:
-        try:
-            import requests
-            token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
-            cid = os.getenv("DHAN_CLIENT_ID", "").strip()
-            
-            # Fetch Index LTPs
-            r = requests.post(
-                "https://api.dhan.co/v2/marketfeed/ltp",
-                headers={"access-token": token, "client-id": cid, "Content-Type": "application/json"},
-                json={"IDX_I": [13, 25, 27]},
-                timeout=5
-            )
-            if r.status_code == 200:
-                data = r.json()
-                if data.get("status") == "success" and "data" in data and "IDX_I" in data["data"]:
-                    idx_data = data["data"]["IDX_I"]
-                    if "13" in idx_data:
-                        ltp = float(idx_data["13"]["last_price"])
-                        _quotes["NIFTY 50"]["ltp"] = ltp
-                        _quotes["NIFTY 50"]["up"] = ltp >= _OPEN.get("NIFTY 50", ltp)
-                    if "25" in idx_data:
-                        ltp = float(idx_data["25"]["last_price"])
-                        _quotes["BANKNIFTY"]["ltp"] = ltp
-                        _quotes["BANKNIFTY"]["up"] = ltp >= _OPEN.get("BANKNIFTY", ltp)
-                    if "27" in idx_data:
-                        ltp = float(idx_data["27"]["last_price"])
-                        _quotes["FINNIFTY"]["ltp"] = ltp
-                        _quotes["FINNIFTY"]["up"] = ltp >= _OPEN.get("FINNIFTY", ltp)
-                        
-                # Tell all connected websockets there are new prices
-                _save_quotes_to_redis()
-                _broadcast_event.set()
-                
-            else:
-                logger.warning(f"REST fallback failed: {r.status_code} {r.text[:100]}")
-        except Exception as e:
-            logger.error(f"REST fallback error: {e}")
-            
-        await asyncio.sleep(3)
-            
-        await asyncio.sleep(3)
+
+async def _refresh_dhan_token() -> str | None:
+    """Refresh Dhan token if needed. Returns the current valid token or None."""
+    try:
+        refresh_result = refresh_token_if_needed()
+        if refresh_result.get("refreshed"):
+            logger.info("Dhan token refreshed successfully")
+        elif not refresh_result.get("success"):
+            logger.warning(f"Token refresh failed: {refresh_result.get('message')}")
+            return None
+    except Exception as e:
+        logger.warning(f"Token refresh error: {e}")
+        return None
+
+    token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
+    return token if token else None
 
 
 # Packet counter for debugging
