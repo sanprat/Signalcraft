@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_PATH = PROJECT_ROOT / ".env"
 
-# Dhan login endpoint (B2B)
-DHAN_AUTH_URLS = [os.getenv("DHAN_AUTH_URL", "https://b2b.dhan.co/api/v1/login")]
+# Dhan login endpoint — b2b.dhan.co is deprecated and unresolvable in Docker
+DHAN_AUTH_URLS = [os.getenv("DHAN_AUTH_URL", "https://api.dhan.co/v2/login")]
 DHAN_VALIDATE_URLS = [
     "https://api.dhan.co/v2/fundlimit",
     "https://api.dhan.co/fundlimit",
@@ -85,7 +85,8 @@ def _token_hours_remaining(access_token: str) -> float | None:
 
 def generate_dhan_token(client_id: str = None, password: str = None, totp_secret: str = None) -> dict:
     """
-    Generate a fresh Dhan access token using client ID, password, and TOTP.
+    Generate a fresh Dhan access token.
+    Tries RenewToken API first (fast, no TOTP needed), then falls back to TOTP login.
     
     Returns:
         dict: {
@@ -98,11 +99,45 @@ def generate_dhan_token(client_id: str = None, password: str = None, totp_secret
     client_id = client_id or os.getenv("DHAN_CLIENT_ID", "").strip()
     password = password or os.getenv("DHAN_PASSWORD", "").strip()
     totp_secret = totp_secret or os.getenv("DHAN_TOTP_SECRET", "").strip()
+    current_token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
     
-    if not client_id or not password or not totp_secret:
+    if not client_id:
         return {
             "success": False,
-            "message": "Missing Dhan credentials in environment variables"
+            "message": "Missing DHAN_CLIENT_ID in environment variables"
+        }
+    
+    # ── METHOD 1: RenewToken API (fast, works if current token exists) ──
+    if current_token:
+        try:
+            logger.info("Attempting token renewal via RenewToken API...")
+            renew_headers = {
+                "access-token": current_token,
+                "dhanClientId": client_id
+            }
+            resp = requests.get("https://api.dhan.co/v2/RenewToken", headers=renew_headers, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                if "token" in data:
+                    access_token = data["token"]
+                    os.environ["DHAN_ACCESS_TOKEN"] = access_token
+                    _persist_access_token(access_token)
+                    logger.info("Token renewed successfully via RenewToken API")
+                    return {
+                        "success": True,
+                        "access_token": access_token,
+                        "expires_in": 86400,
+                        "message": "Token renewed via RenewToken API",
+                    }
+            logger.warning(f"RenewToken failed: {resp.status_code} {resp.text[:100]}")
+        except Exception as e:
+            logger.warning(f"RenewToken request error: {e}")
+    
+    # ── METHOD 2: TOTP Login (fallback) ──
+    if not password or not totp_secret:
+        return {
+            "success": False,
+            "message": "RenewToken failed and TOTP credentials missing for fallback login"
         }
     
     try:
