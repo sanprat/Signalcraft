@@ -99,11 +99,28 @@ def fetch_intraday_candles(
                 logger.debug(f"No data for {symbol} on {date.date()}")
                 return pd.DataFrame()
 
-            # Handle response - Dhan returns a list of dicts
+            # Handle response - Dhan returns column-oriented dict
             if isinstance(data, list):
                 df = pd.DataFrame(data)
-            elif isinstance(data, dict) and "data" in data:
-                df = pd.DataFrame(data["data"])
+            elif isinstance(data, dict):
+                # Check if it's an error response
+                if "errorCode" in data or "error" in data:
+                    logger.error(f"API error for {symbol} on {date.date()}: {data}")
+                    return pd.DataFrame()
+                # Check if it's column-oriented data (arrays for each column)
+                elif "open" in data and isinstance(data["open"], list):
+                    # Column-oriented format: {open: [...], high: [...], ...}
+                    df = pd.DataFrame(data)
+                # Check for data key
+                elif "data" in data:
+                    df = pd.DataFrame(data["data"])
+                else:
+                    # Log the actual response for debugging
+                    logger.warning(
+                        f"Unexpected dict response for {symbol}: {list(data.keys())}"
+                    )
+                    logger.debug(f"Response content: {data}")
+                    return pd.DataFrame()
             else:
                 logger.warning(f"Unexpected response format for {symbol}: {type(data)}")
                 return pd.DataFrame()

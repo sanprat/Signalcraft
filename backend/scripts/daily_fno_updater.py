@@ -95,11 +95,21 @@ def fetch_intraday_candles(
                 logger.debug(f"No data for {symbol} on {date.date()}")
                 return pd.DataFrame()
 
-            # Handle response - Dhan returns a list of dicts
+            # Handle response - Dhan returns column-oriented dict
             if isinstance(data, list):
                 df = pd.DataFrame(data)
-            elif isinstance(data, dict) and "data" in data:
-                df = pd.DataFrame(data["data"])
+            elif isinstance(data, dict):
+                # Check if it's column-oriented data (arrays for each column)
+                if "open" in data and isinstance(data["open"], list):
+                    # Column-oriented format: {open: [...], high: [...], ...}
+                    df = pd.DataFrame(data)
+                elif "data" in data:
+                    df = pd.DataFrame(data["data"])
+                else:
+                    logger.warning(
+                        f"Unexpected response format for {symbol}: {type(data)}"
+                    )
+                    return pd.DataFrame()
             else:
                 logger.warning(f"Unexpected response format for {symbol}: {type(data)}")
                 return pd.DataFrame()
