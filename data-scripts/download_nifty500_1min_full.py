@@ -322,10 +322,14 @@ def main():
     # Filter to requested limit
     symbols = all_symbols[: args.limit] if args.limit else all_symbols
 
-    # Verify mappings exist
+    # Filter out stocks without mappings
     missing = [s for s in symbols if s not in mapping]
     if missing:
-        log.error(f"Missing Dhan mappings for {len(missing)} stocks: {missing[:10]}...")
+        log.warning(f"⚠️  Skipping {len(missing)} stocks without Dhan mappings: {missing}")
+        symbols = [s for s in symbols if s in mapping]
+    
+    if not symbols:
+        log.error("No stocks with valid mappings found!")
         return
 
     # Initialize Dhan client
