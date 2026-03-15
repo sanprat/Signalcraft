@@ -32,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import from our modules
-from app.core.symbols import FNO_SYMBOLS, get_fno_config
+from app.core.symbols import FNO_SYMBOLS, get_fno_config, get_fno_start_date
 from app.core.candle_store import (
     init_database,
     insert_candles,
@@ -128,9 +128,28 @@ def fetch_intraday_candles(
             # Add symbol column
             df["symbol"] = symbol
 
-            # Ensure timestamp is datetime
+            # Handle timestamp - Dhan returns Unix timestamps in seconds
             if "timestamp" in df.columns:
-                df["timestamp"] = pd.to_datetime(df["timestamp"])
+                # Convert Unix timestamp (seconds) to datetime
+                # Dhan returns timestamps as integers (Unix epoch seconds)
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True)
+
+                # Convert to IST (Asia/Kolkata timezone)
+                df["timestamp"] = df["timestamp"].dt.tz_convert("Asia/Kolkata")
+
+                # Validate timestamps - filter out invalid dates (pre-2020 or far future)
+                valid_mask = (df["timestamp"].dt.year >= 2020) & (
+                    df["timestamp"].dt.year <= 2030
+                )
+                invalid_count = (~valid_mask).sum()
+                if invalid_count > 0:
+                    logger.warning(
+                        f"Filtering out {invalid_count} invalid timestamps for {symbol} on {date.date()}"
+                    )
+                    df = df[valid_mask].copy()
+
+                # Remove timezone info for storage (DuckDB stores naive timestamps)
+                df["timestamp"] = df["timestamp"].dt.tz_localize(None)
 
             # Select and order required columns
             required_cols = [
@@ -186,8 +205,8 @@ def download_symbol(
 
     Args:
         symbol: Symbol name
-        config: Dict with keys: id, segment, instrument
-        start_date: Start date for download
+        config: Dict with keys: id, segment, instrument, name, start_date
+        start_date: Global start date for download
         end_date: End date for download
         skip_existing: If True, skip dates that already have data
 
@@ -198,6 +217,18 @@ def download_symbol(
     logger.info(f"Downloading {symbol} ({config.get('name', symbol)})")
     logger.info(f"Date range: {start_date.date()} to {end_date.date()}")
     logger.info(f"{'=' * 70}")
+
+    # Get symbol-specific start date (Dhan API limitation)
+    symbol_start_date = get_fno_start_date(symbol)
+    if symbol_start_date:
+        # Use the later of global start_date or symbol's available start_date
+        actual_start_date = max(start_date, symbol_start_date)
+        if actual_start_date != start_date:
+            logger.info(
+                f"Note: {symbol} data available from {symbol_start_date.date()}, using that instead"
+            )
+    else:
+        actual_start_date = start_date
 
     stats = {
         "total_days": 0,
@@ -213,9 +244,9 @@ def download_symbol(
             logger.info(f"Latest data in DB: {latest}")
             current_date = latest + timedelta(days=1)
         else:
-            current_date = start_date
+            current_date = actual_start_date
     else:
-        current_date = start_date
+        current_date = actual_start_date
 
     # Iterate through dates
     while current_date <= end_date:

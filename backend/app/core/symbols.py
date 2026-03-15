@@ -4,6 +4,7 @@ symbols.py — Centralized symbol configuration for FnO and NIFTY500.
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -19,31 +20,36 @@ MAPPING_PATH = PROJECT_ROOT / "data-scripts" / "nifty500_dhan_mapping.json"
 
 # ── FnO Symbols Configuration ──────────────────────────────────────────────
 # Dhan API uses numeric security IDs for indices
+# Note: BANKNIFTY and FINNIFTY intraday data is only available from Jan 2022
 FNO_SYMBOLS: Dict[str, Dict[str, str]] = {
     "NIFTY": {
         "id": "13",
         "segment": "IDX_I",
         "instrument": "INDEX",
         "name": "Nifty 50",
+        "start_date": "2020-01-01",  # NIFTY available from Jan 2020
     },
     "BANKNIFTY": {
         "id": "25",
         "segment": "IDX_I",
         "instrument": "INDEX",
         "name": "Nifty Bank",
+        "start_date": "2022-01-01",  # BANKNIFTY only available from Jan 2022
     },
     "FINNIFTY": {
         "id": "27",
         "segment": "IDX_I",
         "instrument": "INDEX",
         "name": "Nifty Fin Services",
+        "start_date": "2022-01-01",  # FINNIFTY only available from Jan 2022
     },
     # GIFTNIFTY - only available on SGX, may have limited data
     # "GIFTNIFTY": {
     #     "id": "442",
     #     "segment": "IDX_I",
     #     "instrument": "INDEX",
-    #     "name": "Nifty GIFT"
+    #     "name": "Nifty GIFT",
+    #     "start_date": "2022-01-01",
     # },
 }
 
@@ -108,10 +114,26 @@ def get_fno_config(symbol: str) -> Optional[Dict[str, str]]:
         symbol: FnO symbol (NIFTY, BANKNIFTY, FINNIFTY)
 
     Returns:
-        Dict with keys: id, segment, instrument, name
+        Dict with keys: id, segment, instrument, name, start_date
         None if symbol not found
     """
     return FNO_SYMBOLS.get(symbol)
+
+
+def get_fno_start_date(symbol: str) -> Optional[datetime]:
+    """
+    Get the earliest available date for an FnO symbol's historical data.
+
+    Args:
+        symbol: FnO symbol (NIFTY, BANKNIFTY, FINNIFTY)
+
+    Returns:
+        datetime object for the earliest available date, or None if not found
+    """
+    config = FNO_SYMBOLS.get(symbol)
+    if config and "start_date" in config:
+        return datetime.strptime(config["start_date"], "%Y-%m-%d")
+    return None
 
 
 def get_dhan_id(symbol: str) -> Optional[str]:
