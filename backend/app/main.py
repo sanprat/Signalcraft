@@ -3,8 +3,11 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 load_dotenv(dotenv_path="../.env")
 
@@ -20,6 +23,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from app.core.config import settings
+from app.core.rate_limiter import limiter, rate_limit_exceeded_handler
 from app.routers import strategy, backtest, live
 from app.routers.quotes import (
     router as quotes_router,
@@ -38,6 +42,10 @@ from app.core.position_manager import position_manager
 
 app = FastAPI(title=settings.API_TITLE, version=settings.API_VERSION)
 
+# Add rate limiter
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     # Frontend runs on 3000; backend on 8001
@@ -46,6 +54,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# HTTPS redirect middleware for production
+@app.middleware("http")
+async def https_redirect_middleware(request: Request, call_next):
+    """Redirect HTTP to HTTPS in production."""
+    # Only redirect if USE_HTTPS environment variable is set
+    if os.getenv("USE_HTTPS", "").lower() == "true":
+        if request.url.scheme == "http":
+            # Convert http to https
+            https_url = request.url.replace(scheme="https")
+            return RedirectResponse(url=str(https_url), status_code=301)
+    return await call_next(request)
+
 
 app.include_router(strategy.router)
 app.include_router(backtest.router)
@@ -58,6 +80,7 @@ app.include_router(stocks_router)
 app.include_router(screeners_router)
 app.include_router(settings_router)
 
+
 @app.on_event("startup")
 async def startup():
     # Simulation runs ALWAYS as baseline — Dhan data overrides when available
@@ -66,7 +89,7 @@ async def startup():
     asyncio.create_task(_dhan_feed())
     # Broadcast latest _quotes to all connected frontend clients every second
     asyncio.create_task(_broadcast_loop())
-    
+
     # Start services for automated trading
     await signal_monitor.start()
     await position_manager.start()

@@ -3,15 +3,20 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.core.config import settings
 from app.core.database import init_db, create_user, get_user_by_email, get_user_by_id
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Rate limiter for auth endpoints
+limiter = Limiter(key_func=get_remote_address)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
@@ -36,7 +41,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
         expires_delta or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(
+        to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+    )
 
 
 class UserResponse(BaseModel):
@@ -67,7 +74,9 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserResponse:
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+        )
         user_id = payload.get("sub")
         if user_id is None:
             raise credentials_exception
@@ -88,7 +97,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserResponse:
 
 
 @router.post("/register", response_model=TokenResponse)
-async def register(req: RegisterRequest):
+@limiter.limit("3/minute")
+async def register(request: Request, req: RegisterRequest):
     existing = get_user_by_email(req.email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -116,7 +126,8 @@ async def register(req: RegisterRequest):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("5/minute")
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     user = get_user_by_email(form_data.username)
     if not user or not verify_password(form_data.password, user["password_hash"]):
         raise HTTPException(

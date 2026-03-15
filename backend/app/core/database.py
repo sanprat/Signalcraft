@@ -1,6 +1,7 @@
 """
 Database connection module supporting PostgreSQL exclusively.
 """
+
 from contextlib import contextmanager
 from typing import Optional, Generator
 import psycopg2
@@ -25,7 +26,7 @@ def get_db_pool():
             port=settings.DB_PORT,
             database=settings.DB_NAME,
             user=settings.DB_USER,
-            password=settings.DB_PASSWORD
+            password=settings.DB_PASSWORD,
         )
     return _db_pool
 
@@ -43,7 +44,7 @@ def get_db():
     """
     Get PostgreSQL database connection.
     Use as context manager for automatic cleanup.
-    
+
     Usage:
         with get_db() as conn:
             cursor = conn.cursor()
@@ -64,7 +65,7 @@ def init_db():
     """
     with get_db() as conn:
         cursor = conn.cursor()
-        
+
         # Users table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -77,7 +78,7 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Admin logs table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS admin_logs (
@@ -89,19 +90,25 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Ensure existing constraints have ON DELETE clauses
         try:
             # Drop old constraints if they exist (Postgres auto-names them usually like table_column_fkey)
-            cursor.execute("ALTER TABLE admin_logs DROP CONSTRAINT IF EXISTS admin_logs_admin_id_fkey")
-            cursor.execute("ALTER TABLE admin_logs DROP CONSTRAINT IF EXISTS admin_logs_target_user_id_fkey")
+            cursor.execute(
+                "ALTER TABLE admin_logs DROP CONSTRAINT IF EXISTS admin_logs_admin_id_fkey"
+            )
+            cursor.execute(
+                "ALTER TABLE admin_logs DROP CONSTRAINT IF EXISTS admin_logs_target_user_id_fkey"
+            )
         except Exception as e:
-            print(f"Note: Constraint update skipped or failed (might already be updated): {e}")
-            
+            print(
+                f"Note: Constraint update skipped or failed (might already be updated): {e}"
+            )
+
         cursor.execute("COMMIT")
-        
+
         # --- Live Trading Module Tables ---
-        
+
         # Broker Credentials
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS broker_credentials (
@@ -114,7 +121,7 @@ def init_db():
                 UNIQUE(user_id, broker)
             )
         """)
-        
+
         # Active live strategies configuration
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS live_strategies (
@@ -132,7 +139,7 @@ def init_db():
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Open and closed positions
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS positions (
@@ -157,7 +164,7 @@ def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Audit logs for automated trading events
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS trading_logs (
@@ -170,13 +177,23 @@ def init_db():
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
+
         # Indexes for performance
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_live_strategies_user ON live_strategies(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_live_strategies_status ON live_strategies(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_strategy ON positions(live_strategy_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_trading_logs_strategy ON trading_logs(live_strategy_id)")
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_live_strategies_user ON live_strategies(user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_live_strategies_status ON live_strategies(status)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_positions_strategy ON positions(live_strategy_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_trading_logs_strategy ON trading_logs(live_strategy_id)"
+        )
 
         cursor.execute("COMMIT")
         cursor.close()
@@ -184,7 +201,10 @@ def init_db():
 
 # ── User Database Functions (Database Agnostic) ──────────────────────────────
 
-def create_user(email: str, password_hash: str, full_name: Optional[str] = None) -> Optional[int]:
+
+def create_user(
+    email: str, password_hash: str, full_name: Optional[str] = None
+) -> Optional[int]:
     """Create a new user and return their ID."""
     with get_db() as conn:
         try:
@@ -195,7 +215,7 @@ def create_user(email: str, password_hash: str, full_name: Optional[str] = None)
                 VALUES (%s, %s, %s) 
                 RETURNING id
                 """,
-                (email, password_hash, full_name)
+                (email, password_hash, full_name),
             )
             user_id = cursor.fetchone()[0]
             cursor.execute("COMMIT")
@@ -221,7 +241,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
                 "full_name": row[3],
                 "role": row[4],
                 "is_active": row[5],
-                "created_at": str(row[6]) if row[6] else None
+                "created_at": str(row[6]) if row[6] else None,
             }
         return None
 
@@ -234,8 +254,8 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
             """
             SELECT id, email, full_name, role, is_active, created_at 
             FROM users WHERE id = %s
-            """, 
-            (user_id,)
+            """,
+            (user_id,),
         )
         row = cursor.fetchone()
         cursor.close()
@@ -246,7 +266,7 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
                 "full_name": row[2],
                 "role": row[3],
                 "is_active": row[4],
-                "created_at": str(row[5]) if row[5] else None
+                "created_at": str(row[5]) if row[5] else None,
             }
         return None
 
@@ -260,7 +280,7 @@ def get_all_users(limit: int = 100, offset: int = 0) -> list:
             SELECT id, email, full_name, role, is_active, created_at 
             FROM users ORDER BY created_at DESC LIMIT %s OFFSET %s
             """,
-            (limit, offset)
+            (limit, offset),
         )
         rows = cursor.fetchall()
         cursor.close()
@@ -271,17 +291,29 @@ def get_all_users(limit: int = 100, offset: int = 0) -> list:
                 "full_name": row[2],
                 "role": row[3],
                 "is_active": row[4],
-                "created_at": str(row[5]) if row[5] else None
+                "created_at": str(row[5]) if row[5] else None,
             }
             for row in rows
         ]
+
+
+# Allowed columns for dynamic update - prevents SQL injection
+ALLOWED_USER_UPDATE_COLUMNS = frozenset(
+    {"email", "full_name", "role", "is_active", "password_hash"}
+)
 
 
 def update_user(user_id: int, **kwargs) -> bool:
     """Update user fields. Returns True if successful."""
     if not kwargs:
         return True
-    
+
+    # Validate that only allowed columns are being updated
+    invalid_columns = set(kwargs.keys()) - ALLOWED_USER_UPDATE_COLUMNS
+    if invalid_columns:
+        print(f"Error updating user: Invalid columns: {invalid_columns}")
+        return False
+
     with get_db() as conn:
         try:
             set_clause = ", ".join([f"{k} = %s" for k in kwargs.keys()])
@@ -312,7 +344,13 @@ def delete_user(user_id: int) -> bool:
 
 # ── Admin Logs Functions ──────────────────────────────────────────────────────
 
-def log_admin_action(admin_id: int, action: str, target_user_id: Optional[int] = None, details: Optional[str] = None):
+
+def log_admin_action(
+    admin_id: int,
+    action: str,
+    target_user_id: Optional[int] = None,
+    details: Optional[str] = None,
+):
     """Log an admin action to the audit log."""
     with get_db() as conn:
         try:
@@ -322,7 +360,7 @@ def log_admin_action(admin_id: int, action: str, target_user_id: Optional[int] =
                 INSERT INTO admin_logs (admin_id, action, target_user_id, details)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (admin_id, action, target_user_id, details)
+                (admin_id, action, target_user_id, details),
             )
             cursor.execute("COMMIT")
             cursor.close()
@@ -339,7 +377,7 @@ def get_admin_logs(limit: int = 50) -> list:
             SELECT id, admin_id, action, target_user_id, details, created_at 
             FROM admin_logs ORDER BY created_at DESC LIMIT %s
             """,
-            (limit,)
+            (limit,),
         )
         rows = cursor.fetchall()
         cursor.close()
@@ -350,7 +388,7 @@ def get_admin_logs(limit: int = 50) -> list:
                 "action": row[2],
                 "target_user_id": row[3],
                 "details": row[4],
-                "created_at": str(row[5]) if row[5] else None
+                "created_at": str(row[5]) if row[5] else None,
             }
             for row in rows
         ]
@@ -358,37 +396,46 @@ def get_admin_logs(limit: int = 50) -> list:
 
 # ── Stats Functions ───────────────────────────────────────────────────────────
 
+
 def get_user_stats() -> dict:
     """Get user statistics."""
     with get_db() as conn:
         cursor = conn.cursor()
         stats = {}
-        
+
         cursor.execute("SELECT COUNT(*) FROM users")
         stats["total_users"] = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = TRUE")
         stats["active_users"] = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
         stats["admin_users"] = cursor.fetchone()[0]
-        
+
         stats["inactive_users"] = stats["total_users"] - stats["active_users"]
-        
+
         cursor.close()
+        return stats
+
+
 # ── Broker Credentials Functions ─────────────────────────────────────────────
+
 
 def save_broker_credentials(user_id: int, broker: str, credentials_dict: dict) -> bool:
     with get_db() as conn:
         try:
             import json
+
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO broker_credentials (user_id, broker, credentials, updated_at)
                 VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (user_id, broker) 
                 DO UPDATE SET credentials = EXCLUDED.credentials, updated_at = CURRENT_TIMESTAMP
-            """, (user_id, broker, json.dumps(credentials_dict)))
+            """,
+                (user_id, broker, json.dumps(credentials_dict)),
+            )
             cursor.execute("COMMIT")
             cursor.close()
             return True
@@ -396,13 +443,18 @@ def save_broker_credentials(user_id: int, broker: str, credentials_dict: dict) -
             print(f"Error saving broker credentials: {e}")
             return False
 
+
 def get_broker_credentials(user_id: int, broker: str) -> Optional[dict]:
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT credentials FROM broker_credentials WHERE user_id = %s AND broker = %s AND is_active = TRUE", (user_id, broker))
+        cursor.execute(
+            "SELECT credentials FROM broker_credentials WHERE user_id = %s AND broker = %s AND is_active = TRUE",
+            (user_id, broker),
+        )
         row = cursor.fetchone()
         cursor.close()
         if row:
             import json
+
             return row[0] if isinstance(row[0], dict) else json.loads(row[0])
         return None
