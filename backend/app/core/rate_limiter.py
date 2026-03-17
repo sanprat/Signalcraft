@@ -3,14 +3,12 @@ Rate Limiter Configuration
 Provides rate limiting for API endpoints using SlowAPI.
 """
 
-from typing import Any, Callable
+from typing import Any
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 
 
 def get_client_ip(request: Request) -> str:

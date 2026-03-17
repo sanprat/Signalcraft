@@ -7,16 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.core.config import settings
 from app.core.database import init_db, create_user, get_user_by_email, get_user_by_id
+from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-# Rate limiter for auth endpoints
-limiter = Limiter(key_func=get_remote_address)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
