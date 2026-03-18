@@ -49,7 +49,7 @@ UNDERLYING_DIR = PROJECT_ROOT / "data" / "underlying"
 FNO_DIR = PROJECT_ROOT / "data" / "candles"
 MAPPING_FILE = Path(__file__).parent / "nifty500_dhan_mapping.json"
 
-STOCK_INTERVALS = ["1D", "5min", "15min"]
+STOCK_INTERVALS = ["1D", "1min", "5min", "15min"]
 INDEX_INTERVALS = ["1min", "5min", "15min"]
 FNO_INTERVALS = ["1min", "5min", "15min"]
 FNO_OFFSETS = list(range(-10, 11))  # ATM-10 to ATM+10
