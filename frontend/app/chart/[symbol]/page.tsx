@@ -152,18 +152,41 @@ export default function ChartSymbolPage() {
   }, [connected, symbol, subscribe]);
 
   useEffect(() => {
-    if (!livePrice || !data.length) return;
+    // Clear stale candle when livePrice is 0/undefined (e.g. between reconnects)
+    if (!livePriceValid || !data.length) {
+      setRealtimeCandle(null);
+      return;
+    }
     const lastBar = data[data.length - 1];
+    const prevClose = data.length > 1 ? data[data.length - 2].close : lastBar.close;
     const today = new Date().toISOString().split('T')[0];
+
     if (isIntraday) {
       const now = Math.floor(Date.now() / 1000);
-      setRealtimeCandle({ time: now, open: livePrice, high: livePrice, low: livePrice, close: livePrice });
+      setRealtimeCandle({ time: now, open: livePrice!, high: livePrice!, low: livePrice!, close: livePrice! });
     } else if (lastBar.time === today) {
-      setRealtimeCandle({ time: lastBar.time, open: lastBar.open, high: Math.max(lastBar.high, livePrice), low: Math.min(lastBar.low, livePrice), close: livePrice });
+      // Update today's existing historical bar
+      setRealtimeCandle({
+        time: lastBar.time,
+        open: lastBar.open,
+        high: Math.max(lastBar.high, livePrice!),
+        low:  Math.min(lastBar.low,  livePrice!),
+        close: livePrice!,
+      });
     } else {
-      setRealtimeCandle({ time: today, open: livePrice, high: livePrice, low: livePrice, close: livePrice });
+      // New trading day: use prev close as open so we get a proper candle
+      // (not a flat spike that looks like a 34% crash)
+      const dayOpen = prevClose ?? livePrice!;
+      setRealtimeCandle({
+        time:  today,
+        open:  dayOpen,
+        high:  Math.max(dayOpen, livePrice!),
+        low:   Math.min(dayOpen, livePrice!),
+        close: livePrice!,
+      });
     }
-  }, [livePrice, data, isIntraday]);
+  }, [livePriceValid, livePrice, data, isIntraday]);
+
 
   const handleCrosshairMove = useCallback((bar: HoveredBar | null) => {
     setHoveredBar(bar);
