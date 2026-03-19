@@ -448,7 +448,10 @@ async def _handle_dynamic_sub(symbol: str):
             
     # 2. Check if it's a Nifty 500 stock
     if not token and symbol_upper in SYMBOL_MAP:
-        token = SYMBOL_MAP[symbol_upper]
+        # IMPORTANT: always cast to str — SYMBOL_MAP JSON values are integers,
+        # but _parse_dhan_packet always produces str tokens from binary packets.
+        # A str vs int key mismatch would silently drop every tick for this symbol.
+        token = str(SYMBOL_MAP[symbol_upper])
         exchange = "NSE_EQ"
         
     if not token:
