@@ -39,7 +39,9 @@ function normaliseIntraday(data: CandlestickData[]): {
   indexToTime: Map<number, number>;
 } {
   const indexToTime = new Map<number, number>();
-  const normalisedData = data.map((bar, i) => {
+  // Filter out any bars with a zero/epoch timestamp (bad data)
+  const validData = data.filter(bar => (bar.time as number) > 1_000_000_000);
+  const normalisedData = validData.map((bar, i) => {
     indexToTime.set(i, bar.time as number);
     return { ...bar, time: i as unknown as Time };
   });
@@ -71,7 +73,8 @@ function fmtTime(ts: number, isIntraday: boolean): string {
  */
 function intradayTickFormatter(index: number, indexToTime: Map<number, number>): string {
   const ts = indexToTime.get(index);
-  if (ts === undefined) return '';
+  // Guard: missing or epoch timestamp (before 2010) → hide the tick label
+  if (ts === undefined || ts < 1_262_300_000) return '';
 
   const d = new Date(ts * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -157,7 +160,7 @@ export default function TradingViewChart({
       autoSize: true,
       rightPriceScale: {
         borderColor: '#E5E7EB',
-        scaleMargins: { top: 0.05, bottom: 0.22 },  // leave room for volume
+        scaleMargins: { top: 0.05, bottom: 0.28 },  // leave room for volume (TV ~25%)
       },
       timeScale: {
         borderColor: '#E5E7EB',
@@ -245,9 +248,9 @@ export default function TradingViewChart({
         priceLineVisible: false,
       });
 
-      // Attach volume scale — occupies bottom 20 % of the pane
+      // Attach volume scale — occupies bottom 25% of the pane (TV style)
       chart.priceScale('volume').applyOptions({
-        scaleMargins: { top: 0.80, bottom: 0 },
+        scaleMargins: { top: 0.75, bottom: 0 },
         visible: false,                // hide the volume price axis (TV style)
       });
 

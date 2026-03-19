@@ -57,8 +57,8 @@ export default function ChartSymbolPage() {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [isIntraday, setIsIntraday] = useState(true);
-    const [interval, setInterval] = useState('15min');
+    const [isIntraday, setIsIntraday] = useState(false);
+    const [interval, setInterval] = useState('1D');
 
     // Live Data Integration
     const { quotes, connected, subscribe, lastUpdate, isLive } = useQuotes(config.apiBaseUrl);
