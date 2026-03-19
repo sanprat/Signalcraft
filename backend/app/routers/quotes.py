@@ -668,6 +668,7 @@ def get_historical_quotes(symbol: str, interval: str = "15min"):
         cols = ['time', 'open', 'high', 'low', 'close', 'value']
         # Filter to only existing columns to avoid key errors
         available_cols = [c for c in cols if c in df.columns]
+        df = df.sort_values('time')
         records = df[available_cols].to_dict(orient='records')
         
         # Final check if we are actually returning intraday data

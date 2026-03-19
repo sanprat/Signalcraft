@@ -346,7 +346,7 @@ export default function ChartSymbolPage() {
                         volumeData={data.map(d => ({
                             time: d.time,
                             value: d.value,
-                            color: d.open > d.close ? '#ef535080' : '#26a69a80'
+                            color: d.open > d.close ? 'rgba(242, 54, 69, 0.5)' : 'rgba(8, 153, 129, 0.5)'
                         }))}
                         indicators={indicators}
                         realtimeData={realtimeCandle}

@@ -109,10 +109,29 @@ export default function TradingViewChart({
         textColor: '#333',
       },
       grid: {
-        vertLines: { color: '#f0f3fa' },
-        horzLines: { color: '#f0f3fa' },
+        vertLines: { color: '#e1e3e6' },
+        horzLines: { color: '#e1e3e6' },
       },
       autoSize: true,   // fills the container — no fixed height
+      localization: {
+        timeFormatter: (time: unknown) => {
+          const index = time as number;
+          if (indexToTime) {
+            const realTs = indexToTime.get(index);
+            if (realTs !== undefined) {
+              const d = new Date(realTs * 1000);
+              const pad = (n: number) => String(n).padStart(2, '0');
+              return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            }
+          }
+          if (typeof time === 'number') {
+            const d = new Date(time * 1000);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+          }
+          return String(time);
+        },
+      },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
@@ -137,11 +156,13 @@ export default function TradingViewChart({
     chartInstanceRef.current = chart;
 
     const candlestickSeries = chart.addCandlestickSeries({
-      upColor: '#26a69a',
-      downColor: '#ef5350',
-      borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
+      upColor: '#089981',
+      downColor: '#f23645',
+      borderVisible: true,
+      wickUpColor: '#089981',
+      wickDownColor: '#f23645',
+      borderUpColor: '#089981',
+      borderDownColor: '#f23645',
     });
     candlestickSeries.setData(chartData);
     candlestickSeriesRef.current = candlestickSeries;
@@ -190,12 +211,25 @@ export default function TradingViewChart({
     // Volume
     if (volData && volData.length > 0) {
       const volumeSeries = chart.addHistogramSeries({
-        color: '#26a69a',
         priceFormat: { type: 'volume' },
         priceScaleId: '',
       });
       chart.priceScale('').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-      volumeSeries.setData(volData as any);
+      
+      const timeToCandle = new Map();
+      chartData.forEach((c: any) => timeToCandle.set(c.time, c));
+      
+      const coloredVolData = volData.map((v: any) => {
+        if (v.color) return v; // Respect already assigned color
+        const candle = timeToCandle.get(v.time);
+        if (candle) {
+           const isUp = (candle.close as number) >= (candle.open as number);
+           return { ...v, color: isUp ? 'rgba(8, 153, 129, 0.5)' : 'rgba(242, 54, 69, 0.5)' };
+        }
+        return v;
+      });
+
+      volumeSeries.setData(coloredVolData as any);
     }
 
     const handleResize = () => {
