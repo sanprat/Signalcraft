@@ -221,41 +221,6 @@ export default function ChartSymbolPage() {
                 </Link>
             </div>
 
-            {/* ─── Live Price Info Panel ──────────────────────────────────── */}
-            {displayPrice && (
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '16px', marginBottom: '12px', paddingLeft: '4px' }}>
-                    <span style={{ fontSize: '1.875rem', fontWeight: 700, color: '#111827', fontVariantNumeric: 'tabular-nums' }}>
-                        {displayPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#9ca3af' }}>INR</span>
-                    {priceChange !== null && priceChangePct !== null && (
-                        <span style={{
-                            fontSize: '0.875rem',
-                            fontWeight: 600,
-                            fontVariantNumeric: 'tabular-nums',
-                            color: priceChange >= 0 ? '#059669' : '#ef4444'
-                        }}>
-                            {priceChange >= 0 ? '+' : ''}
-                            {priceChange.toFixed(2)}
-                            {' ('}
-                            {priceChange >= 0 ? '+' : ''}
-                            {priceChangePct.toFixed(2)}%{')'}
-                        </span>
-                    )}
-                    {hasLiveFeed && connected ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 500, color: '#059669' }}>
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', animation: 'pulse 2s infinite' }} />
-                            Live
-                        </span>
-                    ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', fontWeight: 500, color: '#9ca3af' }}>
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#d1d5db' }} />
-                            Last Close
-                        </span>
-                    )}
-                </div>
-            )}
-
             {/* Timeframe Selector & Indicator Controls */}
             <div className="flex flex-wrap items-center gap-4 mb-4 bg-gray-50 rounded-lg px-4 py-2.5 border border-gray-200">
                 <div className="flex items-center gap-2 pr-4 border-r border-gray-200">

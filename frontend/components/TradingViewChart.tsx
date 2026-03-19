@@ -294,42 +294,70 @@ export default function TradingViewChart({
   return (
     <div className="w-full h-full flex flex-col rounded-xl border border-gray-200 overflow-hidden shadow-sm bg-white">
 
-      {/* ── OHLC header bar ─────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-3 py-2 border-b border-gray-100 text-xs font-mono bg-white flex-shrink-0 flex-wrap">
-        {symbol && (
-          <span className="font-bold text-gray-800 text-sm mr-1">{symbol}</span>
-        )}
-        {ohlc ? (
-          <>
-            <span className="text-gray-400 text-[11px]">{ohlc.time}</span>
-
-            <span className="flex gap-1">
-              <span className="text-gray-400">O</span>
-              <span className="text-gray-700">{fmtNum(ohlc.open)}</span>
-            </span>
-            <span className="flex gap-1">
-              <span className="text-gray-400">H</span>
-              <span className="text-green-600 font-semibold">{fmtNum(ohlc.high)}</span>
-            </span>
-            <span className="flex gap-1">
-              <span className="text-gray-400">L</span>
-              <span className="text-red-500 font-semibold">{fmtNum(ohlc.low)}</span>
-            </span>
-            <span className="flex gap-1">
-              <span className="text-gray-400">C</span>
-              <span className="text-gray-800 font-semibold">{fmtNum(ohlc.close)}</span>
-            </span>
-
-            <span style={{ color: chgColor }} className="font-semibold ml-1">
-              {isUp ? '+' : ''}{fmtNum(ohlc.change)}&nbsp;
-              <span className="opacity-80">
-                ({isUp ? '+' : ''}{ohlc.changePct.toFixed(2)}%)
+      {/* ── Enhanced OHLC Header Bar ─────────────────────────────────────────── */}
+      <div className="flex flex-col px-4 py-3 border-b border-gray-200 bg-white flex-shrink-0">
+        {/* Top row: Symbol and Price */}
+        <div className="flex items-baseline gap-3 mb-2">
+          {symbol && (
+            <span className="text-2xl font-bold text-gray-900 tracking-tight">{symbol}</span>
+          )}
+          {ohlc && (
+            <>
+              <span className="text-3xl font-bold text-gray-900 tabular-nums tracking-tight">
+                {fmtNum(ohlc.close)}
               </span>
+              <span className="text-sm text-gray-500 font-medium">INR</span>
+              <span 
+                className="text-base font-semibold tabular-nums"
+                style={{ color: chgColor }}
+              >
+                {isUp ? '+' : ''}{fmtNum(ohlc.change)} ({isUp ? '+' : ''}{ohlc.changePct.toFixed(2)}%)
+              </span>
+              <span className="flex items-center gap-1.5 text-sm font-medium text-gray-500">
+                <span 
+                  className="w-2 h-2 rounded-full animate-pulse"
+                  style={{ backgroundColor: chgColor }}
+                />
+                Live
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Bottom row: OHLC details and Time */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4 text-sm font-mono">
+            {ohlc ? (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-gray-400 text-xs uppercase tracking-wider">O</span>
+                  <span className="font-semibold text-gray-700">{fmtNum(ohlc.open)}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-gray-400 text-xs uppercase tracking-wider">H</span>
+                  <span className="font-semibold text-green-600">{fmtNum(ohlc.high)}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-gray-400 text-xs uppercase tracking-wider">L</span>
+                  <span className="font-semibold text-red-600">{fmtNum(ohlc.low)}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-gray-400 text-xs uppercase tracking-wider">C</span>
+                  <span className="font-semibold text-gray-900">{fmtNum(ohlc.close)}</span>
+                </span>
+              </>
+            ) : (
+              <span className="text-gray-300">Loading…</span>
+            )}
+          </div>
+
+          {/* Timestamp */}
+          {ohlc && (
+            <span className="text-xs text-gray-400 font-mono">
+              {ohlc.time}
             </span>
-          </>
-        ) : (
-          <span className="text-gray-300">Loading…</span>
-        )}
+          )}
+        </div>
       </div>
 
       {/* ── Chart canvas ────────────────────────────────────────────────────── */}
