@@ -258,8 +258,10 @@ export default function TradingViewChart({
         )}
       </div>
 
-      {/* ── Chart canvas fills remaining space ── */}
-      <div ref={chartContainerRef} className="flex-1 w-full" style={{ minHeight: 0 }} />
+      {/* ── Chart canvas: position:absolute fills the flex space so autoSize works ── */}
+      <div className="flex-1 relative" style={{ minHeight: 0 }}>
+        <div ref={chartContainerRef} style={{ position: 'absolute', inset: 0 }} />
+      </div>
     </div>
   );
 }
