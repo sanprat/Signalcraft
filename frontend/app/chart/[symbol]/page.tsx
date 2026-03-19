@@ -324,14 +324,14 @@ export default function ChartSymbolPage() {
                 </div>
             </div>
 
-            <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col items-center justify-center min-h-[500px]">
+            <div className="flex-1 flex flex-col" style={{ minHeight: 0 }}>
                 {loading ? (
-                    <div className="flex flex-col items-center text-gray-400 gap-3">
+                    <div className="flex flex-col items-center text-gray-400 gap-3 m-auto">
                         <Loader2 className="w-8 h-8 animate-spin" />
                         <p>Loading chart data...</p>
                     </div>
                 ) : error ? (
-                    <div className="text-red-500 font-medium bg-red-50 px-6 py-4 rounded-lg">
+                    <div className="text-red-500 font-medium bg-red-50 px-6 py-4 rounded-lg m-auto">
                         {error}
                     </div>
                 ) : data.length > 0 ? (
@@ -350,9 +350,11 @@ export default function ChartSymbolPage() {
                         }))}
                         indicators={indicators}
                         realtimeData={realtimeCandle}
+                        isIntraday={isIntraday}
+                        symbol={symbol}
                     />
                 ) : (
-                    <p className="text-gray-400">No chart data available.</p>
+                    <p className="text-gray-400 m-auto">No chart data available.</p>
                 )}
             </div>
         </div>

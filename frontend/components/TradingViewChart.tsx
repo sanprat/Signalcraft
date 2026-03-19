@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, Time } from 'lightweight-charts';
 
 interface IndicatorConfig {
@@ -15,14 +15,20 @@ interface ChartProps {
   volumeData?: { time: Time; value: number; color?: string }[];
   indicators?: IndicatorConfig[];
   realtimeData?: CandlestickData;
-  isIntraday?: boolean; // pass true for 1min/5min/15min charts
+  isIntraday?: boolean;
+  symbol?: string;
 }
 
-/**
- * For intraday charts, replace real Unix timestamps with sequential integer indices
- * so lightweight-charts doesn't render overnight/weekend blank spaces between sessions.
- * Returns the normalised data and a map from index → real timestamp (for the axis formatter).
- */
+interface OhlcInfo {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  change: number;
+  changePct: number;
+}
+
 function normaliseIntraday(data: CandlestickData[]): {
   normalisedData: CandlestickData[];
   indexToTime: Map<number, number>;
@@ -35,19 +41,54 @@ function normaliseIntraday(data: CandlestickData[]): {
   return { normalisedData, indexToTime };
 }
 
-export default function TradingViewChart({ data, volumeData, indicators, realtimeData, isIntraday }: ChartProps) {
+function fmtNum(n: number) {
+  return n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtTime(ts: number, isIntraday: boolean): string {
+  const d = new Date(ts * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const date = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+  if (!isIntraday) return date;
+  return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export default function TradingViewChart({
+  data, volumeData, indicators, realtimeData, isIntraday, symbol
+}: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartInstanceRef = useRef<IChartApi | null>(null);
+  const chartInstanceRef    = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const indexToTimeRef = useRef<Map<number, number> | null>(null);
+
+  // OHLC info shown in the header bar
+  const [ohlc, setOhlc] = useState<OhlcInfo | null>(null);
+
+  // Initialise header from last bar
+  useEffect(() => {
+    if (data.length === 0) return;
+    const last = data[data.length - 1];
+    const prev = data.length > 1 ? data[data.length - 2].close : last.close;
+    const looksIntraday = isIntraday ??
+      (typeof last.time === 'number' && (last.time as number) > 1_000_000_000);
+    const ts = typeof last.time === 'number' ? last.time as number : null;
+    setOhlc({
+      time: ts ? fmtTime(ts, looksIntraday) : String(last.time),
+      open: last.open as number,
+      high: last.high as number,
+      low: last.low as number,
+      close: last.close as number,
+      change: (last.close as number) - (prev as number),
+      changePct: (((last.close as number) - (prev as number)) / (prev as number)) * 100,
+    });
+  }, [data, isIntraday]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Auto-detect intraday: Unix timestamps are > 1_000_000_000
     const looksIntraday = isIntraday ??
       (data.length > 0 && typeof data[0].time === 'number' && (data[0].time as number) > 1_000_000_000);
 
-    // Normalise intraday data to sequential indices to remove session gaps
     let chartData = data;
     let volData = volumeData;
     let indexToTime: Map<number, number> | null = null;
@@ -56,8 +97,7 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
       const result = normaliseIntraday(data);
       chartData = result.normalisedData;
       indexToTime = result.indexToTime;
-
-      // Also normalise volume data to the same indices
+      indexToTimeRef.current = indexToTime;
       if (volumeData && volumeData.length === data.length) {
         volData = volumeData.map((v, i) => ({ ...v, time: i as unknown as Time }));
       }
@@ -72,23 +112,20 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
         vertLines: { color: '#f0f3fa' },
         horzLines: { color: '#f0f3fa' },
       },
-      width: chartContainerRef.current.clientWidth,
-      height: 500,
+      autoSize: true,   // fills the container — no fixed height
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
         borderColor: '#D1D5DB',
-        // Map sequential index → human-readable HH:MM label
         ...(indexToTime ? {
           tickMarkFormatter: (index: number) => {
             const ts = indexToTime!.get(index);
-            if (ts === undefined) return String(index);
+            if (ts === undefined) return '';
             const d = new Date(ts * 1000);
             const pad = (n: number) => String(n).padStart(2, '0');
-            // Show date when near start of day (9:15 AM = 03:45 UTC)
-            const utcHour = d.getUTCHours();
-            const utcMin  = d.getUTCMinutes();
-            if (utcHour === 3 && utcMin <= 20) {
+            const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+            // 03:45 UTC = 09:15 IST (market open) → show date
+            if (utcMin >= 220 && utcMin <= 230) {
               return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
             }
             return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -99,7 +136,6 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
 
     chartInstanceRef.current = chart;
 
-    // Candlestick series
     const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -107,11 +143,39 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
       wickUpColor: '#26a69a',
       wickDownColor: '#ef5350',
     });
-
     candlestickSeries.setData(chartData);
     candlestickSeriesRef.current = candlestickSeries;
 
-    // Indicators (Line Series)
+    // ── Crosshair OHLC update ──────────────────────────────────────────────────
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !param.seriesData) return;
+      const raw = param.seriesData.get(candlestickSeries) as any;
+      if (!raw) return;
+
+      const index = param.time as number;
+      const realTs = indexToTime ? indexToTime.get(index) : (index as number);
+      const timeStr = realTs
+        ? fmtTime(realTs, looksIntraday)
+        : (looksIntraday ? String(index) : String(param.time));
+
+      // Compute change vs previous bar
+      const barIndex = looksIntraday ? index : chartData.findIndex(b => b.time === param.time);
+      const prevClose = barIndex > 0
+        ? (chartData[barIndex - 1].close as number)
+        : (raw.open as number);
+
+      setOhlc({
+        time: timeStr,
+        open: raw.open,
+        high: raw.high,
+        low: raw.low,
+        close: raw.close,
+        change: raw.close - prevClose,
+        changePct: ((raw.close - prevClose) / prevClose) * 100,
+      });
+    });
+
+    // Indicators
     if (indicators && indicators.length > 0) {
       indicators.forEach(ind => {
         const lineSeries = chart.addLineSeries({
@@ -123,26 +187,21 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
       });
     }
 
-    // Volume histogram
+    // Volume
     if (volData && volData.length > 0) {
       const volumeSeries = chart.addHistogramSeries({
         color: '#26a69a',
         priceFormat: { type: 'volume' },
         priceScaleId: '',
       });
-      chart.priceScale('').applyOptions({
-        scaleMargins: { top: 0.8, bottom: 0 },
-      });
+      chart.priceScale('').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
       volumeSeries.setData(volData as any);
     }
 
-    // Responsive resize
     const handleResize = () => {
-      if (chartContainerRef.current && chartInstanceRef.current) {
-        chartInstanceRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-        });
-      }
+      chartInstanceRef.current?.applyOptions({
+        width: chartContainerRef.current?.clientWidth ?? 0,
+      });
     };
     window.addEventListener('resize', handleResize);
 
@@ -152,17 +211,55 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
     };
   }, [data, volumeData, indicators, isIntraday]);
 
-  // Handle live updates
+  // Live update
   useEffect(() => {
     if (realtimeData && candlestickSeriesRef.current) {
       candlestickSeriesRef.current.update(realtimeData);
     }
   }, [realtimeData]);
 
+  const isUp = ohlc ? ohlc.change >= 0 : true;
+  const chgColor = isUp ? '#059669' : '#ef4444';
+
   return (
-    <div
-      ref={chartContainerRef}
-      className="w-full rounded-xl border border-gray-200 overflow-hidden shadow-sm"
-    />
+    <div className="w-full h-full flex flex-col rounded-xl border border-gray-200 overflow-hidden shadow-sm bg-white">
+
+      {/* ── TradingView-style OHLC header bar ── */}
+      <div className="flex items-center gap-4 px-3 py-1.5 border-b border-gray-100 text-xs font-mono bg-gray-50 flex-shrink-0 flex-wrap">
+        {symbol && (
+          <span className="font-bold text-gray-700 mr-1">{symbol}</span>
+        )}
+        {ohlc ? (
+          <>
+            <span className="text-gray-400">{ohlc.time}</span>
+            <span>
+              <span className="text-gray-400">O </span>
+              <span className="text-gray-700">{fmtNum(ohlc.open)}</span>
+            </span>
+            <span>
+              <span className="text-gray-400">H </span>
+              <span className="text-green-600 font-semibold">{fmtNum(ohlc.high)}</span>
+            </span>
+            <span>
+              <span className="text-gray-400">L </span>
+              <span className="text-red-500 font-semibold">{fmtNum(ohlc.low)}</span>
+            </span>
+            <span>
+              <span className="text-gray-400">C </span>
+              <span className="text-gray-800 font-semibold">{fmtNum(ohlc.close)}</span>
+            </span>
+            <span style={{ color: chgColor }} className="font-semibold">
+              {isUp ? '+' : ''}{fmtNum(ohlc.change)}{' '}
+              ({isUp ? '+' : ''}{ohlc.changePct.toFixed(2)}%)
+            </span>
+          </>
+        ) : (
+          <span className="text-gray-300">Loading...</span>
+        )}
+      </div>
+
+      {/* ── Chart canvas fills remaining space ── */}
+      <div ref={chartContainerRef} className="flex-1 w-full" style={{ minHeight: 0 }} />
+    </div>
   );
 }
