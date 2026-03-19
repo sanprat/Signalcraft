@@ -98,6 +98,55 @@ def save_telegram_config(body: TelegramConfigReq, current_user: UserResponse = D
     return {"status": "success", "message": "Telegram configuration saved."}
 
 
+@router.get("/telegram/lookup")
+async def lookup_telegram_chat_id(current_user: UserResponse = Depends(get_current_user)):
+    """
+    Call the bot's getUpdates to return a list of Telegram users who've
+    messaged the bot. The user can pick themselves from the list.
+    Requires them to have sent at least one message to @Pytradersc_bot first.
+    """
+    import httpx
+    from app.core.config import settings
+
+    creds = get_broker_credentials(current_user.id, "telegram") or {}
+    bot_token = creds.get("bot_token") or settings.TELEGRAM_BOT_TOKEN or ""
+
+    if not bot_token:
+        raise HTTPException(status_code=400, detail="No bot token configured.")
+
+    url = f"https://api.telegram.org/bot{bot_token}/getUpdates"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+        data = resp.json()
+        if not data.get("ok"):
+            raise HTTPException(status_code=400, detail="Telegram API error: " + str(data.get("description", "")))
+
+        seen = {}
+        for update in data.get("result", []):
+            msg = update.get("message") or update.get("channel_post") or {}
+            chat = msg.get("chat", {})
+            cid = chat.get("id")
+            if cid and cid not in seen:
+                seen[cid] = {
+                    "chat_id": str(cid),
+                    "name": f"{chat.get('first_name', '')} {chat.get('last_name', '')}".strip() or chat.get("title", "Unknown"),
+                    "type": chat.get("type", "private"),
+                }
+
+        if not seen:
+            raise HTTPException(
+                status_code=404,
+                detail="No messages found. Please send any message to the bot on Telegram first, then try again."
+            )
+
+        return {"users": list(seen.values())}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reach Telegram: {str(e)}")
+
+
 @router.post("/telegram/test")
 async def test_telegram(current_user: UserResponse = Depends(get_current_user)):
     """Send a test message via Telegram using this user's saved credentials."""

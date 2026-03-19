@@ -53,7 +53,7 @@ function BrokerPanel({ broker }: { broker: string }) {
         fetchCredentials(broker);
     }, [broker]);
 
-    const getAuthHeader = () => {
+    const getAuthHeader = (): Record<string, string> => {
         const token = localStorage.getItem("access_token") || localStorage.getItem("sc_token");
         return token ? { Authorization: `Bearer ${token}` } : {};
     };
@@ -161,8 +161,29 @@ function TelegramPanel() {
     const [loading, setLoading] = useState(false);
     const [testing, setTesting] = useState(false);
     const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+    const [lookupResults, setLookupResults] = useState<{ chat_id: string; name: string; type: string }[]>([]);
+    const [lookingUp, setLookingUp] = useState(false);
 
-    const getAuthHeader = () => {
+    const handleLookup = async () => {
+        setLookingUp(true);
+        setLookupResults([]);
+        setMessage(null);
+        try {
+            const res = await fetch(`${API}/api/settings/telegram/lookup`, { headers: getAuthHeader() });
+            const data = await res.json();
+            if (res.ok) {
+                setLookupResults(data.users || []);
+            } else {
+                setMessage({ text: '⚠️ ' + (data.detail || 'Could not find any users.'), type: 'error' });
+            }
+        } catch {
+            setMessage({ text: '⚠️ Network error during lookup.', type: 'error' });
+        } finally {
+            setLookingUp(false);
+        }
+    };
+
+    const getAuthHeader = (): Record<string, string> => {
         const token = localStorage.getItem("access_token") || localStorage.getItem("sc_token");
         return token ? { Authorization: `Bearer ${token}` } : {};
     };
@@ -315,13 +336,39 @@ function TelegramPanel() {
                         onFocus={e => e.target.style.borderColor = T.blue}
                         onBlur={e => e.target.style.borderColor = T.borderStrong}
                     />
-                    <p style={{ margin: '4px 0 0', fontSize: 11, color: T.textMuted }}>
-                        Message your bot, then visit{' '}
-                        <code style={{ fontSize: 10, background: T.bg, padding: '1px 4px', borderRadius: 3 }}>
-                            api.telegram.org/bot{'<TOKEN>'}/getUpdates
-                        </code>{' '}
-                        and find <strong>chat.id</strong>.
-                    </p>
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <button type="button" onClick={handleLookup} disabled={lookingUp} style={{
+                            padding: '6px 12px', background: T.blueLight, color: T.blue,
+                            border: `1px solid ${T.blueMid}`, borderRadius: 6,
+                            fontSize: 12, fontWeight: 600, cursor: lookingUp ? 'wait' : 'pointer',
+                        }}>
+                            {lookingUp ? '🔍 Searching...' : '🔍 Find my Chat ID'}
+                        </button>
+                        <span style={{ fontSize: 11, color: T.textMuted }}>Send any message to the bot first, then click.</span>
+                    </div>
+                    {lookupResults.length > 0 && (
+                        <div style={{ marginTop: 8, border: `1px solid ${T.border}`, borderRadius: 8, overflow: 'hidden' }}>
+                            <div style={{ padding: '8px 12px', background: T.bg, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Select your account:</div>
+                            {lookupResults.map(u => (
+                                <button key={u.chat_id} type="button" onClick={() => { setChatId(u.chat_id); setLookupResults([]); }}
+                                    style={{
+                                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                                        padding: '10px 14px', border: 'none', borderTop: `1px solid ${T.border}`,
+                                        background: '#fff', cursor: 'pointer', textAlign: 'left',
+                                    }}
+                                    onMouseEnter={e => (e.currentTarget.style.background = T.bg)}
+                                    onMouseLeave={e => (e.currentTarget.style.background = '#fff')}
+                                >
+                                    <span style={{ fontSize: 18 }}>👤</span>
+                                    <div>
+                                        <div style={{ fontSize: 13, fontWeight: 700, color: T.navy }}>{u.name}</div>
+                                        <div style={{ fontSize: 11, color: T.textMuted, fontFamily: "'DM Mono', monospace" }}>Chat ID: {u.chat_id}</div>
+                                    </div>
+                                    <span style={{ marginLeft: 'auto', fontSize: 11, color: T.blue, fontWeight: 600 }}>Use this →</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* What you'll receive */}

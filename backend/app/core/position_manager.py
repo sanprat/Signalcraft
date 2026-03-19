@@ -7,7 +7,7 @@ from typing import Dict, List, Any, Optional
 from app.core.database import get_db
 from app.core.brokers import get_adapter
 from app.core.config import settings
-from app.core.notifications import send_telegram_message
+from app.core.notifications import send_user_telegram_message
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class PositionManager:
             
         if float(today_realized_pnl) <= -max_loss:
             logger.warning(f"Daily loss limit (₹{max_loss}) reached for {strategy_data['name']}. Current: ₹{today_realized_pnl}")
-            await send_telegram_message(f"🚨 *Risk Limit Reached*\nStrategy: {strategy_data['name']}\nReason: Daily loss limit of ₹{max_loss} hit.\nStopping for the day.")
+            await send_user_telegram_message(strategy_data.get("user_id"), f"🚨 *Risk Limit Reached*\nStrategy: {strategy_data['name']}\nReason: Daily loss limit of ₹{max_loss} hit.\nStopping for the day.")
             return False
             
         return True
@@ -155,7 +155,7 @@ class PositionManager:
                     
                     if attempt == retries - 1:
                         logger.error(f"Order placement failed after {retries} attempts.")
-                        await send_telegram_message(f"❌ *Order Placement Failed*\nStrategy: {strategy_data['name']}\nSymbol: {symbol}\nFailed after {retries} attempts.")
+                        await send_user_telegram_message(strategy_data.get("user_id"), f"❌ *Order Placement Failed*\nStrategy: {strategy_data['name']}\nSymbol: {symbol}\nFailed after {retries} attempts.")
                         return
                     await asyncio.sleep(2)
 
@@ -213,12 +213,14 @@ class PositionManager:
             
             if pos_status == "OPEN":
                 logger.info(f"✅ Position opened! ID: {pos_id}, Symbol: {symbol}, Price: {price}, SL: {stoploss:.2f}, TP: {target:.2f}")
-                await send_telegram_message(
+                await send_user_telegram_message(
+                    strategy_data.get("user_id"),
                     f"🚀 *Position Opened*\nStrategy: {strategy_data['name']}\nSymbol: {symbol}\nPrice: ₹{price}\nQty: {quantity}\nSL: ₹{stoploss:.2f}\nTP: ₹{target:.2f}"
                 )
             else:
                 logger.info(f"⏳ Position PENDING! ID: {pos_id}, Symbol: {symbol}, waiting for broker execution...")
-                await send_telegram_message(
+                await send_user_telegram_message(
+                    strategy_data.get("user_id"),
                     f"⏳ *Order Sent*\nStrategy: {strategy_data['name']}\nSymbol: {symbol}\nQty: {quantity}\nWaiting for broker execution..."
                 )
 
@@ -335,7 +337,7 @@ class PositionManager:
                     self.active_positions.remove(pos)
                 except ValueError: pass
                 
-                await send_telegram_message(f"⚠️ *Manual Intervention Detected*\nSymbol: {pos['symbol']}\nPorted to CLOSED because net quantity on {strat_info['broker']} is 0.")
+                await send_user_telegram_message(strat_info.get("user_id"), f"⚠️ *Manual Intervention Detected*\nSymbol: {pos['symbol']}\nPorted to CLOSED because net quantity on {strat_info['broker']} is 0.")
 
     async def _reconcile_pending_orders(self):
         """Check status of PENDING orders with the broker."""
@@ -398,7 +400,8 @@ class PositionManager:
                     cursor.close()
                     
                 logger.info(f"✅ Order {broker_order_id} COMPLETE! Entry: {entry_price}, SL: {stoploss}, TP: {target}")
-                await send_telegram_message(
+                await send_user_telegram_message(
+                    strat_info.get("user_id"),
                     f"✅ *Order Executed*\nStrategy: {strat_info['name']}\nSymbol: {pos['symbol']}\nPorted to OPEN status.\nAvg Price: ₹{entry_price:.2f}\nSL: ₹{stoploss:.2f}\nTP: ₹{target:.2f}"
                 )
                 
@@ -413,7 +416,7 @@ class PositionManager:
                     cursor.execute("UPDATE positions SET status = 'REJECTED' WHERE id = %s", (pos["id"],))
                     cursor.execute("COMMIT")
                     cursor.close()
-                await send_telegram_message(f"❌ *Order Rejected*\nStrategy: {strat_info['name']}\nSymbol: {pos['symbol']}\nOrder was rejected by the broker.")
+                await send_user_telegram_message(strat_info.get("user_id"), f"❌ *Order Rejected*\nStrategy: {strat_info['name']}\nSymbol: {pos['symbol']}\nOrder was rejected by the broker.")
 
     async def close_position(self, position: dict, exit_price: float, reason: str):
         """Execute exit order and update DB."""
@@ -459,7 +462,7 @@ class PositionManager:
                     
                     if attempt == retries - 1:
                         logger.error(f"Failed to close position {position['id']} after {retries} attempts.")
-                        await send_telegram_message(f"🚨 *URGENT: Failed to Close Position*\nSymbol: {position['symbol']}\nAttempts: {retries}\nPlease check broker APP manually!")
+                        await send_user_telegram_message(user_id, f"🚨 *URGENT: Failed to Close Position*\nSymbol: {position['symbol']}\nAttempts: {retries}\nPlease check broker APP manually!")
                         return
                     await asyncio.sleep(2)
                 
@@ -506,7 +509,8 @@ class PositionManager:
 
             # Send Notification
             emoji = "💰" if pnl >= 0 else "📉"
-            await send_telegram_message(
+            await send_user_telegram_message(
+                user_id,
                 f"{emoji} *Position Closed*\n"
                 f"Symbol: {position['symbol']}\n"
                 f"Exit Reason: {reason}\n"
