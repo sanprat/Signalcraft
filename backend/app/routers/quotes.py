@@ -82,6 +82,8 @@ _quotes: dict[str, dict] = {
 }
 
 _active_subs: set[str] = {"26000", "26009", "26037", "1"} # Track security IDs
+_INITIAL_SUBS: set[str] = {"26000", "26009", "26037", "1"}  # Never cleared
+_dynamic_subs: list[dict] = []  # Dynamic sub payloads to re-send on reconnect
 _sub_queue = asyncio.Queue()
 
 def _save_quotes_to_redis():
@@ -252,6 +254,12 @@ async def _dhan_feed():
                                 _sub_queue.task_done()
 
                     sender_task = asyncio.create_task(sub_sender())
+
+                    # Re-subscribe all previously registered dynamic symbols
+                    # (they are lost on WS reconnect since Dhan doesn't persist subscriptions)
+                    for payload in _dynamic_subs:
+                        await _sub_queue.put(payload)
+                        logger.info(f"Re-subscribing after reconnect: {payload.get('InstrumentList')}")
 
                     try:
                         async for raw in ws:
@@ -480,6 +488,7 @@ async def _handle_dynamic_sub(symbol: str):
             }
         ]
     }
+    _dynamic_subs.append(payload)  # Remember for re-subscribe on WS reconnect
     await _sub_queue.put(payload)
 
 async def _simulate_feed():

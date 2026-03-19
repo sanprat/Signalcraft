@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { config } from '@/lib/config'
 
 export type QuoteData = { ltp: number; chg: number; up: boolean }
@@ -26,6 +26,7 @@ export function useQuotes(apiBase = config.apiBaseUrl) {
     const [marketOpen, setMarketOpen] = useState(false)
     const [lastUpdate, setLastUpdate] = useState<string>('')
     const wsRef = useRef<WebSocket | null>(null)
+    const pendingSubscriptionsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         setIsMounted(true)
@@ -44,7 +45,14 @@ export function useQuotes(apiBase = config.apiBaseUrl) {
             const ws = new WebSocket(wsUrl)
             wsRef.current = ws
 
-            ws.onopen = () => setConnected(true)
+            ws.onopen = () => {
+                setConnected(true)
+                // Flush pending subscriptions
+                pendingSubscriptionsRef.current.forEach(symbol => {
+                    ws.send(JSON.stringify({ type: 'subscribe', symbol }));
+                });
+                pendingSubscriptionsRef.current.clear();
+            }
 
             ws.onmessage = (e) => {
                 try {
@@ -82,15 +90,15 @@ export function useQuotes(apiBase = config.apiBaseUrl) {
         }
     }, [apiBase])
 
-    const subscribe = (symbol: string) => {
+    const subscribe = useCallback((symbol: string) => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: 'subscribe', symbol }));
         } else {
-            // If not connected, we should retry once connected
-            // For now, assume it's connected or will reconnect
-            logger.warn("WebSocket not open, cannot subscribe to", symbol);
+            // Queue the subscription if WS is not open
+            pendingSubscriptionsRef.current.add(symbol);
+            logger.warn("WebSocket not open, queuing subscription for", symbol);
         }
-    }
+    }, []); // No dependencies needed as it uses refs
 
     return isMounted ? {
         quotes,
