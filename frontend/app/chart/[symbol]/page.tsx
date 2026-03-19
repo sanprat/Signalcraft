@@ -79,7 +79,7 @@ export default function ChartSymbolPage() {
   const [hoveredBar, setHoveredBar] = useState<HoveredBar | null>(null);
 
   // Displayed price = live tick > crosshair close > last bar close
-  const displayClose  = hoveredBar?.close  ?? (livePrice || lastBar?.close  ?? 0);
+  const displayClose  = hoveredBar?.close  ?? (livePrice ?? lastBar?.close  ?? 0);
   const displayOpen   = hoveredBar?.open   ?? lastBar?.open   ?? 0;
   const displayHigh   = hoveredBar?.high   ?? lastBar?.high   ?? 0;
   const displayLow    = hoveredBar?.low    ?? lastBar?.low    ?? 0;
