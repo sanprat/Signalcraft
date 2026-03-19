@@ -154,7 +154,10 @@ def main():
             if not src_dir.exists():
                 log.warning(f"  No 1min data found: {src_dir} — skipping")
                 continue
-            parquet_files = sorted(src_dir.glob("*.parquet"))
+            parquet_files = sorted(
+                f for f in src_dir.glob("*.parquet")
+                if not f.name.startswith("._")
+            )
             for f in parquet_files:
                 work_items.append((idx, opt, f))
 
