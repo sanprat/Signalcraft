@@ -130,7 +130,7 @@ export default function TradingViewChart({
       autoSize: true,
       rightPriceScale: {
         borderColor: '#E5E7EB',
-        scaleMargins: { top: 0.05, bottom: 0.25 },
+        scaleMargins: { top: 0.05, bottom: 0.05 },  // small margins only — large bottom causes negative axis labels
       },
       timeScale: {
         borderColor: '#E5E7EB',
@@ -233,7 +233,10 @@ export default function TradingViewChart({
   }, [realtimeData]);
 
   return (
-    <div className="w-full h-full relative" style={{ minHeight: 0 }}>
+    // IMPORTANT: use inline style for position:relative — Tailwind 'relative' class
+    // gets purged in production Docker builds when used in a dynamic import,
+    // causing the absolute canvas to escape and cover the page header.
+    <div style={{ width: '100%', height: '100%', position: 'relative', minHeight: 0 }}>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
     </div>
   );
