@@ -18,8 +18,8 @@ Usage:
   python daily_updater.py --dry-run       # preview without downloading
   python daily_updater.py --limit 5       # test with first 5 stocks
 
-Cron example (run daily at 3:45 PM IST):
-  45 15 * * 1-5 cd /path/to/Pytrader && python3 data-scripts/daily_updater.py >> data/logs/daily_update.log 2>&1
+Cron example (run daily at 3:45 PM IST, resample immediately after):
+  45 15 * * 1-5 cd /path/to/Pytrader && python3 data-scripts/daily_updater.py >> data/logs/daily_update.log 2>&1 && python3 data-scripts/resample_nifty500.py >> data/logs/resample_nifty500.log 2>&1 && python3 data-scripts/resample_fno.py >> data/logs/resample_fno.log 2>&1
 """
 
 import argparse
@@ -49,9 +49,9 @@ UNDERLYING_DIR = PROJECT_ROOT / "data" / "underlying"
 FNO_DIR = PROJECT_ROOT / "data" / "candles"
 MAPPING_FILE = Path(__file__).parent / "nifty500_dhan_mapping.json"
 
-STOCK_INTERVALS = ["1D", "1min", "5min", "15min"]
+STOCK_INTERVALS = ["1min"]  # 5min/15min/1D derived via resample_nifty500.py
 INDEX_INTERVALS = ["1min", "5min", "15min"]
-FNO_INTERVALS = ["1min", "5min", "15min"]
+FNO_INTERVALS   = ["1min"]  # 5min/15min derived via resample_fno.py
 FNO_OFFSETS = list(range(-10, 11))  # ATM-10 to ATM+10
 FNO_OPT_TYPES = ["CE", "PE"]
 
