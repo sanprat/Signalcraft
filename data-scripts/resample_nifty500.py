@@ -84,26 +84,19 @@ def resample_with_duckdb(src_path: Path, interval: str) -> pd.DataFrame:
         raise ValueError(f"Unsupported interval: {interval}")
 
     if interval == "1D":
-        # For daily, only aggregate within market hours to get proper OHLC
+        # For daily, group by calendar date (timestamps already in IST in parquet)
+        # Filter to market hours: 09:15 to 15:30 IST
         sql = f"""
-            WITH market_hours AS (
-                SELECT *
-                FROM read_parquet('{src}')
-                WHERE
-                    (EXTRACT(HOUR FROM time) > 9
-                     OR (EXTRACT(HOUR FROM time) = 9 AND EXTRACT(MINUTE FROM time) >= 15))
-                    AND
-                    (EXTRACT(HOUR FROM time) < 15
-                     OR (EXTRACT(HOUR FROM time) = 15 AND EXTRACT(MINUTE FROM time) <= 30))
-            )
             SELECT
-                TIME_BUCKET({bucket}, time::TIMESTAMPTZ, 'Asia/Kolkata') AS time,
+                date_trunc('day', time)::TIMESTAMPTZ AS time,
                 FIRST(open  ORDER BY time) AS open,
                 MAX(high)                  AS high,
                 MIN(low)                   AS low,
                 LAST(close  ORDER BY time) AS close,
                 SUM(volume)                AS volume
-            FROM market_hours
+            FROM read_parquet('{src}')
+            WHERE TIME(time) >= TIME '09:15:00'
+              AND TIME(time) <= TIME '15:30:00'
             GROUP BY 1
             ORDER BY 1
         """
