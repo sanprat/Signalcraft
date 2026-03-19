@@ -273,16 +273,11 @@ export default function TradingViewChart({
       volumeSeries.setData(coloredVol as any);
     }
 
-    const handleResize = () => {
-      chartInstanceRef.current?.applyOptions({
-        width: chartContainerRef.current?.clientWidth ?? 0,
-      });
-    };
-    window.addEventListener('resize', handleResize);
-
+    // autoSize: true handles resizing via an internal ResizeObserver —
+    // no manual window listener needed (it would race with chart.remove()).
     return () => {
-      window.removeEventListener('resize', handleResize);
       chartInstanceRef.current?.remove();
+      chartInstanceRef.current = null;
     };
   }, [data, volumeData, indicators, isIntraday]);
 
