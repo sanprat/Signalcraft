@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
 
-# Load database configuration from .env.db
+# Load root .env first (broker keys, JWT, Telegram, CORS, etc.)
+load_dotenv(Path(__file__).parent.parent.parent.parent / ".env")
+# Then load database configuration from .env.db (DB_HOST, DB_USER, etc.)
 load_dotenv(Path(__file__).parent.parent.parent / ".env.db")
 
 
