@@ -78,15 +78,18 @@ export default function ChartSymbolPage() {
   const prevBar  = data.length > 1 ? data[data.length - 2] : null;
   const [hoveredBar, setHoveredBar] = useState<HoveredBar | null>(null);
 
+  // livePrice=0 means backend subscribed but no tick received yet — treat as no data
+  const livePriceValid = typeof livePrice === 'number' && livePrice > 0;
+
   // Displayed price = live tick > crosshair close > last bar close
-  const displayClose  = hoveredBar?.close  ?? (livePrice ?? lastBar?.close  ?? 0);
+  const displayClose  = hoveredBar?.close  ?? (livePriceValid ? livePrice! : (lastBar?.close ?? 0));
   const displayOpen   = hoveredBar?.open   ?? lastBar?.open   ?? 0;
   const displayHigh   = hoveredBar?.high   ?? lastBar?.high   ?? 0;
   const displayLow    = hoveredBar?.low    ?? lastBar?.low    ?? 0;
   const displayChange = hoveredBar
     ? hoveredBar.change
-    : livePrice && prevBar
-      ? livePrice - prevBar.close
+    : livePriceValid && prevBar
+      ? livePrice! - prevBar.close
       : lastBar && prevBar
         ? lastBar.close - prevBar.close
         : 0;
@@ -95,6 +98,9 @@ export default function ChartSymbolPage() {
     : prevBar && prevBar.close
       ? (displayChange / prevBar.close) * 100
       : 0;
+
+  // True only when we have a real non-zero live tick for this symbol
+  const isShowingLive = livePriceValid && !hoveredBar;
 
   const isUp = displayChange >= 0;
   const chgColor = isUp ? '#16a34a' : '#dc2626';
@@ -216,6 +222,19 @@ export default function ChartSymbolPage() {
                 background: '#16a34a', animation: 'pulse 2s infinite',
               }} />
               {brokerName} · {lastUpdate}
+            </span>
+          )}
+
+          {/* Show when we DON'T have a live price — data is last historical close */}
+          {connected && !isShowingLive && (
+            <span style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              fontSize: 11, fontWeight: 600, color: '#92400e',
+              background: '#fffbeb', border: '1px solid #fde68a',
+              padding: '2px 8px', borderRadius: 20,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#f59e0b' }} />
+              Prev Close
             </span>
           )}
 
