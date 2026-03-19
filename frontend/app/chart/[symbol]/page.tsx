@@ -60,6 +60,17 @@ export default function ChartSymbolPage() {
     const [isIntraday, setIsIntraday] = useState(false);
     const [interval, setInterval] = useState('1D');
 
+    // Lock parent <main> overflow so the chart page fills exactly 100vh
+    // (root layout has overflow:auto on <main> which would allow scrolling past the header)
+    useEffect(() => {
+        const mainEl = document.querySelector('main') as HTMLElement | null;
+        if (mainEl) {
+            const prev = mainEl.style.overflow;
+            mainEl.style.overflow = 'hidden';
+            return () => { mainEl.style.overflow = prev; };
+        }
+    }, []);
+
     // Live Data Integration
     const { quotes, connected, subscribe, lastUpdate, isLive } = useQuotes(config.apiBaseUrl);
     const brokerName = isLive ? 'Dhan' : 'Simulated';
@@ -183,7 +194,7 @@ export default function ChartSymbolPage() {
     const isIndex = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'GIFTNIFTY'].includes(symbol);
 
     return (
-        <div style={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 24px 12px' }}>
+        <div style={{ height: '100dvh', overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: '16px 24px 12px' }}>
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-4">
                     <button
