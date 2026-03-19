@@ -81,29 +81,27 @@ export default function ChartSymbolPage() {
   // livePrice=0 means backend subscribed but no tick received yet — treat as no data
   const livePriceValid = typeof livePrice === 'number' && livePrice > 0;
 
-  // Displayed price = live tick > crosshair close > last bar close
-  const displayClose  = hoveredBar?.close  ?? (livePriceValid ? livePrice! : (lastBar?.close ?? 0));
-  const displayOpen   = hoveredBar?.open   ?? lastBar?.open   ?? 0;
-  const displayHigh   = hoveredBar?.high   ?? lastBar?.high   ?? 0;
-  const displayLow    = hoveredBar?.low    ?? lastBar?.low    ?? 0;
-  const displayChange = hoveredBar
-    ? hoveredBar.change
-    : livePriceValid && prevBar
-      ? livePrice! - prevBar.close
-      : lastBar && prevBar
-        ? lastBar.close - prevBar.close
-        : 0;
-  const displayChangePct = hoveredBar
-    ? hoveredBar.changePct
-    : prevBar && prevBar.close
-      ? (displayChange / prevBar.close) * 100
+  // ── BIG PRICE + CHANGE — always anchored to live feed, NEVER follows cursor ──
+  const liveClose     = livePriceValid ? livePrice! : (lastBar?.close ?? 0);
+  const liveChange    = livePriceValid && prevBar
+    ? livePrice! - prevBar.close
+    : lastBar && prevBar
+      ? lastBar.close - prevBar.close
       : 0;
+  const liveChangePct = prevBar?.close
+    ? (liveChange / prevBar.close) * 100
+    : 0;
+  const isUp     = liveChange >= 0;
+  const chgColor = isUp ? '#16a34a' : '#dc2626';
+
+  // ── OHLC ROW — follows crosshair when hovering, otherwise shows last bar ──
+  const displayOpen  = hoveredBar?.open  ?? lastBar?.open  ?? 0;
+  const displayHigh  = hoveredBar?.high  ?? lastBar?.high  ?? 0;
+  const displayLow   = hoveredBar?.low   ?? lastBar?.low   ?? 0;
+  const displayClose = hoveredBar?.close ?? liveClose;
 
   // True only when we have a real non-zero live tick for this symbol
-  const isShowingLive = livePriceValid && !hoveredBar;
-
-  const isUp = displayChange >= 0;
-  const chgColor = isUp ? '#16a34a' : '#dc2626';
+  const isShowingLive = livePriceValid;
 
   // Indicators
   const [activeIndicators, setActiveIndicators] = useState<IndicatorEntry[]>([]);
@@ -285,15 +283,16 @@ export default function ChartSymbolPage() {
             fontSize: 30, fontWeight: 700, color: '#111827',
             fontVariantNumeric: 'tabular-nums', letterSpacing: '-1px',
           }}>
-            {fmtNum(displayClose)}
+            {fmtNum(liveClose)}
           </span>
           <span style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 500 }}>INR</span>
 
-          {/* Change */}
+          {/* Change — always live, never follows cursor */}
           <span style={{ fontSize: 15, fontWeight: 600, color: chgColor, fontVariantNumeric: 'tabular-nums' }}>
-            {isUp ? '+' : ''}{fmtNum(displayChange)}&nbsp;
-            ({isUp ? '+' : ''}{displayChangePct.toFixed(2)}%)
+            {isUp ? '+' : ''}{fmtNum(liveChange)}&nbsp;
+            ({isUp ? '+' : ''}{liveChangePct.toFixed(2)}%)
           </span>
+
 
           {/* Divider */}
           <span style={{ width: 1, height: 18, background: '#E5E7EB', alignSelf: 'center' }} />
