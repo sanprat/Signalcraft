@@ -15,7 +15,9 @@ class BrokerCredentialsReq(BaseModel):
 
 
 @router.get("/broker/{broker}")
-def retrieve_broker_credentials(broker: str, current_user: UserResponse = Depends(get_current_user)):
+def retrieve_broker_credentials(
+    broker: str, current_user: UserResponse = Depends(get_current_user)
+):
     user_id = current_user.id
     creds = get_broker_credentials(user_id, broker)
     if not creds:
@@ -24,7 +26,12 @@ def retrieve_broker_credentials(broker: str, current_user: UserResponse = Depend
     sanitized_creds = {}
     for k, v in creds.items():
         k_lower = k.lower()
-        if "secret" in k_lower or "password" in k_lower or "token" in k_lower or "pin" in k_lower:
+        if (
+            "secret" in k_lower
+            or "password" in k_lower
+            or "token" in k_lower
+            or "pin" in k_lower
+        ):
             sanitized_creds[k] = "********" if v else ""
         else:
             sanitized_creds[k] = v
@@ -33,7 +40,9 @@ def retrieve_broker_credentials(broker: str, current_user: UserResponse = Depend
 
 
 @router.post("/broker")
-def update_broker_credentials(body: BrokerCredentialsReq, current_user: UserResponse = Depends(get_current_user)):
+def update_broker_credentials(
+    body: BrokerCredentialsReq, current_user: UserResponse = Depends(get_current_user)
+):
     user_id = current_user.id
     existing = get_broker_credentials(user_id, body.broker) or {}
     updated_creds = {}
@@ -49,10 +58,14 @@ def update_broker_credentials(body: BrokerCredentialsReq, current_user: UserResp
         raise HTTPException(status_code=500, detail="Failed to save broker credentials")
 
     clear_adapter_cache(body.broker, user_id)
-    return {"status": "success", "message": f"Credentials for {body.broker} securely updated."}
+    return {
+        "status": "success",
+        "message": f"Credentials for {body.broker} securely updated.",
+    }
 
 
 # ── Telegram Endpoints ─────────────────────────────────────────────────────────
+
 
 class TelegramConfigReq(BaseModel):
     bot_token: str
@@ -77,7 +90,9 @@ def get_telegram_config(current_user: UserResponse = Depends(get_current_user)):
 
 
 @router.post("/telegram")
-def save_telegram_config(body: TelegramConfigReq, current_user: UserResponse = Depends(get_current_user)):
+def save_telegram_config(
+    body: TelegramConfigReq, current_user: UserResponse = Depends(get_current_user)
+):
     """Save Telegram bot token + chat ID for this user in the DB."""
     from app.core.config import settings
 
@@ -88,10 +103,14 @@ def save_telegram_config(body: TelegramConfigReq, current_user: UserResponse = D
     if bot_token == "********":
         bot_token = existing.get("bot_token") or settings.TELEGRAM_BOT_TOKEN or ""
 
-    success = save_broker_credentials(current_user.id, "telegram", {
-        "bot_token": bot_token,
-        "chat_id": body.chat_id,
-    })
+    success = save_broker_credentials(
+        current_user.id,
+        "telegram",
+        {
+            "bot_token": bot_token,
+            "chat_id": body.chat_id,
+        },
+    )
     if not success:
         raise HTTPException(status_code=500, detail="Failed to save Telegram config")
 
@@ -99,11 +118,13 @@ def save_telegram_config(body: TelegramConfigReq, current_user: UserResponse = D
 
 
 @router.get("/telegram/lookup")
-async def lookup_telegram_chat_id(current_user: UserResponse = Depends(get_current_user)):
+async def lookup_telegram_chat_id(
+    current_user: UserResponse = Depends(get_current_user),
+):
     """
     Call the bot's getUpdates to return a list of Telegram users who've
-    messaged the bot. The user can pick themselves from the list.
-    Requires them to have sent at least one message to @Pytradersc_bot first.
+    messaged the bot. Only returns private chats (not groups/channels).
+    Requires them to have sent at least one message to the bot first.
     """
     import httpx
     from app.core.config import settings
@@ -120,31 +141,55 @@ async def lookup_telegram_chat_id(current_user: UserResponse = Depends(get_curre
             resp = await client.get(url)
         data = resp.json()
         if not data.get("ok"):
-            raise HTTPException(status_code=400, detail="Telegram API error: " + str(data.get("description", "")))
+            raise HTTPException(
+                status_code=400,
+                detail="Telegram API error: " + str(data.get("description", "")),
+            )
+
+        # Get user's currently configured chat_id to prioritize it
+        configured_chat_id = creds.get("chat_id") or settings.TELEGRAM_CHAT_ID or ""
 
         seen = {}
         for update in data.get("result", []):
             msg = update.get("message") or update.get("channel_post") or {}
             chat = msg.get("chat", {})
+            chat_type = chat.get("type", "private")
+
+            # Only include private chats for user notifications
+            if chat_type != "private":
+                continue
+
             cid = chat.get("id")
             if cid and cid not in seen:
                 seen[cid] = {
                     "chat_id": str(cid),
-                    "name": f"{chat.get('first_name', '')} {chat.get('last_name', '')}".strip() or chat.get("title", "Unknown"),
-                    "type": chat.get("type", "private"),
+                    "name": f"{chat.get('first_name', '')} {chat.get('last_name', '')}".strip()
+                    or "Unknown User",
+                    "type": chat_type,
+                    "is_configured": str(cid) == configured_chat_id,
                 }
 
         if not seen:
             raise HTTPException(
                 status_code=404,
-                detail="No messages found. Please send any message to the bot on Telegram first, then try again."
+                detail="No messages found. Please send any message to the bot on Telegram first, then try again.",
             )
 
-        return {"users": list(seen.values())}
+        # Sort: configured user first, then by name
+        users = sorted(
+            seen.values(), key=lambda u: (not u.get("is_configured", False), u["name"])
+        )
+        # Remove is_configured from response
+        for u in users:
+            u.pop("is_configured", None)
+
+        return {"users": users}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reach Telegram: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to reach Telegram: {str(e)}"
+        )
 
 
 @router.post("/telegram/test")
@@ -158,9 +203,15 @@ async def test_telegram(current_user: UserResponse = Depends(get_current_user)):
     chat_id = creds.get("chat_id") or settings.TELEGRAM_CHAT_ID or ""
 
     if not bot_token:
-        raise HTTPException(status_code=400, detail="Bot token not configured. Save your Telegram settings first.")
+        raise HTTPException(
+            status_code=400,
+            detail="Bot token not configured. Save your Telegram settings first.",
+        )
     if not chat_id:
-        raise HTTPException(status_code=400, detail="Chat ID not set. Enter your Chat ID and save first.")
+        raise HTTPException(
+            status_code=400,
+            detail="Chat ID not set. Enter your Chat ID and save first.",
+        )
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
@@ -177,11 +228,16 @@ async def test_telegram(current_user: UserResponse = Depends(get_current_user)):
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
         if resp.status_code == 200:
-            return {"status": "success", "message": "Test message sent! Check your Telegram."}
+            return {
+                "status": "success",
+                "message": "Test message sent! Check your Telegram.",
+            }
         else:
             detail = resp.json().get("description", "Unknown Telegram API error")
             raise HTTPException(status_code=400, detail=f"Telegram API error: {detail}")
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Could not reach Telegram: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Could not reach Telegram: {str(e)}"
+        )
