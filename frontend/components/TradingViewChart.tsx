@@ -15,9 +15,27 @@ interface ChartProps {
   volumeData?: { time: Time; value: number; color?: string }[];
   indicators?: IndicatorConfig[];
   realtimeData?: CandlestickData;
+  isIntraday?: boolean; // pass true for 1min/5min/15min charts
 }
 
-export default function TradingViewChart({ data, volumeData, indicators, realtimeData }: ChartProps) {
+/**
+ * For intraday charts, replace real Unix timestamps with sequential integer indices
+ * so lightweight-charts doesn't render overnight/weekend blank spaces between sessions.
+ * Returns the normalised data and a map from index → real timestamp (for the axis formatter).
+ */
+function normaliseIntraday(data: CandlestickData[]): {
+  normalisedData: CandlestickData[];
+  indexToTime: Map<number, number>;
+} {
+  const indexToTime = new Map<number, number>();
+  const normalisedData = data.map((bar, i) => {
+    indexToTime.set(i, bar.time as number);
+    return { ...bar, time: i as unknown as Time };
+  });
+  return { normalisedData, indexToTime };
+}
+
+export default function TradingViewChart({ data, volumeData, indicators, realtimeData, isIntraday }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -25,7 +43,26 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Create chart instance
+    // Auto-detect intraday: Unix timestamps are > 1_000_000_000
+    const looksIntraday = isIntraday ??
+      (data.length > 0 && typeof data[0].time === 'number' && (data[0].time as number) > 1_000_000_000);
+
+    // Normalise intraday data to sequential indices to remove session gaps
+    let chartData = data;
+    let volData = volumeData;
+    let indexToTime: Map<number, number> | null = null;
+
+    if (looksIntraday && data.length > 0) {
+      const result = normaliseIntraday(data);
+      chartData = result.normalisedData;
+      indexToTime = result.indexToTime;
+
+      // Also normalise volume data to the same indices
+      if (volumeData && volumeData.length === data.length) {
+        volData = volumeData.map((v, i) => ({ ...v, time: i as unknown as Time }));
+      }
+    }
+
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { color: '#ffffff' },
@@ -39,13 +76,30 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
       height: 500,
       timeScale: {
         timeVisible: true,
+        secondsVisible: false,
         borderColor: '#D1D5DB',
+        // Map sequential index → human-readable HH:MM label
+        ...(indexToTime ? {
+          tickMarkFormatter: (index: number) => {
+            const ts = indexToTime!.get(index);
+            if (ts === undefined) return String(index);
+            const d = new Date(ts * 1000);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            // Show date when near start of day (9:15 AM = 03:45 UTC)
+            const utcHour = d.getUTCHours();
+            const utcMin  = d.getUTCMinutes();
+            if (utcHour === 3 && utcMin <= 20) {
+              return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+            }
+            return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          },
+        } : {}),
       },
     });
 
     chartInstanceRef.current = chart;
 
-    // Create Candlestick Series
+    // Candlestick series
     const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#26a69a',
       downColor: '#ef5350',
@@ -54,10 +108,10 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
       wickDownColor: '#ef5350',
     });
 
-    candlestickSeries.setData(data);
+    candlestickSeries.setData(chartData);
     candlestickSeriesRef.current = candlestickSeries;
 
-    // Indicators (Line Series) — user-controlled
+    // Indicators (Line Series)
     if (indicators && indicators.length > 0) {
       indicators.forEach(ind => {
         const lineSeries = chart.addLineSeries({
@@ -69,24 +123,17 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
       });
     }
 
-    // Create Volume Histogram (optional)
-    if (volumeData && volumeData.length > 0) {
+    // Volume histogram
+    if (volData && volData.length > 0) {
       const volumeSeries = chart.addHistogramSeries({
         color: '#26a69a',
-        priceFormat: {
-          type: 'volume',
-        },
-        priceScaleId: '', // set as an overlay by setting a blank priceScaleId
+        priceFormat: { type: 'volume' },
+        priceScaleId: '',
       });
-
       chart.priceScale('').applyOptions({
-        scaleMargins: {
-          top: 0.8,
-          bottom: 0,
-        },
+        scaleMargins: { top: 0.8, bottom: 0 },
       });
-
-      volumeSeries.setData(volumeData as any);
+      volumeSeries.setData(volData as any);
     }
 
     // Responsive resize
@@ -97,16 +144,13 @@ export default function TradingViewChart({ data, volumeData, indicators, realtim
         });
       }
     };
-
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (chartInstanceRef.current) {
-        chartInstanceRef.current.remove();
-      }
+      chartInstanceRef.current?.remove();
     };
-  }, [data, volumeData, indicators]);
+  }, [data, volumeData, indicators, isIntraday]);
 
   // Handle live updates
   useEffect(() => {
