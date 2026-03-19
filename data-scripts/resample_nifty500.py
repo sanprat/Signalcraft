@@ -95,8 +95,8 @@ def resample_with_duckdb(src_path: Path, interval: str) -> pd.DataFrame:
                 LAST(close  ORDER BY time) AS close,
                 SUM(volume)                AS volume
             FROM read_parquet('{src}')
-            WHERE (EXTRACT(HOUR FROM time) * 60 + EXTRACT(MINUTE FROM time)) >= 555
-              AND (EXTRACT(HOUR FROM time) * 60 + EXTRACT(MINUTE FROM time)) <= 930
+            WHERE (EXTRACT(HOUR FROM time) * 60 + EXTRACT(MINUTE FROM time)) >= 225
+              AND (EXTRACT(HOUR FROM time) * 60 + EXTRACT(MINUTE FROM time)) <= 600
             GROUP BY 1
             ORDER BY 1
         """
