@@ -16,13 +16,21 @@ import os
 logger = logging.getLogger(__name__)
 
 # Path to Parquet data — works inside Docker (/app/data/candles) and locally
-DATA_DIR = Path(os.environ.get("CANDLE_DATA_DIR", Path(__file__).parent.parent.parent / "data" / "candles"))
+DATA_DIR = Path(
+    os.environ.get(
+        "CANDLE_DATA_DIR", Path(__file__).parent.parent.parent / "data" / "candles"
+    )
+)
 
 # Strike offset mapping
 STRIKE_OFFSET_MAP = {
-    "ATM":  0,
-    "OTM1": 1,  "OTM2": 2,  "OTM3": 3,
-    "ITM1": -1, "ITM2": -2, "ITM3": -3,
+    "ATM": 0,
+    "OTM1": 1,
+    "OTM2": 2,
+    "OTM3": 3,
+    "ITM1": -1,
+    "ITM2": -2,
+    "ITM3": -3,
 }
 
 
@@ -63,16 +71,18 @@ def load_equity_candles(
         logger.error(f"DuckDB error for equity {symbol}/{timeframe}: {e}")
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
-    df["time"] = pd.to_datetime(df["time"])
-    # Apply market-hours filter only for intraday timeframes
+    df["time"] = pd.to_datetime(df["time"], utc=True)
+    # Convert from UTC to IST for market hours filtering
+    df["time"] = df["time"].dt.tz_convert("Asia/Kolkata")
+    # Apply market-hours filter only for intraday timeframes (9:15 IST to 15:30 IST)
     if timeframe != "1D":
         df = df[
-            (df["time"].dt.hour > 9) |
-            ((df["time"].dt.hour == 9) & (df["time"].dt.minute >= 15))
+            (df["time"].dt.hour > 9)
+            | ((df["time"].dt.hour == 9) & (df["time"].dt.minute >= 15))
         ]
         df = df[
-            (df["time"].dt.hour < 15) |
-            ((df["time"].dt.hour == 15) & (df["time"].dt.minute <= 30))
+            (df["time"].dt.hour < 15)
+            | ((df["time"].dt.hour == 15) & (df["time"].dt.minute <= 30))
         ]
     return df.reset_index(drop=True)
 
@@ -130,12 +140,12 @@ def load_candles(
     result["time"] = pd.to_datetime(result["time"])
     if timeframe != "1D":
         result = result[
-            (result["time"].dt.hour > 9) |
-            ((result["time"].dt.hour == 9) & (result["time"].dt.minute >= 15))
+            (result["time"].dt.hour > 9)
+            | ((result["time"].dt.hour == 9) & (result["time"].dt.minute >= 15))
         ]
         result = result[
-            (result["time"].dt.hour < 15) |
-            ((result["time"].dt.hour == 15) & (result["time"].dt.minute <= 30))
+            (result["time"].dt.hour < 15)
+            | ((result["time"].dt.hour == 15) & (result["time"].dt.minute <= 30))
         ]
     return result.reset_index(drop=True)
 
@@ -151,9 +161,8 @@ def compute_indicators(df: pd.DataFrame, entry_conditions: list) -> pd.DataFrame
             slow = params.get("slow", 21)
             df[f"ema_{fast}"] = df["close"].ewm(span=fast, adjust=False).mean()
             df[f"ema_{slow}"] = df["close"].ewm(span=slow, adjust=False).mean()
-            df["signal_ema_cross"] = (
-                (df[f"ema_{fast}"] > df[f"ema_{slow}"]) &
-                (df[f"ema_{fast}"].shift(1) <= df[f"ema_{slow}"].shift(1))
+            df["signal_ema_cross"] = (df[f"ema_{fast}"] > df[f"ema_{slow}"]) & (
+                df[f"ema_{fast}"].shift(1) <= df[f"ema_{slow}"].shift(1)
             )
 
         elif ind == "RSI_LEVEL":
@@ -170,11 +179,14 @@ def compute_indicators(df: pd.DataFrame, entry_conditions: list) -> pd.DataFrame
             period = params.get("period", 7)
             mult = params.get("multiplier", 3.0)
             hl2 = (df["high"] + df["low"]) / 2
-            tr = pd.concat([
-                df["high"] - df["low"],
-                (df["high"] - df["close"].shift()).abs(),
-                (df["low"] - df["close"].shift()).abs(),
-            ], axis=1).max(axis=1)
+            tr = pd.concat(
+                [
+                    df["high"] - df["low"],
+                    (df["high"] - df["close"].shift()).abs(),
+                    (df["low"] - df["close"].shift()).abs(),
+                ],
+                axis=1,
+            ).max(axis=1)
             atr = tr.rolling(period).mean()
             upper = hl2 + mult * atr
             lower = hl2 - mult * atr
@@ -230,7 +242,9 @@ def simulate_strategy(df: pd.DataFrame, strategy: dict) -> list[dict]:
                 exit_reason = "TARGET"
             # Trailing SL
             elif trailing_sl_pct:
-                drawdown_from_peak = (highest_price - row["close"]) / highest_price * 100
+                drawdown_from_peak = (
+                    (highest_price - row["close"]) / highest_price * 100
+                )
                 if drawdown_from_peak >= trailing_sl_pct:
                     exit_reason = "TRAILING"
             # Stop loss
@@ -239,19 +253,24 @@ def simulate_strategy(df: pd.DataFrame, strategy: dict) -> list[dict]:
 
             if exit_reason:
                 pnl = (row["close"] - entry_price) * quantity
-                trades.append({
-                    "trade_no": trade_no,
-                    "entry_time": entry_time.isoformat(),
-                    "entry_price": round(entry_price, 2),
-                    "exit_time": row["time"].isoformat(),
-                    "exit_price": round(row["close"], 2),
-                    "pnl": round(pnl, 2),
-                    "pnl_pct": round(pnl_pct, 2),
-                    "exit_reason": exit_reason,
-                })
+                trades.append(
+                    {
+                        "trade_no": trade_no,
+                        "entry_time": entry_time.isoformat(),
+                        "entry_price": round(entry_price, 2),
+                        "exit_time": row["time"].isoformat(),
+                        "exit_price": round(row["close"], 2),
+                        "pnl": round(pnl, 2),
+                        "pnl_pct": round(pnl_pct, 2),
+                        "exit_reason": exit_reason,
+                    }
+                )
                 daily_loss[bar_date] = daily_loss.get(bar_date, 0) + min(pnl, 0)
                 in_trade = False
-                if not strategy["risk"].get("reentry_after_sl", False) and exit_reason == "SL":
+                if (
+                    not strategy["risk"].get("reentry_after_sl", False)
+                    and exit_reason == "SL"
+                ):
                     continue
 
         if not in_trade:
@@ -265,7 +284,11 @@ def simulate_strategy(df: pd.DataFrame, strategy: dict) -> list[dict]:
             signal_cols = [c for c in df.columns if c.startswith("signal_")]
             if signal_cols:
                 entry_conditions = strategy.get("entry_conditions", [])
-                logic = entry_conditions[0].get("logic", "AND") if entry_conditions else "AND"
+                logic = (
+                    entry_conditions[0].get("logic", "AND")
+                    if entry_conditions
+                    else "AND"
+                )
                 if logic == "AND":
                     triggered = all(row.get(c, False) for c in signal_cols)
                 else:
@@ -284,8 +307,14 @@ def simulate_strategy(df: pd.DataFrame, strategy: dict) -> list[dict]:
     return trades
 
 
-def compute_summary(trades: list[dict], candle_count: int,
-                    from_date: date, to_date: date, backtest_id: str, strategy_id: str) -> dict:
+def compute_summary(
+    trades: list[dict],
+    candle_count: int,
+    from_date: date,
+    to_date: date,
+    backtest_id: str,
+    strategy_id: str,
+) -> dict:
     """Compute summary statistics from trade list."""
     if not trades:
         return {
@@ -337,20 +366,28 @@ def compute_summary(trades: list[dict], candle_count: int,
 
 def run_backtest(strategy: dict, backtest_id: str) -> dict:
     """Main entry point — run backtest for single or multiple stocks."""
-    from_date = date.fromisoformat(strategy.get("backtest_from")) if strategy.get("backtest_from") else (date.today() - timedelta(days=180))
-    to_date   = date.fromisoformat(strategy.get("backtest_to"))   if strategy.get("backtest_to")   else date.today()
+    from_date = (
+        date.fromisoformat(strategy.get("backtest_from"))
+        if strategy.get("backtest_from")
+        else (date.today() - timedelta(days=180))
+    )
+    to_date = (
+        date.fromisoformat(strategy.get("backtest_to"))
+        if strategy.get("backtest_to")
+        else date.today()
+    )
 
     asset_type = strategy.get("asset_type", "EQUITY")
-    
+
     # Support multi-stock strategies: get symbols list or fallback to single symbol
     symbols = strategy.get("symbols", [])
     if not symbols and strategy.get("symbol"):
         symbols = [strategy.get("symbol", "RELIANCE")]
-    
+
     all_trades = []
     all_candles = []
     all_summaries = []
-    
+
     if asset_type == "EQUITY":
         # Run backtest for each symbol
         for idx, symbol in enumerate(symbols):
@@ -360,30 +397,37 @@ def run_backtest(strategy: dict, backtest_id: str) -> dict:
                 from_date=from_date,
                 to_date=to_date,
             )
-            
+
             if df.empty:
                 continue
-            
+
             df = compute_indicators(df, strategy.get("entry_conditions", []))
             trades = simulate_strategy(df, strategy)
-            
+
             # Add symbol to each trade
             for trade in trades:
                 trade["symbol"] = symbol
-            
+
             all_trades.extend(trades)
-            
+
             # Collect candles (only for first symbol or combine all)
             if idx == 0 or len(symbols) == 1:
                 df_copy = df.copy()
                 df_copy["symbol"] = symbol
                 all_candles.append(df_copy)
-            
+
             # Compute per-symbol summary
-            symbol_summary = compute_summary(trades, len(df), from_date, to_date, backtest_id, strategy["strategy_id"])
+            symbol_summary = compute_summary(
+                trades,
+                len(df),
+                from_date,
+                to_date,
+                backtest_id,
+                strategy["strategy_id"],
+            )
             symbol_summary["symbol"] = symbol
             all_summaries.append(symbol_summary)
-            
+
     else:
         # F&O strategy (single index)
         df = load_candles(
@@ -397,7 +441,9 @@ def run_backtest(strategy: dict, backtest_id: str) -> dict:
 
         if df.empty:
             return {
-                "summary": compute_summary([], 0, from_date, to_date, backtest_id, strategy["strategy_id"]),
+                "summary": compute_summary(
+                    [], 0, from_date, to_date, backtest_id, strategy["strategy_id"]
+                ),
                 "trades": [],
             }
 
@@ -405,14 +451,23 @@ def run_backtest(strategy: dict, backtest_id: str) -> dict:
         trades = simulate_strategy(df, strategy)
         all_trades = trades
         all_candles = [df]
-        all_summaries = [compute_summary(trades, len(df), from_date, to_date, backtest_id, strategy["strategy_id"])]
+        all_summaries = [
+            compute_summary(
+                trades,
+                len(df),
+                from_date,
+                to_date,
+                backtest_id,
+                strategy["strategy_id"],
+            )
+        ]
 
     # Combine all candles
     if all_candles:
         combined_candles = pd.concat(all_candles, ignore_index=True)
     else:
         combined_candles = pd.DataFrame()
-    
+
     # Use first summary or combine summaries
     if len(all_summaries) == 1:
         final_summary = all_summaries[0]
@@ -423,7 +478,7 @@ def run_backtest(strategy: dict, backtest_id: str) -> dict:
         losing_trades = sum(s["losing_trades"] for s in all_summaries)
         total_pnl = sum(s["total_pnl"] for s in all_summaries)
         all_pnls = [t["pnl"] for t in all_trades]
-        
+
         final_summary = {
             "backtest_id": backtest_id,
             "strategy_id": strategy["strategy_id"],
@@ -431,15 +486,21 @@ def run_backtest(strategy: dict, backtest_id: str) -> dict:
             "total_trades": total_trades,
             "winning_trades": winning_trades,
             "losing_trades": losing_trades,
-            "win_rate": round(winning_trades / total_trades * 100, 1) if total_trades > 0 else 0,
+            "win_rate": round(winning_trades / total_trades * 100, 1)
+            if total_trades > 0
+            else 0,
             "total_pnl": round(total_pnl, 2),
-            "max_drawdown": max(s["max_drawdown"] for s in all_summaries) if all_summaries else 0,
-            "avg_trade_pnl": round(total_pnl / total_trades, 2) if total_trades > 0 else 0,
+            "max_drawdown": max(s["max_drawdown"] for s in all_summaries)
+            if all_summaries
+            else 0,
+            "avg_trade_pnl": round(total_pnl / total_trades, 2)
+            if total_trades > 0
+            else 0,
             "best_trade": round(max(all_pnls), 2) if all_pnls else 0,
             "worst_trade": round(min(all_pnls), 2) if all_pnls else 0,
             "candle_count": len(combined_candles),
             "date_range": f"{from_date} to {to_date}",
-            "per_symbol_summaries": all_summaries
+            "per_symbol_summaries": all_summaries,
         }
 
     return {
