@@ -137,7 +137,9 @@ def load_candles(
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
     result = pd.concat(dfs).sort_values("time").reset_index(drop=True)
-    result["time"] = pd.to_datetime(result["time"])
+    result["time"] = pd.to_datetime(result["time"], utc=True)
+    # Convert from UTC to IST for market hours filtering
+    result["time"] = result["time"].dt.tz_convert("Asia/Kolkata")
     if timeframe != "1D":
         result = result[
             (result["time"].dt.hour > 9)
