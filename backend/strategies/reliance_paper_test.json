@@ -1,0 +1,37 @@
+{
+  "name": "RELIANCE EMA Paper Test",
+  "asset_type": "EQUITY",
+  "symbols": ["RELIANCE"],
+  "symbol": "RELIANCE",
+  "timeframe": "5m",
+  "entry_conditions": [
+    {
+      "indicator": "EMA_CROSS",
+      "params": {
+        "fast": 9,
+        "slow": 21
+      },
+      "logic": "AND"
+    }
+  ],
+  "exit_conditions": {
+    "target_pct": 2.0,
+    "stoploss_pct": 1.5,
+    "trailing_sl_pct": 0,
+    "time_exit": "15:15"
+  },
+  "risk": {
+    "max_trades_per_day": 3,
+    "max_loss_per_day": 500,
+    "quantity_lots": 10,
+    "lot_size": 1,
+    "reentry_after_sl": false
+  },
+  "backtest_from": "2025-03-19",
+  "backtest_to": "2026-03-19",
+  "strategy_id": "reliance_paper_test",
+  "created_at": "2026-03-19T10:00:00",
+  "creation_prices": {
+    "RELIANCE": 1200.00
+  }
+}

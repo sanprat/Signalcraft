@@ -69,13 +69,42 @@ function normaliseIntraday(raw: CandlestickData[]): {
 
 function intradayTickFormatter(idx: number, indexToTime: Map<number, number>): string {
   const ts = indexToTime.get(idx);
+  // Return empty string for gaps (no trading session)
+  // The chart won't show a label when we return empty string
   if (!ts) return '';
   const istOffset = 5.5 * 60 * 60 * 1000;
   const ist = new Date(ts * 1000 + istOffset);
   const pad = (n: number) => String(n).padStart(2, '0');
   const h = ist.getUTCHours();
   const m = ist.getUTCMinutes();
+  // Show date only at market open (9:15 AM IST)
   if (h === 9 && m === 15) return `${pad(ist.getUTCDate())}/${pad(ist.getUTCMonth() + 1)}`;
+  return `${pad(h)}:${pad(m)}`;
+}
+
+// Safe formatter that ensures we never show epoch time (01 Jan '70)
+// Shows date at start of each day, time for other candles
+function safeIntradayFormatter(idx: number, indexToTime: Map<number, number>): string {
+  const ts = indexToTime.get(idx);
+  if (!ts || ts <= 0) return ' ';  // Return space for invalid/missing timestamps
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(ts * 1000 + istOffset);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const h = ist.getUTCHours();
+  const m = ist.getUTCMinutes();
+  const d = ist.getUTCDate();
+  const prevTs = indexToTime.get(idx - 1);
+  
+  // Show date label at start of each trading day (9:15 AM IST) or when day changes
+  if (h === 9 && m === 15) return `${d}`;
+  
+  // Also show date if previous candle was from a different day (gap in data)
+  if (prevTs) {
+    const prevIst = new Date(prevTs * 1000 + istOffset);
+    if (prevIst.getUTCDate() !== d) return `${d}`;
+  }
+  
+  // Show time for regular candles
   return `${pad(h)}:${pad(m)}`;
 }
 
@@ -172,13 +201,16 @@ export default function TradingViewChart({
         secondsVisible: false,
         rightOffset: 12,  // increased for better spacing on right
         minBarSpacing: 2, // prevent candles from getting too compressed
+        fixLeftEdge: true,  // prevent scrolling past the first bar
+        fixRightEdge: true, // prevent scrolling past the last bar
+        rightBarStaysOnEdge: true,  // keep last bar at edge to reduce gaps
         ...(visibleIndexToTime
-          ? { tickMarkFormatter: (idx: number) => intradayTickFormatter(idx, visibleIndexToTime!) }
+          ? { tickMarkFormatter: (idx: number) => safeIntradayFormatter(idx, visibleIndexToTime!) }
           : {}),
       },
       crosshair: {
-        vertLine: { color: '#9CA3AF', width: 1, style: 2 },
-        horzLine: { color: '#9CA3AF', width: 1, style: 2 },
+        vertLine: { color: '#9CA3AF', width: 1, style: 2, labelVisible: false },  // hide time label on vertical line
+        horzLine: { color: '#9CA3AF', width: 1, style: 2, labelVisible: true },
       },
     });
 
