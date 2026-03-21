@@ -63,6 +63,11 @@ htmlcov/
 *.zip
 .cache/
 
+# Screenshots and Generated Images
+images/
+*.png
+screenshots/
+
 # Internal Docs and Sensitive Data
 .env.bak
 .env.db.example
