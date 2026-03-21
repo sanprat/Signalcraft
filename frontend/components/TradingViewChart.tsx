@@ -203,7 +203,6 @@ export default function TradingViewChart({
         minBarSpacing: 2, // prevent candles from getting too compressed
         fixLeftEdge: true,  // prevent scrolling past the first bar
         fixRightEdge: true, // prevent scrolling past the last bar
-        rightBarStaysOnEdge: true,  // keep last bar at edge to reduce gaps
         ...(visibleIndexToTime
           ? { tickMarkFormatter: (idx: number) => safeIntradayFormatter(idx, visibleIndexToTime!) }
           : {}),
