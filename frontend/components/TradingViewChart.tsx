@@ -121,12 +121,33 @@ export default function TradingViewChart({
     // Show only recent candles by default for readability
     // Intraday: show last 100 candles, Daily: show last 150 candles
     const MAX_VISIBLE_CANDLES = looksIntraday ? 100 : 150;
-    const visibleData = chartData.length > MAX_VISIBLE_CANDLES
+    let visibleData = chartData.length > MAX_VISIBLE_CANDLES
       ? chartData.slice(-MAX_VISIBLE_CANDLES)
       : chartData;
 
-    // For intraday, also slice volume data to match visible candles
-    if (volData && volData.length > MAX_VISIBLE_CANDLES) {
+    // For intraday, re-index visible data to start from 0 for proper time axis display
+    let visibleIndexToTime: Map<number, number> | null = indexToTime;
+    if (looksIntraday && chartData.length > MAX_VISIBLE_CANDLES) {
+      const startIndex = chartData.length - MAX_VISIBLE_CANDLES;
+      // Re-index visible data to start from 0
+      visibleData = visibleData.map((bar, idx) => {
+        const originalIdx = startIndex + idx;
+        const realTime = indexToTime?.get(originalIdx);
+        if (realTime !== undefined && visibleIndexToTime) {
+          visibleIndexToTime.set(idx, realTime);
+        }
+        return { ...bar, time: idx as unknown as Time };
+      });
+
+      // For intraday, also slice volume data to match visible candles and re-index
+      if (volData && volData.length > 0) {
+        volData = volData.slice(-MAX_VISIBLE_CANDLES).map((v, idx) => ({
+          ...v,
+          time: idx as unknown as Time,
+        }));
+      }
+    } else if (volData && volData.length > MAX_VISIBLE_CANDLES) {
+      // For daily charts, just slice without re-indexing
       volData = volData.slice(-MAX_VISIBLE_CANDLES);
     }
 
@@ -151,8 +172,8 @@ export default function TradingViewChart({
         secondsVisible: false,
         rightOffset: 12,  // increased for better spacing on right
         minBarSpacing: 2, // prevent candles from getting too compressed
-        ...(indexToTime
-          ? { tickMarkFormatter: (idx: number) => intradayTickFormatter(idx, indexToTime!) }
+        ...(visibleIndexToTime
+          ? { tickMarkFormatter: (idx: number) => intradayTickFormatter(idx, visibleIndexToTime!) }
           : {}),
       },
       crosshair: {
@@ -184,7 +205,7 @@ export default function TradingViewChart({
       if (!raw) { onCrosshairMove(null); return; }
 
       const idx = param.time as number;
-      const realTs = indexToTime ? indexToTime.get(idx) : (idx as number);
+      const realTs = visibleIndexToTime ? visibleIndexToTime.get(idx) : (idx as number);
       const timeStr = realTs ? fmtTime(realTs, looksIntraday) : String(param.time);
 
       // Use visibleData for finding previous close
@@ -224,12 +245,23 @@ export default function TradingViewChart({
             return { ...point, time: normalizedIdx as unknown as Time };
           })
           .filter((p): p is LineData => p !== null);
-      }
 
-      // Slice indicator data to match the visible candle range
-      const visibleIndicatorData = processedData.length > MAX_VISIBLE_CANDLES
-        ? processedData.slice(-MAX_VISIBLE_CANDLES)
-        : processedData;
+        // Re-index for visible range (same as candle re-indexing)
+        if (chartData.length > MAX_VISIBLE_CANDLES) {
+          const startIndex = chartData.length - MAX_VISIBLE_CANDLES;
+          processedData = processedData
+            .filter(p => (p.time as number) >= startIndex)
+            .map(point => {
+              const newIdx = (point.time as number) - startIndex;
+              return { ...point, time: newIdx as unknown as Time };
+            });
+        }
+      } else {
+        // For daily charts, just slice
+        processedData = processedData.length > MAX_VISIBLE_CANDLES
+          ? processedData.slice(-MAX_VISIBLE_CANDLES)
+          : processedData;
+      }
 
       const line = chart.addLineSeries({
         color: ind.color,
@@ -238,16 +270,11 @@ export default function TradingViewChart({
         priceLineVisible: false,
         lastValueVisible: false,
       });
-      line.setData(visibleIndicatorData);
+      line.setData(processedData);
     });
 
-    // Volume - slice to match visible candles
+    // Volume - volData is already sliced and re-indexed earlier
     if (volData?.length) {
-      // Slice volume data to match the visible candle range
-      const visibleVolData = volData.length > MAX_VISIBLE_CANDLES
-        ? volData.slice(-MAX_VISIBLE_CANDLES)
-        : volData;
-
       const volSeries = chart.addHistogramSeries({
         priceFormat: { type: 'volume' },
         priceScaleId: 'vol',
@@ -259,11 +286,11 @@ export default function TradingViewChart({
         visible: false,
       });
 
-      // Map time to candle using visibleData (not full chartData)
+      // Map time to candle using visibleData
       const timeToCandle = new Map<unknown, CandlestickData>();
       visibleData.forEach(c => timeToCandle.set(c.time, c));
 
-      const coloured = visibleVolData.map((v: any) => {
+      const coloured = volData.map((v: any) => {
         if (v.color) return v;
         const candle = timeToCandle.get(v.time);
         const up = candle ? (candle.close as number) >= (candle.open as number) : true;
