@@ -125,6 +125,11 @@ export default function TradingViewChart({
       ? chartData.slice(-MAX_VISIBLE_CANDLES)
       : chartData;
 
+    // For intraday, also slice volume data to match visible candles
+    if (volData && volData.length > MAX_VISIBLE_CANDLES) {
+      volData = volData.slice(-MAX_VISIBLE_CANDLES);
+    }
+
     const chart = createChart(containerRef.current, {
       layout: {
         background: { color: '#ffffff' },
@@ -198,11 +203,33 @@ export default function TradingViewChart({
     });
 
     // Indicators - slice data to match visible candles
+    // For intraday, also normalize indicator times to match candle indices
     indicators?.forEach(ind => {
+      let processedData = ind.data;
+
+      // For intraday charts, normalize indicator times to match candle indices
+      if (looksIntraday && indexToTime) {
+        // Create a reverse map: original timestamp -> normalized index
+        const timeToIndex = new Map<number, number>();
+        indexToTime.forEach((origTime, idx) => {
+          timeToIndex.set(origTime, idx);
+        });
+
+        // Convert indicator data to use normalized indices
+        processedData = ind.data
+          .map(point => {
+            const origTime = point.time as number;
+            const normalizedIdx = timeToIndex.get(origTime);
+            if (normalizedIdx === undefined) return null;
+            return { ...point, time: normalizedIdx as unknown as Time };
+          })
+          .filter((p): p is LineData => p !== null);
+      }
+
       // Slice indicator data to match the visible candle range
-      const visibleIndicatorData = ind.data.length > MAX_VISIBLE_CANDLES
-        ? ind.data.slice(-MAX_VISIBLE_CANDLES)
-        : ind.data;
+      const visibleIndicatorData = processedData.length > MAX_VISIBLE_CANDLES
+        ? processedData.slice(-MAX_VISIBLE_CANDLES)
+        : processedData;
 
       const line = chart.addLineSeries({
         color: ind.color,
