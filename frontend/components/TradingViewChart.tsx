@@ -145,7 +145,6 @@ export default function TradingViewChart({
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 12,  // increased for better spacing on right
-        leftOffset: 8,    // added for better spacing on left
         minBarSpacing: 2, // prevent candles from getting too compressed
         ...(indexToTime
           ? { tickMarkFormatter: (idx: number) => intradayTickFormatter(idx, indexToTime!) }
