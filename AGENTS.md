@@ -1,21 +1,38 @@
 # Pytrader — Agent Memory & Rules
 
 ## Project Overview
-- Algorithmic/automated trading bot
-- Language: Python (3.11+)
-- Framework: FastAPI with Uvicorn
-- Database: PostgreSQL (primary), SQLite (dev fallback)
-- Cache: Redis
-- Infrastructure: Docker, Docker Compose
-- Git: github.com/sanprat/Signalcraft
+- **Name:** SignalCraft / Zenalys
+- **Website:** https://www.zenalys.com
+- **VPS:** Contabo (217.217.250.174)
+- **Language:** Python (3.11+)
+- **Framework:** FastAPI with Uvicorn
+- **Frontend:** Next.js React
+- **Database:** PostgreSQL (primary), SQLite (dev fallback)
+- **Cache:** Redis
+- **Infrastructure:** Docker, Docker Compose, Nginx
+- **Git:** github.com/sanprat/Signalcraft
 
-## Architecture
+## Production Architecture (VPS)
+```
+User → https://www.zenalys.com (Nginx)
+                  ├── / (static) → Next.js Frontend
+                  └── /api/* → FastAPI Backend (port 8001)
+
+All services run on VPS (217.217.250.174) via Docker:
+- signalcraft-backend: FastAPI on port 8001
+- signalcraft-db: PostgreSQL on port 5432
+- signalcraft-redis: Redis on port 6379
+```
+
+## Directory Structure
 - `backend/app/` — FastAPI application (main, routers, models, core)
 - `backend/scripts/` — data fetching and processing scripts
 - `data-scripts/` — daily updaters and historical downloaders
+- `data/candles/` — OHLCV parquet files (NIFTY500 stocks, FnO options)
 - `backend/tests/` — test suite
 - `frontend/` — Next.js React frontend
 - `strategies/` — stored algorithmic strategies
+- `backtests/` — backtest results (generated at runtime)
 
 ## Build / Lint / Test Commands
 
@@ -181,9 +198,12 @@ with get_db() as conn:
 - Rebuild required if: Dockerfile or requirements.txt changed
 - No rebuild needed for: pure Python script changes
 - Services: postgres (5433→5432), redis (6380→6379), backend (8001), frontend (3000)
+- Nginx handles routing: zenalys.com → frontend, zenalys.com/api → backend
 
 ## VPS Deployment
-- After reviewer approves → manually run `git pull origin main` on VPS
-- Check logs: `docker logs signalcraft-backend`
-- Backend service: `systemctl restart signalcraft-backend`
-- Frontend: `pm2 restart signalcraft-frontend`
+- All services run via Docker on VPS: `docker compose` commands
+- After reviewer approves → manually run `git pull origin main` on VPS, then rebuild if needed
+- Check logs: `docker logs signalcraft-backend -f`
+- Restart backend: `docker compose restart backend`
+- Restart all services: `docker compose up -d`
+- Data location on VPS: `/home/signalcraft/data/candles/NIFTY500/`

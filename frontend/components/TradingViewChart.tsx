@@ -117,6 +117,14 @@ export default function TradingViewChart({
       }
     }
 
+    // ─── Determine visible candle range (TradingView-style) ──────────────────
+    // Show only recent candles by default for readability
+    // Intraday: show last 100 candles, Daily: show last 150 candles
+    const MAX_VISIBLE_CANDLES = looksIntraday ? 100 : 150;
+    const visibleData = chartData.length > MAX_VISIBLE_CANDLES
+      ? chartData.slice(-MAX_VISIBLE_CANDLES)
+      : chartData;
+
     const chart = createChart(containerRef.current, {
       layout: {
         background: { color: '#ffffff' },
@@ -136,7 +144,9 @@ export default function TradingViewChart({
         borderColor: '#E5E7EB',
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 8,
+        rightOffset: 12,  // increased for better spacing on right
+        leftOffset: 8,    // added for better spacing on left
+        minBarSpacing: 2, // prevent candles from getting too compressed
         ...(indexToTime
           ? { tickMarkFormatter: (idx: number) => intradayTickFormatter(idx, indexToTime!) }
           : {}),
@@ -156,9 +166,10 @@ export default function TradingViewChart({
       wickUpColor: '#089981',
       wickDownColor: '#f23645',
     });
-    candleSeries.setData(chartData);
+    candleSeries.setData(visibleData);
     candleRef.current = candleSeries;
 
+    // Fit content to show visible data range with proper spacing
     chart.timeScale().fitContent();
 
     // Crosshair → notify parent
@@ -172,8 +183,9 @@ export default function TradingViewChart({
       const realTs = indexToTime ? indexToTime.get(idx) : (idx as number);
       const timeStr = realTs ? fmtTime(realTs, looksIntraday) : String(param.time);
 
-      const barIdx = looksIntraday ? idx : chartData.findIndex(b => b.time === param.time);
-      const prevClose = barIdx > 0 ? (chartData[barIdx - 1].close as number) : (raw.open as number);
+      // Use visibleData for finding previous close
+      const barIdx = looksIntraday ? idx : visibleData.findIndex(b => b.time === param.time);
+      const prevClose = barIdx > 0 ? (visibleData[barIdx - 1].close as number) : (raw.open as number);
 
       onCrosshairMove({
         time: timeStr,
@@ -186,8 +198,13 @@ export default function TradingViewChart({
       });
     });
 
-    // Indicators
+    // Indicators - slice data to match visible candles
     indicators?.forEach(ind => {
+      // Slice indicator data to match the visible candle range
+      const visibleIndicatorData = ind.data.length > MAX_VISIBLE_CANDLES
+        ? ind.data.slice(-MAX_VISIBLE_CANDLES)
+        : ind.data;
+
       const line = chart.addLineSeries({
         color: ind.color,
         lineWidth: (ind.lineWidth ?? 2) as any,
@@ -195,11 +212,16 @@ export default function TradingViewChart({
         priceLineVisible: false,
         lastValueVisible: false,
       });
-      line.setData(ind.data);
+      line.setData(visibleIndicatorData);
     });
 
-    // Volume
+    // Volume - slice to match visible candles
     if (volData?.length) {
+      // Slice volume data to match the visible candle range
+      const visibleVolData = volData.length > MAX_VISIBLE_CANDLES
+        ? volData.slice(-MAX_VISIBLE_CANDLES)
+        : volData;
+
       const volSeries = chart.addHistogramSeries({
         priceFormat: { type: 'volume' },
         priceScaleId: 'vol',
@@ -211,10 +233,11 @@ export default function TradingViewChart({
         visible: false,
       });
 
+      // Map time to candle using visibleData (not full chartData)
       const timeToCandle = new Map<unknown, CandlestickData>();
-      chartData.forEach(c => timeToCandle.set(c.time, c));
+      visibleData.forEach(c => timeToCandle.set(c.time, c));
 
-      const coloured = volData.map((v: any) => {
+      const coloured = visibleVolData.map((v: any) => {
         if (v.color) return v;
         const candle = timeToCandle.get(v.time);
         const up = candle ? (candle.close as number) >= (candle.open as number) : true;
