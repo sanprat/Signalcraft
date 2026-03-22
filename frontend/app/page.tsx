@@ -358,7 +358,7 @@ export default function ZenalysLandingPage() {
                             <p style={{ fontSize: isMobile ? '1rem' : '1.1rem', color: T.textMid, lineHeight: 1.7, marginBottom: isMobile ? 24 : 32 }}>
                                 Our premier visual platform designed for all types of traders. Build complex, multi-leg strategies without writing code. Backtest against years of historical data instantly, and push to live execution with one click.
                             </p>
-                            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 isMobile ? 24 : 40px', display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 16 }}>
+                            <ul style={{ listStyle: 'none', padding: 0, margin: `0 0 ${isMobile ? 24 : 40}px`, display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 16 }}>
                                 {[
                                     'Visual No-Code Strategy Builder',
                                     'TradingView-style interactive chart replay',
@@ -493,11 +493,11 @@ export default function ZenalysLandingPage() {
                 }}>
                     <h2 style={{ fontSize: isMobile ? '1.75rem' : '3rem', fontWeight: 800, marginBottom: isMobile ? 16 : 24, padding: isMobile ? '0 8px' : 0 }}>Ready to trade programmatically?</h2>
                     <p style={{ 
-                        fontSize: isMobile ? '1rem' : '1.2rem', 
-                        color: T.textMid, 
-                        marginBottom: isMobile ? 32 : 40, 
-                        maxWidth: 600, 
-                        margin: '0 auto isMobile ? 32 : 40px',
+                        fontSize: isMobile ? '1rem' : '1.2rem',
+                        color: T.textMid,
+                        marginBottom: isMobile ? 32 : 40,
+                        maxWidth: 600,
+                        margin: `0 auto ${isMobile ? 32 : 40}px`,
                         padding: isMobile ? '0 8px' : 0
                     }}>
                         Join the beta of SignalCraft today. Connect your broker and deploy your first algorithmic strategy in minutes.

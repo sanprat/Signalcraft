@@ -105,6 +105,22 @@ export default function ChartSymbolPage() {
   const isUp     = liveChange >= 0;
   const chgColor = isUp ? '#16a34a' : '#dc2626';
 
+  // Slice data based on selected time range
+  const chartData = useMemo(() => {
+    if (!data.length || range === 'All') return data;
+    const selectedRange = TIME_RANGES.find(r => r.label === range);
+    if (!selectedRange) return data;
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - selectedRange.days);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+    return data.filter(d => {
+      const barDate = typeof d.time === 'string' ? d.time : new Date((d.time as number) * 1000).toISOString().split('T')[0];
+      return barDate >= cutoffStr;
+    });
+  }, [data, range]);
+
   // ── OHLC ROW — follows crosshair when hovering, otherwise shows last bar ──
   // Use chartData (sliced) for display when hovering
   const lastBar = chartData.length ? chartData[chartData.length - 1] : null;
@@ -130,14 +146,14 @@ export default function ChartSymbolPage() {
     setActiveIndicators(prev => prev.filter(i => i.id !== id));
 
   const indicators = useMemo(() => {
-    if (!data.length || !activeIndicators.length) return [];
+    if (!chartData.length || !activeIndicators.length) return [];
     return activeIndicators.map((ind, i) => ({
       name: `${ind.type.toUpperCase()} ${ind.period}`,
-      data: (ind.type === 'sma' ? calculateSMA : calculateEMA)(data, ind.period),
+      data: (ind.type === 'sma' ? calculateSMA : calculateEMA)(chartData, ind.period),
       color: INDICATOR_COLORS[i % INDICATOR_COLORS.length],
       lineWidth: 2,
     }));
-  }, [activeIndicators, data]);
+  }, [activeIndicators, chartData]);
 
   // Fetch historical data
   useEffect(() => {
@@ -205,22 +221,6 @@ export default function ChartSymbolPage() {
   }, []);
 
   const isIndex = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'GIFTNIFTY'].includes(symbol);
-
-  // Slice data based on selected time range
-  const chartData = useMemo(() => {
-    if (!data.length || range === 'All') return data;
-    const selectedRange = TIME_RANGES.find(r => r.label === range);
-    if (!selectedRange) return data;
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - selectedRange.days);
-    const cutoffStr = cutoffDate.toISOString().split('T')[0];
-
-    return data.filter(d => {
-      const barDate = typeof d.time === 'string' ? d.time : new Date((d.time as number) * 1000).toISOString().split('T')[0];
-      return barDate >= cutoffStr;
-    });
-  }, [data, range]);
 
   const volumeData = chartData.map(d => ({
     time: d.time,
