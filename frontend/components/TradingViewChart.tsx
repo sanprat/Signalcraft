@@ -83,7 +83,7 @@ function intradayTickFormatter(idx: number, indexToTime: Map<number, number>): s
 }
 
 // Safe formatter that ensures we never show epoch time (01 Jan '70)
-// Shows date at start of each day, time for other candles
+// Smart formatter: shows dates for multi-day intraday, times for single-day
 function safeIntradayFormatter(idx: number, indexToTime: Map<number, number>): string {
   const ts = indexToTime.get(idx);
   if (!ts || ts <= 0) return ' ';  // Return space for invalid/missing timestamps
@@ -93,18 +93,26 @@ function safeIntradayFormatter(idx: number, indexToTime: Map<number, number>): s
   const h = ist.getUTCHours();
   const m = ist.getUTCMinutes();
   const d = ist.getUTCDate();
+  const month = ist.getUTCMonth() + 1;
+  const year = ist.getUTCFullYear();
+  
+  // Get previous timestamp to detect day changes
   const prevTs = indexToTime.get(idx - 1);
   
-  // Show date label at start of each trading day (9:15 AM IST) or when day changes
-  if (h === 9 && m === 15) return `${d}`;
-  
-  // Also show date if previous candle was from a different day (gap in data)
-  if (prevTs) {
+  // Check if this is a new day (either first candle at 9:15 or day changed from previous)
+  const isNewDay = h === 9 && m === 15 || (prevTs && (() => {
     const prevIst = new Date(prevTs * 1000 + istOffset);
-    if (prevIst.getUTCDate() !== d) return `${d}`;
+    return prevIst.getUTCDate() !== d;
+  })());
+  
+  // For multi-day intraday charts, show date at start of each day
+  if (isNewDay) {
+    // Show "DD Mon" format for better readability (e.g., "21 Mar")
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${d} ${months[month - 1]}`;
   }
   
-  // Show time for regular candles
+  // Show time for regular candles within the day
   return `${pad(h)}:${pad(m)}`;
 }
 

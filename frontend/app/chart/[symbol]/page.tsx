@@ -419,6 +419,22 @@ export default function ChartSymbolPage() {
             ))}
           </select>
 
+          {/* Data range indicator */}
+          {chartData.length > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 500, color: '#6B7280',
+              marginLeft: 8, padding: '2px 8px', background: '#F3F4F6', borderRadius: 4,
+            }}>
+              {(() => {
+                const firstDate = chartData[0].time;
+                const lastDate = chartData[chartData.length - 1].time;
+                const firstStr = typeof firstDate === 'string' ? firstDate : new Date((firstDate as number) * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                const lastStr = typeof lastDate === 'string' ? lastDate : new Date((lastDate as number) * 1000).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                return `${firstStr} - ${lastStr} (${chartData.length} candles)`;
+              })()}
+            </span>
+          )}
+
           {/* Divider */}
           <span style={{ width: 1, height: 18, background: '#E5E7EB' }} />
 
