@@ -147,17 +147,18 @@ export default function TradingViewChart({
     }
 
     // ─── Determine visible candle range (TradingView-style) ──────────────────
-    // Show only recent candles by default for readability
-    // Intraday: show last 100 candles, Daily: show last 150 candles
-    const MAX_VISIBLE_CANDLES = looksIntraday ? 100 : 150;
-    let visibleData = chartData.length > MAX_VISIBLE_CANDLES
-      ? chartData.slice(-MAX_VISIBLE_CANDLES)
+    // Show recent candles initially, but allow scrolling through ALL data
+    // Intraday: show last 200 candles initially, Daily: show last 300 candles
+    // Users can scroll/pan to see more history
+    const INITIAL_VISIBLE_CANDLES = looksIntraday ? 200 : 300;
+    const visibleData = chartData.length > INITIAL_VISIBLE_CANDLES
+      ? chartData.slice(-INITIAL_VISIBLE_CANDLES)
       : chartData;
 
     // For intraday, re-index visible data to start from 0 for proper time axis display
     let visibleIndexToTime: Map<number, number> | null = indexToTime;
-    if (looksIntraday && chartData.length > MAX_VISIBLE_CANDLES) {
-      const startIndex = chartData.length - MAX_VISIBLE_CANDLES;
+    if (looksIntraday && chartData.length > INITIAL_VISIBLE_CANDLES) {
+      const startIndex = chartData.length - INITIAL_VISIBLE_CANDLES;
       // Re-index visible data to start from 0
       visibleData = visibleData.map((bar, idx) => {
         const originalIdx = startIndex + idx;
@@ -170,14 +171,14 @@ export default function TradingViewChart({
 
       // For intraday, also slice volume data to match visible candles and re-index
       if (volData && volData.length > 0) {
-        volData = volData.slice(-MAX_VISIBLE_CANDLES).map((v, idx) => ({
+        volData = volData.slice(-INITIAL_VISIBLE_CANDLES).map((v, idx) => ({
           ...v,
           time: idx as unknown as Time,
         }));
       }
-    } else if (volData && volData.length > MAX_VISIBLE_CANDLES) {
+    } else if (volData && volData.length > INITIAL_VISIBLE_CANDLES) {
       // For daily charts, just slice without re-indexing
-      volData = volData.slice(-MAX_VISIBLE_CANDLES);
+      volData = volData.slice(-INITIAL_VISIBLE_CANDLES);
     }
 
     const chart = createChart(containerRef.current, {
@@ -278,8 +279,8 @@ export default function TradingViewChart({
           .filter((p): p is LineData => p !== null);
 
         // Re-index for visible range (same as candle re-indexing)
-        if (chartData.length > MAX_VISIBLE_CANDLES) {
-          const startIndex = chartData.length - MAX_VISIBLE_CANDLES;
+        if (chartData.length > INITIAL_VISIBLE_CANDLES) {
+          const startIndex = chartData.length - INITIAL_VISIBLE_CANDLES;
           processedData = processedData
             .filter(p => (p.time as number) >= startIndex)
             .map(point => {
@@ -289,8 +290,8 @@ export default function TradingViewChart({
         }
       } else {
         // For daily charts, just slice
-        processedData = processedData.length > MAX_VISIBLE_CANDLES
-          ? processedData.slice(-MAX_VISIBLE_CANDLES)
+        processedData = processedData.length > INITIAL_VISIBLE_CANDLES
+          ? processedData.slice(-INITIAL_VISIBLE_CANDLES)
           : processedData;
       }
 

@@ -48,6 +48,17 @@ const MA_PRESETS = [
   { type: 'ema' as const, period: 21 },
   { type: 'ema' as const, period: 50 },
 ];
+const TIME_RANGES = [
+  { label: '1D', days: 1 },
+  { label: '5D', days: 5 },
+  { label: '1M', days: 30 },
+  { label: '3M', days: 90 },
+  { label: '6M', days: 180 },
+  { label: 'YTD', days: 365 },
+  { label: '1Y', days: 365 },
+  { label: '2Y', days: 730 },
+  { label: 'All', days: 99999 },
+];
 
 type IndicatorEntry = { id: number; type: 'sma' | 'ema'; period: number };
 
@@ -65,6 +76,7 @@ export default function ChartSymbolPage() {
   const [error, setError] = useState('');
   const [isIntraday, setIsIntraday] = useState(false);
   const [interval, setInterval] = useState('1D');
+  const [range, setRange] = useState('All');  // Default to show all data
 
   // Live data
   const { quotes, connected, subscribe, lastUpdate, isLive } = useQuotes(config.apiBaseUrl);
@@ -82,19 +94,25 @@ export default function ChartSymbolPage() {
   const livePriceValid = typeof livePrice === 'number' && livePrice > 0;
 
   // ── BIG PRICE + CHANGE — always anchored to live feed, NEVER follows cursor ──
-  const liveClose     = livePriceValid ? livePrice! : (lastBar?.close ?? 0);
-  const liveChange    = livePriceValid && prevBar
-    ? livePrice! - prevBar.close
-    : lastBar && prevBar
-      ? lastBar.close - prevBar.close
+  // Use full data for lastBar to get the most recent price
+  const lastBarFull = data.length ? data[data.length - 1] : null;
+  const prevBarFull = data.length > 1 ? data[data.length - 2] : null;
+  const liveClose     = livePriceValid ? livePrice! : (lastBarFull?.close ?? 0);
+  const liveChange    = livePriceValid && prevBarFull
+    ? livePrice! - prevBarFull.close
+    : lastBarFull && prevBarFull
+      ? lastBarFull.close - prevBarFull.close
       : 0;
-  const liveChangePct = prevBar?.close
-    ? (liveChange / prevBar.close) * 100
+  const liveChangePct = prevBarFull?.close
+    ? (liveChange / prevBarFull.close) * 100
     : 0;
   const isUp     = liveChange >= 0;
   const chgColor = isUp ? '#16a34a' : '#dc2626';
 
   // ── OHLC ROW — follows crosshair when hovering, otherwise shows last bar ──
+  // Use chartData (sliced) for display when hovering
+  const lastBar = chartData.length ? chartData[chartData.length - 1] : null;
+  const prevBar  = chartData.length > 1 ? chartData[chartData.length - 2] : null;
   const displayOpen  = hoveredBar?.open  ?? lastBar?.open  ?? 0;
   const displayHigh  = hoveredBar?.high  ?? lastBar?.high  ?? 0;
   const displayLow   = hoveredBar?.low   ?? lastBar?.low   ?? 0;
@@ -191,7 +209,24 @@ export default function ChartSymbolPage() {
   }, []);
 
   const isIndex = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'GIFTNIFTY'].includes(symbol);
-  const volumeData = data.map(d => ({
+
+  // Slice data based on selected time range
+  const chartData = useMemo(() => {
+    if (!data.length || range === 'All') return data;
+    const selectedRange = TIME_RANGES.find(r => r.label === range);
+    if (!selectedRange) return data;
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - selectedRange.days);
+    const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+    return data.filter(d => {
+      const barDate = typeof d.time === 'string' ? d.time : new Date((d.time as number) * 1000).toISOString().split('T')[0];
+      return barDate >= cutoffStr;
+    });
+  }, [data, range]);
+
+  const volumeData = chartData.map(d => ({
     time: d.time,
     value: d.volume ?? d.value ?? 0,
   }));
@@ -368,6 +403,29 @@ export default function ChartSymbolPage() {
           {/* Divider */}
           <span style={{ width: 1, height: 18, background: '#E5E7EB' }} />
 
+          {/* Range label */}
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Range
+          </span>
+
+          {/* Range dropdown */}
+          <select
+            value={range}
+            onChange={(e) => setRange(e.target.value)}
+            style={{
+              padding: '3px 10px', border: '1px solid #E5E7EB', borderRadius: 6,
+              fontSize: 12, fontWeight: 600, color: '#6B7280',
+              background: '#fff', cursor: 'pointer', outline: 'none',
+            }}
+          >
+            {TIME_RANGES.map(r => (
+              <option key={r.label} value={r.label}>{r.label}</option>
+            ))}
+          </select>
+
+          {/* Divider */}
+          <span style={{ width: 1, height: 18, background: '#E5E7EB' }} />
+
           {/* MA label */}
           <span style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             Add
@@ -425,10 +483,10 @@ export default function ChartSymbolPage() {
               {error}
             </div>
           </div>
-        ) : data.length ? (
+        ) : chartData.length ? (
           <div style={{ width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden', border: '1px solid #E5E7EB', background: '#fff' }}>
             <TradingViewChart
-              data={data.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close }))}
+              data={chartData.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close }))}
               volumeData={volumeData}
               indicators={indicators}
               realtimeData={realtimeCandle}
