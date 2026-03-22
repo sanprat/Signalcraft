@@ -151,7 +151,7 @@ export default function TradingViewChart({
     // Intraday: show last 200 candles initially, Daily: show last 300 candles
     // Users can scroll/pan to see more history
     const INITIAL_VISIBLE_CANDLES = looksIntraday ? 200 : 300;
-    const visibleData = chartData.length > INITIAL_VISIBLE_CANDLES
+    let visibleData = chartData.length > INITIAL_VISIBLE_CANDLES
       ? chartData.slice(-INITIAL_VISIBLE_CANDLES)
       : chartData;
 
