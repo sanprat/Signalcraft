@@ -155,10 +155,9 @@ export default function TradingViewChart({
     }
 
     // ─── Determine visible candle range (TradingView-style) ──────────────────
-    // Show recent candles initially, but allow scrolling through ALL data
-    // Intraday: show last 200 candles initially, Daily: show last 300 candles
-    // Users can scroll/pan to see more history
-    const INITIAL_VISIBLE_CANDLES = looksIntraday ? 200 : 300;
+    // For intraday: show last 200 candles initially (allow scroll to see more)
+    // For daily: show ALL candles (users can scroll/zoom to navigate)
+    const INITIAL_VISIBLE_CANDLES = looksIntraday ? 200 : 99999;  // Large number = show all
     let visibleData = chartData.length > INITIAL_VISIBLE_CANDLES
       ? chartData.slice(-INITIAL_VISIBLE_CANDLES)
       : chartData;
@@ -185,7 +184,7 @@ export default function TradingViewChart({
         }));
       }
     } else if (volData && volData.length > INITIAL_VISIBLE_CANDLES) {
-      // For daily charts, just slice without re-indexing
+      // For daily charts, just slice without re-indexing (rarely happens now)
       volData = volData.slice(-INITIAL_VISIBLE_CANDLES);
     }
 
