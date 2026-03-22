@@ -84,10 +84,6 @@ export default function ChartSymbolPage() {
   const quoteKey = symbol === 'NIFTY' ? 'NIFTY 50' : symbol;
   const livePrice = quotes[quoteKey]?.ltp;
   const [realtimeCandle, setRealtimeCandle] = useState<any>(null);
-
-  // OHLC bar — starts from last historical bar, updated by crosshair
-  const lastBar = data.length ? data[data.length - 1] : null;
-  const prevBar  = data.length > 1 ? data[data.length - 2] : null;
   const [hoveredBar, setHoveredBar] = useState<HoveredBar | null>(null);
 
   // livePrice=0 means backend subscribed but no tick received yet — treat as no data
