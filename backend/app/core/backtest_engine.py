@@ -9,7 +9,7 @@ import duckdb
 import pandas as pd
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List
 import logging
 import os
 import re
@@ -244,40 +244,47 @@ def load_candles(
         )
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
-    # Step 2: Get available strike files for this index/option_type/timeframe
-    logger.info(
-        f"[OPTIONS] Step 2: Scanning for available strike files in {index}/{opt_types[0]}/{timeframe}"
-    )
-    available_strikes_map = get_available_strikes(index, opt_types[0], timeframe)
+    # Step 2: Get available strike files for each option type (CE and/or PE)
+    # Build a dict: option_type -> {strike -> parquet_path}
+    all_available_strikes: Dict[str, Dict[int, Path]] = {}
 
-    if not available_strikes_map:
+    for opt in opt_types:
+        available_map = get_available_strikes(index, opt, timeframe)
+        if not available_map:
+            logger.warning(
+                f"[OPTIONS] FAILED: No options strike files found for {index}/{opt}/{timeframe}. "
+                f"Options backtesting requires: data/candles/{index}/{opt}/{timeframe}/dhan_ec*_*.parquet"
+            )
+            continue
+        all_available_strikes[opt] = available_map
+        logger.info(
+            f"[OPTIONS] Found {len(available_map)} strikes for {index}/{opt}/{timeframe}"
+        )
+
+    if not all_available_strikes:
         logger.warning(
-            f"[OPTIONS] FAILED: No options strike files found for {index}/{opt_types[0]}/{timeframe}. "
-            f"Options backtesting requires: data/candles/{index}/{opt_types[0]}/{timeframe}/dhan_ec*_*.parquet"
+            f"[OPTIONS] FAILED: No options data available for {index}/{option_type}/{timeframe}"
         )
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
-    # Step 2: Get available strike files for this index/option_type/timeframe
-    available_strikes_map = get_available_strikes(index, opt_types[0], timeframe)
-
-    if not available_strikes_map:
-        logger.warning(
-            f"No option data available for {index}/{opt_types[0]}/{timeframe}"
-        )
-        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
-
-    available_strikes = list(available_strikes_map.keys())
-    logger.info(
-        f"Available strikes for {index}/{opt_types[0]}/{timeframe}: {min(available_strikes)}-{max(available_strikes)}"
-    )
+    # Log available strikes for each option type
+    for opt, strikes_map in all_available_strikes.items():
+        if strikes_map:
+            strikes = list(strikes_map.keys())
+            logger.info(
+                f"Available strikes for {index}/{opt}/{timeframe}: {min(strikes)}-{max(strikes)}"
+            )
 
     # Step 3: For each candle in underlying data, determine target strike and load option data
-    # Group by strike to minimize file reads
-    strike_to_candles = {}
+    # Group by (option_type, strike) to minimize file reads
+    # Structure: {option_type: {strike: [times]}}
+    strike_to_candles: Dict[str, Dict[int, list]] = {
+        opt: {} for opt in all_available_strikes
+    }
 
     for _, spot_row in underlying_df.iterrows():
         spot_time = spot_row["time"]
-        spot_close = spot_row["close"]
+        spot_close = float(spot_row["close"])
 
         # Calculate ATM strike based on spot price
         atm_strike = get_atm_strike(spot_close, index)
@@ -285,57 +292,54 @@ def load_candles(
         # Calculate target strike based on strike type
         target_strike = get_target_strike(atm_strike, strike_type, index)
 
-        # Find nearest available strike
-        nearest_strike = find_nearest_strike(available_strikes, target_strike)
+        # For each option type (CE and/or PE), find nearest available strike
+        for opt in opt_types:
+            if opt not in all_available_strikes or not all_available_strikes[opt]:
+                continue
 
-        if nearest_strike not in strike_to_candles:
-            strike_to_candles[nearest_strike] = []
+            available_strikes = list(all_available_strikes[opt].keys())
+            nearest_strike = find_nearest_strike(available_strikes, target_strike)
 
-        strike_to_candles[nearest_strike].append(spot_time)
+            if nearest_strike not in strike_to_candles[opt]:
+                strike_to_candles[opt][nearest_strike] = []
 
-    # Step 4: Load option data for each strike that we need
-    strike_dataframes = {}
+            strike_to_candles[opt][nearest_strike].append(spot_time)
 
-    for strike, times in strike_to_candles.items():
-        min_time = min(times)
-        max_time = max(times)
+    # Step 4: Load option data for each (option_type, strike) combination
+    for opt, strike_map in strike_to_candles.items():
+        for strike, times in strike_map.items():
+            min_time = min(times)
+            max_time = max(times)
 
-        # Load all data for this strike file
-        parquet_file = available_strikes_map.get(strike)
-        if not parquet_file:
-            continue
+            # Get the parquet file for this strike
+            parquet_file = all_available_strikes[opt].get(strike)
+            if not parquet_file:
+                continue
 
-        try:
-            df_strike = duckdb.query(f"""
-                SELECT time, open, high, low, close, volume
-                FROM read_parquet('{parquet_file}')
-                WHERE time >= '{min_time}'
-                  AND time <= '{max_time} 23:59:59'
-                ORDER BY time
-            """).df()
+            try:
+                df_strike = duckdb.query(f"""
+                    SELECT time, open, high, low, close, volume
+                    FROM read_parquet('{parquet_file}')
+                    WHERE time >= '{min_time}'
+                      AND time <= '{max_time} 23:59:59'
+                    ORDER BY time
+                """).df()
 
-            if not df_strike.empty:
-                strike_dataframes[strike] = df_strike
-                logger.debug(f"Loaded {len(df_strike)} candles for strike {strike}")
+                if not df_strike.empty:
+                    df_strike["time"] = pd.to_datetime(df_strike["time"], utc=True)
+                    df_strike["time"] = df_strike["time"].dt.tz_convert("Asia/Kolkata")
+                    df_strike["option_type"] = opt
+                    df_strike["strike"] = strike
+                    dfs.append(df_strike)
+                    logger.debug(
+                        f"Loaded {len(df_strike)} candles for {opt} strike {strike}"
+                    )
 
-        except Exception as e:
-            logger.error(f"DuckDB error for {index}/{strike}: {e}")
-
-    if not strike_dataframes:
-        logger.warning(f"No option data loaded for {index}/{option_type}/{timeframe}")
-        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
-
-    # Step 5: Merge underlying times with option data
-    # For simplicity, we'll concatenate all loaded strike data
-    # A more sophisticated approach would map each timestamp to its specific strike
-    for strike, df_strike in strike_dataframes.items():
-        df_strike["time"] = pd.to_datetime(df_strike["time"], utc=True)
-        df_strike["time"] = df_strike["time"].dt.tz_convert("Asia/Kolkata")
-        df_strike["option_type"] = option_type
-        df_strike["strike"] = strike
-        dfs.append(df_strike)
+            except Exception as e:
+                logger.error(f"DuckDB error for {index}/{opt}/{strike}: {e}")
 
     if not dfs:
+        logger.warning(f"No option data loaded for {index}/{option_type}/{timeframe}")
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
     result = pd.concat(dfs).sort_values("time").reset_index(drop=True)
