@@ -26,6 +26,22 @@ def run(body: BacktestRequest, current_user: UserResponse = Depends(get_current_
 
     result = run_backtest(strategy, backtest_id)
 
+    # Check if backtest failed due to missing options data
+    if result.get("summary", {}).get("error") == "MISSING_OPTIONS_DATA":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "MISSING_OPTIONS_DATA",
+                "message": result["summary"]["error_message"],
+                "required_files": result["summary"]["missing_data"],
+                "hint": (
+                    "Options backtesting requires two data files:\n"
+                    "1. Underlying spot data (NIFTY/BANKNIFTY/FINNIFTY prices)\n"
+                    "2. Options strike data (CE/PE parquet files with dhan_ec*_*.parquet naming)"
+                ),
+            },
+        )
+
     # Store candles separately (large data)
     candles_df: pd.DataFrame = result.pop("candles", pd.DataFrame())
     result["summary"]["backtest_id"] = backtest_id
@@ -41,7 +57,7 @@ def run(body: BacktestRequest, current_user: UserResponse = Depends(get_current_
     # Save candles as Parquet for fast retrieval
     if not candles_df.empty:
         candles_df["time"] = candles_df["time"].astype(str)
-        candles_df[["time","open","high","low","close","volume"]].to_parquet(
+        candles_df[["time", "open", "high", "low", "close", "volume"]].to_parquet(
             out_dir / "candles.parquet", compression="lz4", index=False
         )
 
@@ -68,6 +84,7 @@ def get_trades(backtest_id: str):
 def get_candles(backtest_id: str, page: int = 0, page_size: int = 500):
     """Return candles in pages of 500 for chart streaming."""
     import duckdb
+
     path = BACKTEST_STORE / backtest_id / "candles.parquet"
     if not path.exists():
         raise HTTPException(404, "Candle data not found")
@@ -82,15 +99,17 @@ def get_candles(backtest_id: str, page: int = 0, page_size: int = 500):
 
     return {
         "page": page,
-        "total": int(duckdb.query(f"SELECT COUNT(*) FROM read_parquet('{path}')").fetchone()[0]),
+        "total": int(
+            duckdb.query(f"SELECT COUNT(*) FROM read_parquet('{path}')").fetchone()[0]
+        ),
         "candles": {
-            "time":   df["time_ts"].tolist(),
-            "open":   df["open"].tolist(),
-            "high":   df["high"].tolist(),
-            "low":    df["low"].tolist(),
-            "close":  df["close"].tolist(),
+            "time": df["time_ts"].tolist(),
+            "open": df["open"].tolist(),
+            "high": df["high"].tolist(),
+            "low": df["low"].tolist(),
+            "close": df["close"].tolist(),
             "volume": df["volume"].tolist(),
-        }
+        },
     }
 
 
@@ -102,14 +121,19 @@ def list_backtests(current_user: UserResponse = Depends(get_current_user)):
         return results
 
     # Look for summary.json in each subfolder
-    for d in sorted(BACKTEST_STORE.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+    for d in sorted(
+        BACKTEST_STORE.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True
+    ):
         if d.is_dir():
             summary_path = d / "summary.json"
             if summary_path.exists():
                 try:
                     summary = json.loads(summary_path.read_text())
                     # Filter by user_id (if stored, otherwise include for backward compat)
-                    if summary.get("user_id") is None or summary.get("user_id") == current_user.id:
+                    if (
+                        summary.get("user_id") is None
+                        or summary.get("user_id") == current_user.id
+                    ):
                         results.append(summary)
                 except Exception:
                     continue

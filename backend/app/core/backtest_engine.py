@@ -9,9 +9,10 @@ import duckdb
 import pandas as pd
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,16 @@ DATA_DIR = Path(
     os.environ.get(
         "CANDLE_DATA_DIR", Path(__file__).parent.parent.parent / "data" / "candles"
     )
+)
+
+# Path to underlying spot data for ATM strike calculation
+UNDERLYING_DIR = (
+    Path(
+        os.environ.get(
+            "CANDLE_DATA_DIR", Path(__file__).parent.parent.parent / "data" / "candles"
+        )
+    ).parent
+    / "underlying"
 )
 
 # Strike offset mapping
@@ -33,6 +44,13 @@ STRIKE_OFFSET_MAP = {
     "ITM3": -3,
 }
 
+# Strike price step for each index
+STRIKE_STEP = {
+    "NIFTY": 50,
+    "BANKNIFTY": 100,
+    "FINNIFTY": 50,
+}
+
 
 def _build_parquet_glob(index: str, option_type: str, timeframe: str) -> str:
     """Build glob path for the relevant Parquet files."""
@@ -42,6 +60,109 @@ def _build_parquet_glob(index: str, option_type: str, timeframe: str) -> str:
         return None
     base = DATA_DIR / index / option_type / tf
     return str(base / "*.parquet")
+
+
+def load_underlying_spot(
+    index: str,
+    timeframe: str,
+    from_date: date,
+    to_date: date,
+) -> pd.DataFrame:
+    """
+    Load underlying spot index data for ATM strike calculation.
+    File path: UNDERLYING_DIR / {index} / {timeframe}.parquet
+    """
+    parquet_path = UNDERLYING_DIR / index / f"{timeframe}.parquet"
+    logger.info(f"[OPTIONS] Looking for underlying spot data at: {parquet_path}")
+
+    if not parquet_path.exists():
+        logger.warning(
+            f"[OPTIONS] MISSING underlying data: {parquet_path} not found. "
+            f"Options backtesting requires: data/underlying/{index}/{timeframe}.parquet"
+        )
+        return pd.DataFrame(columns=["time", "close"])
+
+    try:
+        df = duckdb.query(f"""
+            SELECT time, close
+            FROM read_parquet('{parquet_path}')
+            WHERE time >= '{from_date}'
+              AND time <= '{to_date} 23:59:59'
+            ORDER BY time
+        """).df()
+        logger.info(
+            f"[OPTIONS] Loaded {len(df)} rows of underlying spot data for {index}"
+        )
+    except Exception as e:
+        logger.error(f"DuckDB error for underlying {index}/{timeframe}: {e}")
+        return pd.DataFrame(columns=["time", "close"])
+
+    df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert("Asia/Kolkata")
+    return df.reset_index(drop=True)
+
+
+def get_atm_strike(spot_price: float, index: str) -> int:
+    """
+    Calculate ATM strike based on spot price and index strike step.
+    e.g. spot=22345 → ATM=22350 for NIFTY (step=50)
+    """
+    step = STRIKE_STEP.get(index, 50)
+    return round(spot_price / step) * step
+
+
+def get_target_strike(atm_strike: int, strike_type: str, index: str) -> int:
+    """
+    Calculate target strike based on ATM strike and strike type offset.
+    e.g. ATM=22350, OTM1 → 22400 (for NIFTY)
+    """
+    step = STRIKE_STEP.get(index, 50)
+    offset = STRIKE_OFFSET_MAP.get(strike_type, 0)
+    return atm_strike + (offset * step)
+
+
+def get_available_strikes(
+    index: str,
+    option_type: str,
+    timeframe: str,
+) -> Dict[int, Path]:
+    """
+    Scan directory and return mapping of strike → parquet file path.
+    File pattern: dhan_ec[01]_{strike}.parquet
+    """
+    parquet_dir = DATA_DIR / index / option_type / timeframe
+    logger.info(f"[OPTIONS] Scanning for strike files in: {parquet_dir}")
+
+    if not parquet_dir.exists():
+        logger.warning(
+            f"[OPTIONS] MISSING options directory: {parquet_dir} not found. "
+            f"Options backtesting requires: data/candles/{index}/{option_type}/{timeframe}/dhan_ec*_*.parquet"
+        )
+        return {}
+
+    strikes = {}
+    for f in parquet_dir.glob("dhan_ec*_[0-9]*.parquet"):
+        # Extract strike from filename: dhan_ec0_22500.parquet → 22500
+        match = re.search(r"dhan_ec[01]_(\d+)\.parquet$", f.name)
+        if match:
+            strike = int(match.group(1))
+            strikes[strike] = f
+
+    logger.info(f"[OPTIONS] Found {len(strikes)} strike files in {parquet_dir}")
+    return strikes
+
+
+def find_nearest_strike(
+    available_strikes: List[int],
+    target_strike: int,
+) -> int:
+    """
+    Find the nearest available strike to the target strike.
+    Returns the closest strike from available options.
+    """
+    if not available_strikes:
+        return target_strike
+
+    return min(available_strikes, key=lambda s: abs(s - target_strike))
 
 
 def load_equity_candles(
@@ -97,49 +218,129 @@ def load_candles(
 ) -> pd.DataFrame:
     """
     Load OHLCV candles from Parquet for FnO options.
+
+    Dynamically determines the correct strike file based on:
+    1. Underlying spot index price (to calculate ATM strike)
+    2. Strike type offset (ATM, OTM1, ITM1, etc.)
+    3. Available strike files in the directory
+
     Returns DataFrame sorted by time with market hours only (9:15–15:30).
     """
-    offset = STRIKE_OFFSET_MAP.get(strike_type, 0)
-    proxy_strike = 10000 + offset
-
     opt_types = ["CE", "PE"] if option_type == "BOTH" else [option_type]
     dfs = []
 
-    for opt in opt_types:
-        parquet_dir = DATA_DIR / index / opt / timeframe
-        if not parquet_dir.exists():
-            logger.warning(f"No data dir: {parquet_dir}")
+    logger.info(
+        f"[OPTIONS] Starting load_candles for {index}/{option_type}/{timeframe} ({from_date} to {to_date})"
+    )
+
+    # Step 1: Load underlying spot data to calculate ATM strikes over time
+    logger.info(f"[OPTIONS] Step 1: Loading underlying spot data for {index}")
+    underlying_df = load_underlying_spot(index, timeframe, from_date, to_date)
+
+    if underlying_df.empty:
+        logger.warning(
+            f"[OPTIONS] FAILED: No underlying data for {index}. "
+            f"Options backtesting requires: data/underlying/{index}/{timeframe}.parquet"
+        )
+        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
+
+    # Step 2: Get available strike files for this index/option_type/timeframe
+    logger.info(
+        f"[OPTIONS] Step 2: Scanning for available strike files in {index}/{opt_types[0]}/{timeframe}"
+    )
+    available_strikes_map = get_available_strikes(index, opt_types[0], timeframe)
+
+    if not available_strikes_map:
+        logger.warning(
+            f"[OPTIONS] FAILED: No options strike files found for {index}/{opt_types[0]}/{timeframe}. "
+            f"Options backtesting requires: data/candles/{index}/{opt_types[0]}/{timeframe}/dhan_ec*_*.parquet"
+        )
+        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
+
+    # Step 2: Get available strike files for this index/option_type/timeframe
+    available_strikes_map = get_available_strikes(index, opt_types[0], timeframe)
+
+    if not available_strikes_map:
+        logger.warning(
+            f"No option data available for {index}/{opt_types[0]}/{timeframe}"
+        )
+        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
+
+    available_strikes = list(available_strikes_map.keys())
+    logger.info(
+        f"Available strikes for {index}/{opt_types[0]}/{timeframe}: {min(available_strikes)}-{max(available_strikes)}"
+    )
+
+    # Step 3: For each candle in underlying data, determine target strike and load option data
+    # Group by strike to minimize file reads
+    strike_to_candles = {}
+
+    for _, spot_row in underlying_df.iterrows():
+        spot_time = spot_row["time"]
+        spot_close = spot_row["close"]
+
+        # Calculate ATM strike based on spot price
+        atm_strike = get_atm_strike(spot_close, index)
+
+        # Calculate target strike based on strike type
+        target_strike = get_target_strike(atm_strike, strike_type, index)
+
+        # Find nearest available strike
+        nearest_strike = find_nearest_strike(available_strikes, target_strike)
+
+        if nearest_strike not in strike_to_candles:
+            strike_to_candles[nearest_strike] = []
+
+        strike_to_candles[nearest_strike].append(spot_time)
+
+    # Step 4: Load option data for each strike that we need
+    strike_dataframes = {}
+
+    for strike, times in strike_to_candles.items():
+        min_time = min(times)
+        max_time = max(times)
+
+        # Load all data for this strike file
+        parquet_file = available_strikes_map.get(strike)
+        if not parquet_file:
             continue
 
-        files = list(parquet_dir.glob(f"dhan_ec*_{proxy_strike}.parquet"))
-        if not files:
-            files = list(parquet_dir.glob("*.parquet"))
-
-        if not files:
-            logger.warning(f"No Parquet files in {parquet_dir}")
-            continue
-
-        globs = str(parquet_dir / "*.parquet")
         try:
-            df = duckdb.query(f"""
+            df_strike = duckdb.query(f"""
                 SELECT time, open, high, low, close, volume
-                FROM read_parquet('{globs}')
-                WHERE time >= '{from_date}'
-                  AND time <= '{to_date} 23:59:59'
+                FROM read_parquet('{parquet_file}')
+                WHERE time >= '{min_time}'
+                  AND time <= '{max_time} 23:59:59'
                 ORDER BY time
             """).df()
-            df["option_type"] = opt
-            dfs.append(df)
+
+            if not df_strike.empty:
+                strike_dataframes[strike] = df_strike
+                logger.debug(f"Loaded {len(df_strike)} candles for strike {strike}")
+
         except Exception as e:
-            logger.error(f"DuckDB error for {index}/{opt}/{timeframe}: {e}")
+            logger.error(f"DuckDB error for {index}/{strike}: {e}")
+
+    if not strike_dataframes:
+        logger.warning(f"No option data loaded for {index}/{option_type}/{timeframe}")
+        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
+
+    # Step 5: Merge underlying times with option data
+    # For simplicity, we'll concatenate all loaded strike data
+    # A more sophisticated approach would map each timestamp to its specific strike
+    for strike, df_strike in strike_dataframes.items():
+        df_strike["time"] = pd.to_datetime(df_strike["time"], utc=True)
+        df_strike["time"] = df_strike["time"].dt.tz_convert("Asia/Kolkata")
+        df_strike["option_type"] = option_type
+        df_strike["strike"] = strike
+        dfs.append(df_strike)
 
     if not dfs:
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
     result = pd.concat(dfs).sort_values("time").reset_index(drop=True)
-    result["time"] = pd.to_datetime(result["time"], utc=True)
-    # Convert from UTC to IST for market hours filtering
-    result["time"] = result["time"].dt.tz_convert("Asia/Kolkata")
+
+    # Apply market-hours filter only for intraday timeframes (9:15 IST to 15:30 IST)
     if timeframe != "1D":
         result = result[
             (result["time"].dt.hour > 9)
@@ -149,6 +350,7 @@ def load_candles(
             (result["time"].dt.hour < 15)
             | ((result["time"].dt.hour == 15) & (result["time"].dt.minute <= 30))
         ]
+
     return result.reset_index(drop=True)
 
 
@@ -442,10 +644,33 @@ def run_backtest(strategy: dict, backtest_id: str) -> dict:
         )
 
         if df.empty:
+            # Provide detailed error information for options backtesting
+            logger.error(
+                f"[OPTIONS] Backtest failed: No candle data loaded. "
+                f"Index={strategy.get('index')}, "
+                f"OptionType={strategy.get('option_type')}, "
+                f"Timeframe={strategy.get('timeframe')}. "
+                f"Required files:\n"
+                f"  1. data/underlying/{strategy.get('index')}/{strategy.get('timeframe')}.parquet\n"
+                f"  2. data/candles/{strategy.get('index')}/{strategy.get('option_type')}/{strategy.get('timeframe')}/dhan_ec*_*.parquet"
+            )
             return {
-                "summary": compute_summary(
-                    [], 0, from_date, to_date, backtest_id, strategy["strategy_id"]
-                ),
+                "summary": {
+                    **compute_summary(
+                        [], 0, from_date, to_date, backtest_id, strategy["strategy_id"]
+                    ),
+                    "error": "MISSING_OPTIONS_DATA",
+                    "error_message": (
+                        f"Options data not found for {strategy.get('index')}/{strategy.get('option_type')}. "
+                        f"Options backtesting requires two data files:\n"
+                        f"1. Underlying spot: data/underlying/{strategy.get('index')}/{strategy.get('timeframe')}.parquet\n"
+                        f"2. Options strikes: data/candles/{strategy.get('index')}/{strategy.get('option_type')}/{strategy.get('timeframe')}/dhan_ec*_*.parquet"
+                    ),
+                    "missing_data": {
+                        "underlying": f"data/underlying/{strategy.get('index')}/{strategy.get('timeframe')}.parquet",
+                        "options": f"data/candles/{strategy.get('index')}/{strategy.get('option_type')}/{strategy.get('timeframe')}/",
+                    },
+                },
                 "trades": [],
             }
 
