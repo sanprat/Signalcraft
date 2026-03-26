@@ -217,21 +217,18 @@ def quick_backtest(code: str, symbol: str = "RELIANCE", days: int = 90):
     # Compute indicators
     print("\n🔢 Computing indicators...")
 
-    # Build conditions for backtest engine
+    # Build conditions for backtest engine using the compiled strategy's to_dict
     conditions = []
     for cond in compiled.buy_conditions:
-        conditions.append(
-            {
-                "indicator": cond.indicator,
-                "params": {
-                    k: v
-                    for k, v in zip(
-                        ["period", "fast", "slow", "multiplier", "std_dev"], cond.params
-                    )
-                },
-                "logic": "AND",
-            }
-        )
+        cond_dict = cond.to_dict()
+        cond_dict["logic"] = "AND"
+        conditions.append(cond_dict)
+
+    # Also add sell conditions if any (for completeness)
+    for cond in compiled.sell_conditions:
+        cond_dict = cond.to_dict()
+        cond_dict["logic"] = "AND"
+        conditions.append(cond_dict)
 
     df = compute_indicators(df, conditions)
     print_success("Indicators computed")
@@ -242,6 +239,13 @@ def quick_backtest(code: str, symbol: str = "RELIANCE", days: int = 90):
     strategy["symbol"] = symbol
     strategy["asset_type"] = "EQUITY"
     strategy["timeframe"] = "1D"
+
+    # Add default exit conditions if none specified
+    if not strategy["exit_conditions"].get("target_pct"):
+        strategy["exit_conditions"]["target_pct"] = 5.0  # 5% target
+    if not strategy["exit_conditions"].get("stoploss_pct"):
+        strategy["exit_conditions"]["stoploss_pct"] = 2.0  # 2% stop loss
+
     strategy["risk"] = {
         "max_trades_per_day": 3,
         "max_loss_per_day": 5000,

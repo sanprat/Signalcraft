@@ -424,12 +424,149 @@ def load_candles(
 
 
 def compute_indicators(df: pd.DataFrame, entry_conditions: list) -> pd.DataFrame:
-    """Compute all indicator values needed for entry/exit signals."""
+    """
+    Compute all indicator values needed for entry/exit signals.
+
+    Supports simple indicator names from ZenScript:
+    - RSI(period) → creates column "rsi_{period}"
+    - SMA(period) → creates column "sma_{period}"
+    - EMA(period) → creates column "ema_{period}"
+    - Price data: close, open, high, low, volume (already in df)
+
+    For comparisons like RSI(14) < 30, creates signal column when condition is met.
+    For crossover like SMA(10) > SMA(30), creates signal on crossover.
+    """
+    # Track all conditions to generate proper signals
+    conditions_by_signal = {}
+
     for cond in entry_conditions:
         ind = cond["indicator"]
         params = cond.get("params", {})
+        comparison = cond.get("comparison", "<")
+        value = cond.get("value", 0)
+        ref_indicator = cond.get("ref_indicator")
+        ref_params = cond.get("ref_params", [])
 
-        if ind == "EMA_CROSS":
+        # Build a unique signal name for this condition
+        signal_name = f"signal_{ind.lower()}"
+        if params:
+            signal_name += f"_{int(params.get('period', params.get('fast', 0)))}"
+
+        # Compute the primary indicator
+        if ind == "RSI":
+            period = int(params.get("period", 14))
+            col_name = f"rsi_{period}"
+            delta = df["close"].diff()
+            gain = delta.clip(lower=0).rolling(period).mean()
+            loss = (-delta.clip(upper=0)).rolling(period).mean()
+            rs = gain / loss.replace(0, 1e-10)
+            df[col_name] = 100 - (100 / (1 + rs))
+
+            # Generate signal based on comparison
+            if comparison == "<":
+                df[f"signal_{col_name}"] = df[col_name] < value
+            elif comparison == ">":
+                df[f"signal_{col_name}"] = df[col_name] > value
+            elif comparison == "<=":
+                df[f"signal_{col_name}"] = df[col_name] <= value
+            elif comparison == ">=":
+                df[f"signal_{col_name}"] = df[col_name] >= value
+            elif comparison == "==":
+                df[f"signal_{col_name}"] = df[col_name] == value
+            elif comparison == "!=":
+                df[f"signal_{col_name}"] = df[col_name] != value
+
+        elif ind == "SMA":
+            period = int(params.get("period", 20))
+            col_name = f"sma_{period}"
+            df[col_name] = df["close"].rolling(period).mean()
+
+            if ref_indicator:
+                # SMA crossover: SMA(10) > SMA(30)
+                ref_period = int(ref_params[0]) if ref_params else 20
+                ref_col = f"sma_{ref_period}"
+                if ref_col not in df.columns:
+                    df[ref_col] = df["close"].rolling(ref_period).mean()
+
+                if comparison == ">":
+                    df[f"signal_{col_name}_cross"] = (df[col_name] > df[ref_col]) & (
+                        df[col_name].shift(1) <= df[ref_col].shift(1)
+                    )
+                elif comparison == "<":
+                    df[f"signal_{col_name}_cross"] = (df[col_name] < df[ref_col]) & (
+                        df[col_name].shift(1) >= df[ref_col].shift(1)
+                    )
+            else:
+                # Compare SMA to a value
+                if comparison == ">":
+                    df[f"signal_{col_name}"] = df[col_name] > value
+                elif comparison == "<":
+                    df[f"signal_{col_name}"] = df[col_name] < value
+
+        elif ind == "EMA":
+            period = int(params.get("period", 20))
+            col_name = f"ema_{period}"
+            df[col_name] = df["close"].ewm(span=period, adjust=False).mean()
+
+            if ref_indicator:
+                # EMA crossover: EMA(10) > EMA(30)
+                ref_period = int(ref_params[0]) if ref_params else 20
+                ref_col = f"ema_{ref_period}"
+                if ref_col not in df.columns:
+                    df[ref_col] = df["close"].ewm(span=ref_period, adjust=False).mean()
+
+                if comparison == ">":
+                    df[f"signal_{col_name}_cross"] = (df[col_name] > df[ref_col]) & (
+                        df[col_name].shift(1) <= df[ref_col].shift(1)
+                    )
+                elif comparison == "<":
+                    df[f"signal_{col_name}_cross"] = (df[col_name] < df[ref_col]) & (
+                        df[col_name].shift(1) >= df[ref_col].shift(1)
+                    )
+            else:
+                # Compare EMA to a value
+                if comparison == ">":
+                    df[f"signal_{col_name}"] = df[col_name] > value
+                elif comparison == "<":
+                    df[f"signal_{col_name}"] = df[col_name] < value
+
+        elif ind == "CLOSE":
+            # Price comparison: close > 100
+            if comparison == ">":
+                df["signal_close"] = df["close"] > value
+            elif comparison == "<":
+                df["signal_close"] = df["close"] < value
+            elif comparison == ">=":
+                df["signal_close"] = df["close"] >= value
+            elif comparison == "<=":
+                df["signal_close"] = df["close"] <= value
+
+        elif ind == "OPEN":
+            if comparison == ">":
+                df["signal_open"] = df["open"] > value
+            elif comparison == "<":
+                df["signal_open"] = df["open"] < value
+
+        elif ind == "HIGH":
+            if comparison == ">":
+                df["signal_high"] = df["high"] > value
+            elif comparison == "<":
+                df["signal_high"] = df["high"] < value
+
+        elif ind == "LOW":
+            if comparison == ">":
+                df["signal_low"] = df["low"] > value
+            elif comparison == "<":
+                df["signal_low"] = df["low"] < value
+
+        elif ind == "VOLUME":
+            if comparison == ">":
+                df["signal_volume"] = df["volume"] > value
+            elif comparison == "<":
+                df["signal_volume"] = df["volume"] < value
+
+        # Legacy support: EMA_CROSS, RSI_LEVEL (map to new format)
+        elif ind == "EMA_CROSS":
             fast = params.get("fast", 9)
             slow = params.get("slow", 21)
             df[f"ema_{fast}"] = df["close"].ewm(span=fast, adjust=False).mean()
@@ -441,11 +578,23 @@ def compute_indicators(df: pd.DataFrame, entry_conditions: list) -> pd.DataFrame
         elif ind == "RSI_LEVEL":
             period = params.get("period", 14)
             level = params.get("level", 50)
-            delta = df["close"].diff()
-            gain = delta.clip(lower=0).rolling(period).mean()
-            loss = (-delta.clip(upper=0)).rolling(period).mean()
-            rs = gain / loss.replace(0, 1e-10)
-            df["rsi"] = 100 - (100 / (1 + rs))
+            df["rsi"] = 100 - (
+                100
+                / (
+                    1
+                    + (
+                        df["close"].diff().clip(lower=0).rolling(period).mean()
+                        / (
+                            df["close"]
+                            .diff()
+                            .clip(upper=0)
+                            .rolling(period)
+                            .mean()
+                            .replace(0, 1e-10)
+                        )
+                    )
+                )
+            )
             df["signal_rsi"] = (df["rsi"] > level) & (df["rsi"].shift(1) <= level)
 
         elif ind == "SUPERTREND":
@@ -461,9 +610,7 @@ def compute_indicators(df: pd.DataFrame, entry_conditions: list) -> pd.DataFrame
                 axis=1,
             ).max(axis=1)
             atr = tr.rolling(period).mean()
-            upper = hl2 + mult * atr
-            lower = hl2 - mult * atr
-            df["supertrend"] = lower
+            df["supertrend"] = hl2 - mult * atr
             df["signal_supertrend"] = df["close"] > df["supertrend"]
 
     return df

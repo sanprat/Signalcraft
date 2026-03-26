@@ -1,0 +1,78 @@
+"""
+ZenScript v1 Grammar Definition
+
+A trading strategy DSL with trading-friendly syntax.
+Supports indicators, conditions, and actions.
+
+Examples:
+    IF RSI(14) < 30: BUY
+    IF SMA(20) > SMA(50): BUY
+    IF PRICE > EMA(20) AND RSI(14) > 70: SELL
+    IF SUPERTREND REVERSAL: BUY
+    EXIT AT 15:15
+"""
+
+// Terminals
+INDICATOR: "RSI" | "SMA" | "EMA" | "SUPERTREND" | "MACD" | "BBANDS" | "ADX" | "CCI" | "STOCH" | "ATR"
+COMPARISON: "<" | ">" | "<=" | ">=" | "==" | "!="
+LOGICAL_OP: "AND" | "OR"
+ACTION: "BUY" | "SELL" | "EXIT" | "SHORT" | "COVER"
+TIME: /\d{1,2}:\d{2}(:\d{2})?/
+NUMBER: /-?\d+(\.\d+)?/
+IDENTIFIER: /[a-zA-Z_][a-zA-Z0-9_]*/
+STRING: /"[^"]*"|'[^']*'/
+
+// Rules
+start: (statement | NEWLINE)*
+
+statement: if_statement
+         | exit_statement
+         | assignment
+         | comment
+
+if_statement: "IF" _ws condition _ws ":" _ws action
+            | "IF" _ws condition _ws LOGICAL_OP _ws condition _ws ":" _ws action
+
+condition: indicator_expr
+         | comparison
+         | paren_condition
+
+paren_condition: "(" _ws condition ( _ws LOGICAL_OP _ws condition)* _ws ")"
+
+indicator_expr: INDICATOR "(" _ws NUMBER? _ws ")" COMPARISON NUMBER
+              | INDICATOR "(" _ws NUMBER _ws ")" COMPARISON INDICATOR "(" _ws NUMBER _ws ")"
+              | INDICATOR "(" _ws NUMBER ("," _ws NUMBER)+ ")" COMPARISON NUMBER
+
+comparison: IDENTIFIER COMPARISON NUMBER
+          | IDENTIFIER COMPARISON IDENTIFIER
+          | NUMBER COMPARISON NUMBER
+
+indicator_ref: INDICATOR "(" NUMBER? ("," NUMBER)* ")"
+
+action: ACTION
+      | ACTION "AT" TIME
+
+exit_statement: "EXIT" (exit_type ("," exit_type)*)?
+exit_type: "AT" TIME
+         | "TARGET" NUMBER
+         | "SL" NUMBER
+         | "TRAILING" NUMBER
+
+assignment: IDENTIFIER "=" expression
+
+expression: NUMBER
+          | IDENTIFIER
+          | indicator_expr
+          | expression "+" expression
+          | expression "-" expression
+          | expression "*" expression
+          | expression "/" expression
+
+comment: "#" /[^\n]*/
+
+// Whitespace handling
+_ws: /\s+/
+NEWLINE: /\n+/
+
+%import common.WS
+%ignore WS
