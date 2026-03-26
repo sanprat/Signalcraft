@@ -62,6 +62,50 @@ def _build_parquet_glob(index: str, option_type: str, timeframe: str) -> str:
     return str(base / "*.parquet")
 
 
+def _read_parquet_with_time_column(parquet_path: Path) -> pd.DataFrame:
+    """
+    Read parquet file and ensure it has a 'time' column.
+
+    Some parquet files have datetime as an index (saved as __index_level_0__)
+    instead of a named column. This function handles both cases.
+    """
+    try:
+        # Try DuckDB first - it can read index columns
+        df = duckdb.query(f"""
+            SELECT * FROM read_parquet('{parquet_path}')
+        """).df()
+
+        # Check if we got __index_level_0__ instead of time
+        if "__index_level_0__" in df.columns:
+            df = df.rename(columns={"__index_level_0__": "time"})
+        elif "index" in df.columns:
+            df = df.rename(columns={"index": "time"})
+
+        return df
+    except Exception:
+        # Fallback to pandas and manual handling
+        df = pd.read_parquet(parquet_path)
+
+        # Handle index column
+        if "__index_level_0__" in df.columns:
+            df = df.rename(columns={"__index_level_0__": "time"})
+        elif df.index.name and "time" not in df.columns:
+            df = df.reset_index().rename(columns={df.index.name: "time"})
+        elif "time" not in df.columns and len(df.columns) == 5:
+            # Assume first column in data is time (5 OHLCV columns)
+            # Get it from the parquet schema
+            import pyarrow.parquet as pq
+
+            pf = pq.ParquetFile(parquet_path)
+            schema = pf.schema_arrow
+            for field in schema:
+                if "index" in field.name.lower() or field.name.startswith("__index"):
+                    df = df.rename(columns={field.name: "time"})
+                    break
+
+        return df
+
+
 def load_underlying_spot(
     index: str,
     timeframe: str,
@@ -83,22 +127,27 @@ def load_underlying_spot(
         return pd.DataFrame(columns=["time", "close"])
 
     try:
-        df = duckdb.query(f"""
-            SELECT time, close
-            FROM read_parquet('{parquet_path}')
-            WHERE time >= '{from_date}'
-              AND time <= '{to_date} 23:59:59'
-            ORDER BY time
-        """).df()
+        df = _read_parquet_with_time_column(parquet_path)
+
+        # Ensure we have time and close columns
+        if "time" not in df.columns:
+            logger.error(f"Parquet file missing 'time' column: {parquet_path}")
+            return pd.DataFrame(columns=["time", "close"])
+
+        # Filter by date range
+        df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert("Asia/Kolkata")
+        df = df[
+            (df["time"].dt.date >= from_date) & (df["time"].dt.date <= to_date)
+        ].sort_values("time")
+
         logger.info(
             f"[OPTIONS] Loaded {len(df)} rows of underlying spot data for {index}"
         )
     except Exception as e:
-        logger.error(f"DuckDB error for underlying {index}/{timeframe}: {e}")
+        logger.error(f"Error loading underlying {index}/{timeframe}: {e}")
         return pd.DataFrame(columns=["time", "close"])
 
-    df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert("Asia/Kolkata")
-    return df.reset_index(drop=True)
+    return df[["time", "close"]].reset_index(drop=True)
 
 
 def get_atm_strike(spot_price: float, index: str) -> int:
@@ -181,31 +230,40 @@ def load_equity_candles(
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
     try:
-        df = duckdb.query(f"""
-            SELECT time, open, high, low, close, volume
-            FROM read_parquet('{parquet_path}')
-            WHERE time >= '{from_date}'
-              AND time <= '{to_date} 23:59:59'
-            ORDER BY time
-        """).df()
+        df = _read_parquet_with_time_column(parquet_path)
+
+        # Ensure we have required columns
+        required_cols = ["time", "open", "high", "low", "close", "volume"]
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            logger.error(f"Missing columns {missing} in {parquet_path}")
+            return pd.DataFrame(columns=required_cols)
+
+        # Convert time to datetime and filter
+        df["time"] = pd.to_datetime(df["time"], utc=True)
+        df["time"] = df["time"].dt.tz_convert("Asia/Kolkata")
+
+        # Filter by date range
+        df = df[
+            (df["time"].dt.date >= from_date) & (df["time"].dt.date <= to_date)
+        ].sort_values("time")
+
+        # Apply market-hours filter only for intraday timeframes (9:15 IST to 15:30 IST)
+        if timeframe != "1D":
+            df = df[
+                (df["time"].dt.hour > 9)
+                | ((df["time"].dt.hour == 9) & (df["time"].dt.minute >= 15))
+            ]
+            df = df[
+                (df["time"].dt.hour < 15)
+                | ((df["time"].dt.hour == 15) & (df["time"].dt.minute <= 30))
+            ]
+
     except Exception as e:
-        logger.error(f"DuckDB error for equity {symbol}/{timeframe}: {e}")
+        logger.error(f"Error loading equity {symbol}/{timeframe}: {e}")
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
 
-    df["time"] = pd.to_datetime(df["time"], utc=True)
-    # Convert from UTC to IST for market hours filtering
-    df["time"] = df["time"].dt.tz_convert("Asia/Kolkata")
-    # Apply market-hours filter only for intraday timeframes (9:15 IST to 15:30 IST)
-    if timeframe != "1D":
-        df = df[
-            (df["time"].dt.hour > 9)
-            | ((df["time"].dt.hour == 9) & (df["time"].dt.minute >= 15))
-        ]
-        df = df[
-            (df["time"].dt.hour < 15)
-            | ((df["time"].dt.hour == 15) & (df["time"].dt.minute <= 30))
-        ]
-    return df.reset_index(drop=True)
+    return df[required_cols].reset_index(drop=True)
 
 
 def load_candles(
@@ -317,17 +375,22 @@ def load_candles(
                 continue
 
             try:
-                df_strike = duckdb.query(f"""
-                    SELECT time, open, high, low, close, volume
-                    FROM read_parquet('{parquet_file}')
-                    WHERE time >= '{min_time}'
-                      AND time <= '{max_time} 23:59:59'
-                    ORDER BY time
-                """).df()
+                # Use helper function to handle parquet files with __index_level_0__
+                df_strike = _read_parquet_with_time_column(parquet_file)
+
+                # Ensure we have required columns
+                if "time" not in df_strike.columns:
+                    logger.warning(f"Missing 'time' column in {parquet_file}")
+                    continue
+
+                # Filter by time range
+                df_strike["time"] = pd.to_datetime(df_strike["time"], utc=True)
+                df_strike["time"] = df_strike["time"].dt.tz_convert("Asia/Kolkata")
+                df_strike = df_strike[
+                    (df_strike["time"] >= min_time) & (df_strike["time"] <= max_time)
+                ].sort_values("time")
 
                 if not df_strike.empty:
-                    df_strike["time"] = pd.to_datetime(df_strike["time"], utc=True)
-                    df_strike["time"] = df_strike["time"].dt.tz_convert("Asia/Kolkata")
                     df_strike["option_type"] = opt
                     df_strike["strike"] = strike
                     dfs.append(df_strike)
@@ -336,7 +399,9 @@ def load_candles(
                     )
 
             except Exception as e:
-                logger.error(f"DuckDB error for {index}/{opt}/{strike}: {e}")
+                logger.error(
+                    f"Error loading option data for {index}/{opt}/{strike}: {e}"
+                )
 
     if not dfs:
         logger.warning(f"No option data loaded for {index}/{option_type}/{timeframe}")
