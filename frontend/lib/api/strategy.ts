@@ -13,6 +13,56 @@ import type {
     IndicatorDefinition,
 } from '@/lib/types/strategy'
 
+// Backtest result types
+export interface BacktestTrade {
+    id: string
+    symbol: string
+    entry_time: string
+    exit_time: string
+    entry_price: number
+    exit_price: number
+    quantity: number
+    pnl: number
+    pnl_pct: number
+    exit_reason: string
+}
+
+export interface EquityPoint {
+    timestamp: string
+    equity: number
+    drawdown: number
+}
+
+export interface BacktestResult {
+    backtest_id: string
+    summary: {
+        total_trades: number
+        winning_trades: number
+        losing_trades: number
+        win_rate: number
+        total_pnl: number
+        total_pnl_pct: number
+        max_drawdown: number
+        max_drawdown_pct: number
+        sharpe_ratio: number
+        avg_trade_duration: number
+    }
+    trades: BacktestTrade[]
+    equity_curve: EquityPoint[]
+}
+
+export interface StrategyListItem {
+    id: string
+    name: string
+    symbols: string[]
+    timeframe: string
+    asset_type: string
+    entry_conditions_count: number
+    exit_rules_count: number
+    created_at: string
+    updated_at: string
+}
+
 const API_BASE = config.apiBaseUrl
 
 /**
@@ -55,7 +105,7 @@ export async function validateStrategy(strategy: StrategyV2): Promise<Validation
 export async function backtestStrategy(
     strategy: StrategyV2,
     mode: 'quick' | 'full' = 'quick'
-): Promise<any> {
+): Promise<BacktestResult> {
     try {
         const response = await fetch(`${API_BASE}/api/strategy/v2/backtest`, {
             method: 'POST',
@@ -84,7 +134,7 @@ export async function backtestStrategy(
 export async function quickBacktest(
     strategy: StrategyV2,
     days: number = 90
-): Promise<any> {
+): Promise<BacktestResult> {
     try {
         const response = await fetch(`${API_BASE}/api/strategy/v2/backtest/quick?days=${days}`, {
             method: 'POST',
@@ -169,7 +219,7 @@ export async function loadStrategy(strategyId: string): Promise<LoadStrategyResp
 /**
  * List all strategies for the current user
  */
-export async function listStrategies(): Promise<any[]> {
+export async function listStrategies(): Promise<StrategyListItem[]> {
     try {
         const response = await fetch(`${API_BASE}/api/strategy/v2/list`, {
             method: 'GET',

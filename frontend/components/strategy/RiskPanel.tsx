@@ -44,9 +44,15 @@ export function RiskPanel({ risk, assetType, onUpdate }: RiskPanelProps) {
                     <input
                         type="number"
                         min="0"
+                        max="1000000"
                         step="100"
                         value={risk.max_loss_per_day}
-                        onChange={(e) => onUpdate({ max_loss_per_day: parseFloat(e.target.value) || 0 })}
+                        onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0
+                            // Clamp value to bounds
+                            const clampedVal = Math.min(Math.max(val, 0), 1000000)
+                            onUpdate({ max_loss_per_day: clampedVal })
+                        }}
                         className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                     />
                 </div>
@@ -59,8 +65,14 @@ export function RiskPanel({ risk, assetType, onUpdate }: RiskPanelProps) {
                     <input
                         type="number"
                         min="1"
+                        max="10000"
                         value={risk.quantity}
-                        onChange={(e) => onUpdate({ quantity: parseInt(e.target.value) || 1 })}
+                        onChange={(e) => {
+                            const val = parseInt(e.target.value) || 1
+                            // Clamp value to bounds
+                            const clampedVal = Math.min(Math.max(val, 1), 10000)
+                            onUpdate({ quantity: clampedVal })
+                        }}
                         className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                 </div>

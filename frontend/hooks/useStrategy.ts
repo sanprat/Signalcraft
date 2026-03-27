@@ -160,19 +160,21 @@ export function useStrategy(): UseStrategyReturn {
 
     // Exit rules
     const addExitRule = useCallback((type: ExitRuleType) => {
-        const newRule = createDefaultExitRule(type)
-        // Set priority to next available
-        const maxPriority = strategy.exit_rules.length > 0
-            ? Math.max(...strategy.exit_rules.map(r => r.priority))
-            : 0
-        const ruleWithPriority = { ...newRule, priority: maxPriority + 1 }
+        setStrategyState(prev => {
+            const newRule = createDefaultExitRule(type)
+            // Set priority to next available (computed from prev state to avoid stale closure)
+            const maxPriority = prev.exit_rules.length > 0
+                ? Math.max(...prev.exit_rules.map(r => r.priority))
+                : 0
+            const ruleWithPriority = { ...newRule, priority: maxPriority + 1 }
 
-        setStrategyState(prev => ({
-            ...prev,
-            exit_rules: [...prev.exit_rules, ruleWithPriority],
-        }))
+            return {
+                ...prev,
+                exit_rules: [...prev.exit_rules, ruleWithPriority],
+            }
+        })
         markDirty()
-    }, [strategy.exit_rules, markDirty])
+    }, [markDirty])
 
     const removeExitRule = useCallback((ruleId: string) => {
         setStrategyState(prev => ({

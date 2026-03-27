@@ -13,26 +13,6 @@ import { ZenScriptPreview } from '@/components/strategy/ZenScriptPreview'
 import { ValidationResults } from '@/components/strategy/ValidationResults'
 import type { AssetType, IndexType, OptionType, StrikeType, TimeframeType } from '@/lib/types/strategy'
 
-// Theme colors
-const T = {
-    navy: '#0F2744',
-    blue: '#1D4ED8',
-    blueLight: '#EFF6FF',
-    blueMid: '#BFDBFE',
-    green: '#059669',
-    greenLight: '#ECFDF5',
-    red: '#DC2626',
-    redLight: '#FEF2F2',
-    amber: '#D97706',
-    amberLight: '#FFFBEB',
-    text: '#0F172A',
-    textMid: '#475569',
-    textMuted: '#94A3B8',
-    border: '#E2E8F0',
-    surface: '#FFFFFF',
-    bg: '#F8FAFC',
-}
-
 type Section = 'config' | 'entry' | 'exit' | 'risk'
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
     { id: 'config', label: 'Config', icon: '⚙️' },

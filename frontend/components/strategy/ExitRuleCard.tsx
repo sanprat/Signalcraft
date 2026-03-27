@@ -27,6 +27,12 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
         opacity: isDragging ? 0.5 : 1,
     }
 
+    // Validate and clamp percentage values to reasonable bounds
+    const clampPercent = (val: number, min: number, max: number) => {
+        if (isNaN(val)) return min
+        return Math.min(Math.max(val, min), max)
+    }
+
     const getRuleIcon = () => {
         switch (rule.type) {
             case 'stoploss':
@@ -105,6 +111,9 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                         className="p-1 text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing"
                         {...attributes}
                         {...listeners}
+                        aria-label="Drag to reorder"
+                        role="button"
+                        tabIndex={0}
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
@@ -142,8 +151,13 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                                 <input
                                     type="number"
                                     step="0.1"
+                                    min="0.1"
+                                    max="50"
                                     value={rule.percent}
-                                    onChange={(e) => onUpdate({ percent: parseFloat(e.target.value) || 0 })}
+                                    onChange={(e) => {
+                                        const val = parseFloat(e.target.value)
+                                        onUpdate({ percent: clampPercent(val, 0.1, 50) })
+                                    }}
                                     className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                                 />
                             </div>
@@ -172,8 +186,13 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                         <input
                             type="number"
                             step="0.1"
+                            min="0.1"
+                            max="100"
                             value={rule.percent}
-                            onChange={(e) => onUpdate({ percent: parseFloat(e.target.value) || 0 })}
+                            onChange={(e) => {
+                                const val = parseFloat(e.target.value)
+                                onUpdate({ percent: clampPercent(val, 0.1, 100) })
+                            }}
                             className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                         />
                     </div>
@@ -189,8 +208,13 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                             <input
                                 type="number"
                                 step="0.1"
+                                min="0.1"
+                                max="50"
                                 value={rule.percent}
-                                onChange={(e) => onUpdate({ percent: parseFloat(e.target.value) || 0 })}
+                                onChange={(e) => {
+                                    const val = parseFloat(e.target.value)
+                                    onUpdate({ percent: clampPercent(val, 0.1, 50) })
+                                }}
                                 className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                             />
                         </div>
@@ -201,8 +225,13 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                             <input
                                 type="number"
                                 step="0.1"
+                                min="0.1"
+                                max="100"
                                 value={rule.activationPercent || 0}
-                                onChange={(e) => onUpdate({ activationPercent: parseFloat(e.target.value) || 0 })}
+                                onChange={(e) => {
+                                    const val = parseFloat(e.target.value)
+                                    onUpdate({ activationPercent: clampPercent(val, 0.1, 100) })
+                                }}
                                 className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                             />
                         </div>
