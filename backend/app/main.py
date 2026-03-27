@@ -25,6 +25,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 from app.core.config import settings
 from app.core.rate_limiter import limiter, rate_limit_exceeded_handler
 from app.routers import strategy, backtest, live
+from app.routers.strategy_v2 import router as strategy_v2_router
 from app.routers.quotes import (
     router as quotes_router,
     _dhan_feed,
@@ -72,6 +73,7 @@ async def https_redirect_middleware(request: Request, call_next):
 app.include_router(strategy.router)
 app.include_router(backtest.router)
 app.include_router(live.router)
+app.include_router(strategy_v2_router)
 app.include_router(quotes_router)
 app.include_router(dhan_router)
 app.include_router(auth_router)
