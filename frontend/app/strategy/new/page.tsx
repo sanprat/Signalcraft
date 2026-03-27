@@ -1,705 +1,475 @@
 'use client'
 
-import { useState, useEffect, useMemo, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
-import { config, getAuthHeaders } from '@/lib/config'
+import { useStrategy } from '@/hooks/useStrategy'
+import { loadStrategy } from '@/lib/api/strategy'
 import { BackButton } from '@/components/BackButton'
+import { StrategyConfig } from '@/components/strategy/StrategyConfig'
+import { EntryBuilder } from '@/components/strategy/EntryBuilder'
+import { ExitBuilder } from '@/components/strategy/ExitBuilder'
+import { RiskPanel } from '@/components/strategy/RiskPanel'
+import { ZenScriptPreview } from '@/components/strategy/ZenScriptPreview'
+import { ValidationResults } from '@/components/strategy/ValidationResults'
+import type { AssetType, IndexType, OptionType, StrikeType, TimeframeType } from '@/lib/types/strategy'
 
-const API = config.apiBaseUrl
-
+// Theme colors
 const T = {
-    navy: '#0F2744', blue: '#1D4ED8', blueLight: '#EFF6FF', blueMid: '#BFDBFE',
-    green: '#059669', greenLight: '#ECFDF5', greenMid: '#A7F3D0',
-    red: '#DC2626', redLight: '#FEF2F2', redMid: '#FECACA',
-    amber: '#D97706', amberLight: '#FFFBEB',
-    text: '#0F172A', textMid: '#475569', textMuted: '#94A3B8',
-    border: '#E2E8F0', borderStrong: '#CBD5E1', surface: '#FFFFFF', bg: '#F8FAFC', pill: '#F1F5F9',
+    navy: '#0F2744',
+    blue: '#1D4ED8',
+    blueLight: '#EFF6FF',
+    blueMid: '#BFDBFE',
+    green: '#059669',
+    greenLight: '#ECFDF5',
+    red: '#DC2626',
+    redLight: '#FEF2F2',
+    amber: '#D97706',
+    amberLight: '#FFFBEB',
+    text: '#0F172A',
+    textMid: '#475569',
+    textMuted: '#94A3B8',
+    border: '#E2E8F0',
+    surface: '#FFFFFF',
+    bg: '#F8FAFC',
 }
 
-const STEP_LABELS = ['Asset', 'Timeframe', 'Entry', 'Exit', 'Risk']
-
-const INDICATORS = [
-    { id: 'EMA_CROSS', icon: '📈', label: 'EMA Crossover', desc: 'Fast EMA crosses above Slow EMA', params: { fast: 9, slow: 21 } },
-    { id: 'RSI_LEVEL', icon: '📊', label: 'RSI Level', desc: 'RSI crosses a threshold level', params: { period: 14, level: 50 } },
-    { id: 'SUPERTREND', icon: '⚡', label: 'Supertrend', desc: 'Price crosses above Supertrend', params: { period: 7, multiplier: 3 } },
-    { id: 'PRICE_ACTION', icon: '🕯️', label: 'Price Action', desc: 'Engulfing / breakout candle', params: {} },
+type Section = 'config' | 'entry' | 'exit' | 'risk'
+const SECTIONS: { id: Section; label: string; icon: string }[] = [
+    { id: 'config', label: 'Config', icon: '⚙️' },
+    { id: 'entry', label: 'Entry', icon: '🚀' },
+    { id: 'exit', label: 'Exit', icon: '🚪' },
+    { id: 'risk', label: 'Risk', icon: '🛡️' },
 ]
 
-type EntryCondition = { indicator: string; params: Record<string, number>; logic: 'AND' | 'OR' }
-type Strategy = {
-    name: string; asset_type: 'EQUITY' | 'FNO'; symbol: string;
-    index: string; option_type: string; strike_type: string; timeframe: string
-    entry_conditions: EntryCondition[]
-    exit_conditions: { target_pct: number; stoploss_pct: number; trailing_sl_pct: number; time_exit: string }
-    risk: { max_trades_per_day: number; max_loss_per_day: number; quantity_lots: number; lot_size: number; reentry_after_sl: boolean }
-    backtest_from: string; backtest_to: string
-}
-
-const DEFAULT: Strategy = {
-    name: '', asset_type: 'EQUITY', symbol: 'RELIANCE',
-    index: 'NIFTY', option_type: 'CE', strike_type: 'ATM', timeframe: '1D',
-    entry_conditions: [],
-    exit_conditions: { target_pct: 5, stoploss_pct: 3, trailing_sl_pct: 0, time_exit: '15:15' },
-    risk: { max_trades_per_day: 3, max_loss_per_day: 5000, quantity_lots: 10, lot_size: 1, reentry_after_sl: false },
-    backtest_from: '',
-    backtest_to: '',
-}
-
-function Card({ children, style = {} }: { children: React.ReactNode; style?: React.CSSProperties }) {
-    return <div style={{ background: T.surface, borderRadius: 12, border: `1px solid ${T.border}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', padding: 20, ...style }}>{children}</div>
-}
-
-function ToggleGroup({ options, value, onSelect }: { options: string[]; value: string; onSelect: (v: string) => void }) {
-    return (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {options.map(opt => (
-                <button key={opt} onClick={() => onSelect(opt)} style={{
-                    padding: '8px 16px', borderRadius: 8, border: `1px solid ${value === opt ? T.blue : T.border}`,
-                    background: value === opt ? T.blueLight : '#fff',
-                    color: value === opt ? T.blue : T.textMid,
-                    fontSize: 13, fontWeight: value === opt ? 700 : 500, cursor: 'pointer', transition: 'all 0.15s',
-                }}>{opt}</button>
-            ))}
-        </div>
-    )
-}
-
-// ── Steps ─────────────────────────────────────────────────────────────────────
-function Step1({ d, s, selectedStocks, fromScreener }: { d: Strategy; s: (x: Partial<Strategy>) => void, selectedStocks: string[], fromScreener: boolean }) {
-    const [symbols, setSymbols] = useState<string[]>([])
-    const [search, setSearch] = useState('')
-
-    useEffect(() => {
-        fetch(`${API}/api/strategy/symbols`)
-            .then(r => r.json())
-            .then(setSymbols)
-            .catch(() => setSymbols(['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK']))
-    }, [])
-
-    const filtered = useMemo(() => {
-        if (!search) return symbols.slice(0, 50)
-        return symbols.filter(s => s.toLowerCase().includes(search.toLowerCase())).slice(0, 50)
-    }, [symbols, search])
-
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Asset Type</p>
-                <ToggleGroup options={['EQUITY', 'FNO']} value={d.asset_type} onSelect={v => s({ asset_type: v as 'EQUITY' | 'FNO' })} />
-            </div>
-
-            {d.asset_type === 'EQUITY' ? (
-                <div>
-                    {fromScreener ? (
-                        // Screener mode: show selected stocks as chips
-                        <div>
-                            <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
-                                Selected Stocks from Screener
-                            </p>
-                            <div style={{
-                                padding: '12px', background: T.greenLight,
-                                borderRadius: 8, border: `1px solid ${T.green}`,
-                                marginBottom: 12
-                            }}>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: T.green, marginBottom: 8 }}>
-                                    📊 {selectedStocks.length} stocks selected
-                                </div>
-                                <div style={{
-                                    display: 'flex', flexWrap: 'wrap', gap: 6,
-                                    maxHeight: 120, overflowY: 'auto'
-                                }}>
-                                    {selectedStocks.slice(0, 20).map(sym => (
-                                        <span key={sym} style={{
-                                            padding: '4px 8px', background: T.surface,
-                                            borderRadius: 4, fontSize: 11, fontWeight: 600,
-                                            fontFamily: "'DM Mono', monospace", color: T.blue
-                                        }}>{sym}</span>
-                                    ))}
-                                    {selectedStocks.length > 20 && (
-                                        <span style={{ fontSize: 11, color: T.textMuted }}>
-                                            +{selectedStocks.length - 20} more
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            <p style={{ fontSize: 11, color: T.textMuted }}>
-                                These stocks will be used for backtesting. The strategy will be tested on each stock individually.
-                            </p>
-                        </div>
-                    ) : (
-                        // Normal mode: single stock selection
-                        <div>
-                            <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
-                                Stock Symbol <span style={{ color: T.blue, textTransform: 'none', letterSpacing: 0 }}>({symbols.length} available)</span>
-                            </p>
-                            <input
-                                placeholder="Search stocks (e.g. RELIANCE, TCS)..."
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                style={{
-                                    width: '100%', padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 8,
-                                    fontSize: 13, fontFamily: "'DM Sans', sans-serif", marginBottom: 10, outline: 'none',
-                                }}
-                            />
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 180, overflowY: 'auto', padding: 2 }}>
-                                {filtered.map(sym => (
-                                    <button key={sym} onClick={() => { s({ symbol: sym }); setSearch('') }} style={{
-                                        padding: '6px 12px', borderRadius: 6, border: `1px solid ${d.symbol === sym ? T.blue : T.border}`,
-                                        background: d.symbol === sym ? T.blue : '#fff',
-                                        color: d.symbol === sym ? '#fff' : T.textMid,
-                                        fontSize: 12, fontWeight: d.symbol === sym ? 700 : 500, cursor: 'pointer',
-                                        fontFamily: "'DM Mono', monospace", transition: 'all 0.12s',
-                                    }}>{sym}</button>
-                                ))}
-                                {filtered.length === 0 && <span style={{ fontSize: 12, color: T.textMuted }}>No matches</span>}
-                            </div>
-                            {d.symbol && (
-                                <div style={{ marginTop: 10, padding: '8px 12px', background: T.blueLight, borderRadius: 8, border: `1px solid ${T.blueMid}` }}>
-                                    <span style={{ fontSize: 12, color: T.textMid }}>Selected: </span>
-                                    <span style={{ fontSize: 14, fontWeight: 800, color: T.blue, fontFamily: "'DM Mono', monospace" }}>{d.symbol}</span>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-            ) : (
-                <>
-                    <div>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Select Index</p>
-                        <ToggleGroup options={['NIFTY', 'BANKNIFTY', 'FINNIFTY']} value={d.index} onSelect={v => s({ index: v })} />
-                    </div>
-                    <div>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Option Type</p>
-                        <ToggleGroup options={['CE', 'PE', 'BOTH']} value={d.option_type} onSelect={v => s({ option_type: v })} />
-                    </div>
-                    <div>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Strike</p>
-                        <ToggleGroup options={['ATM', 'OTM1', 'OTM2', 'OTM3', 'ITM1', 'ITM2', 'ITM3']} value={d.strike_type} onSelect={v => s({ strike_type: v })} />
-                        <p style={{ fontSize: 12, color: T.textMuted, marginTop: 6 }}>ATM = At the Money · OTM = Out · ITM = In</p>
-                    </div>
-                </>
-            )}
-        </div>
-    )
-}
-
-function Step2({ d, s }: { d: Strategy; s: (x: Partial<Strategy>) => void }) {
-    const timeframes = d.asset_type === 'EQUITY'
-        ? [['1min', '1 Minute', 'Fastest - real-time scalping'], ['5min', '5 Minute', 'Best for intraday scalping'], ['15min', '15 Minute', 'Best for intraday trends'], ['1D', 'Daily', 'Best for swing/positional strategies']]
-        : [['1min', '1 Minute', 'Fastest scalping'], ['5min', '5 Minute', 'Best for intraday scalping'], ['15min', '15 Minute', 'Best for trend strategies']]
-
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Candle Timeframe</p>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                    {timeframes.map(([v, l, desc]) => (
-                        <button key={v} onClick={() => s({ timeframe: v })} style={{
-                            flex: 1, minWidth: 160, padding: 16, borderRadius: 10, border: `2px solid ${d.timeframe === v ? T.blue : T.border}`,
-                            background: d.timeframe === v ? T.blueLight : '#fff', cursor: 'pointer', textAlign: 'left',
-                        }}>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: d.timeframe === v ? T.blue : T.navy, marginBottom: 4 }}>{l}</div>
-                            <div style={{ fontSize: 12, color: T.textMuted }}>{desc}</div>
-                        </button>
-                    ))}
-                </div>
-            </div>
-            <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Backtest Period</p>
-                <div style={{ display: 'flex', gap: 12 }}>
-                    <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: 11, color: T.textMuted, marginBottom: 4 }}>From</p>
-                        <input type="date" value={d.backtest_from}
-                            onChange={e => s({ backtest_from: e.target.value })}
-                            style={{ width: '100%', padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: 11, color: T.textMuted, marginBottom: 4 }}>To</p>
-                        <input type="date" value={d.backtest_to}
-                            onChange={e => s({ backtest_to: e.target.value })}
-                            style={{ width: '100%', padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
-                    </div>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-function Step3({ d, s }: { d: Strategy; s: (x: Partial<Strategy>) => void }) {
-    const add = (id: string) => {
-        if (d.entry_conditions.find(c => c.indicator === id)) return
-        const meta = INDICATORS.find(i => i.id === id)!
-        s({ entry_conditions: [...d.entry_conditions, { indicator: id, params: { ...meta.params } as Record<string, number>, logic: 'AND' }] })
-    }
-    const remove = (id: string) => s({ entry_conditions: d.entry_conditions.filter(c => c.indicator !== id) })
-    const updateParam = (idx: number, k: string, v: number) => {
-        const conds = [...d.entry_conditions]
-        conds[idx] = { ...conds[idx], params: { ...conds[idx].params, [k]: v } }
-        s({ entry_conditions: conds })
-    }
-
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div>
-                <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Add Indicators <span style={{ color: T.blue, textTransform: 'none', letterSpacing: 0 }}>(click to add)</span></p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    {INDICATORS.map(ind => {
-                        const active = d.entry_conditions.some(c => c.indicator === ind.id)
-                        return (
-                            <button key={ind.id} onClick={() => add(ind.id)} style={{
-                                textAlign: 'left', padding: 14, borderRadius: 10, cursor: 'pointer',
-                                border: `2px solid ${active ? T.blue : T.border}`,
-                                background: active ? T.blueLight : '#fff', transition: 'all 0.15s',
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                    <span style={{ fontSize: 18 }}>{ind.icon}</span>
-                                    <span style={{ fontSize: 13, fontWeight: 700, color: active ? T.blue : T.navy }}>{ind.label}</span>
-                                    {active && <span style={{ marginLeft: 'auto', background: T.greenLight, color: T.green, borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>✓ Added</span>}
-                                </div>
-                                <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>{ind.desc}</p>
-                            </button>
-                        )
-                    })}
-                </div>
-            </div>
-
-            {d.entry_conditions.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', margin: 0 }}>Configure Parameters</p>
-                    {d.entry_conditions.map((cond, idx) => {
-                        const meta = INDICATORS.find(i => i.id === cond.indicator)!
-                        return (
-                            <div key={cond.indicator} style={{ border: `1px solid ${T.border}`, borderRadius: 10, padding: 14 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                                    <span style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>{meta.icon} {meta.label}</span>
-                                    <button onClick={() => remove(cond.indicator)} style={{ background: 'none', border: 'none', color: T.red, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Remove</button>
-                                </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-                                    {Object.entries(cond.params).map(([k, v]) => (
-                                        <div key={k}>
-                                            <p style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>{k}</p>
-                                            <input type="number" value={v} onChange={e => updateParam(idx, k, Number(e.target.value))}
-                                                style={{ width: 80, padding: '7px 10px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Mono', monospace" }} />
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )
-                    })}
-                    {d.entry_conditions.length > 1 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{ fontSize: 12, color: T.textMid }}>Combine with:</span>
-                            {(['AND', 'OR'] as const).map(l => (
-                                <button key={l} onClick={() => s({ entry_conditions: d.entry_conditions.map(c => ({ ...c, logic: l })) })} style={{
-                                    padding: '4px 14px', border: `1px solid ${d.entry_conditions[0]?.logic === l ? T.blue : T.border}`,
-                                    borderRadius: 6, background: d.entry_conditions[0]?.logic === l ? T.blue : '#fff',
-                                    color: d.entry_conditions[0]?.logic === l ? '#fff' : T.textMid, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                                }}>{l}</button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    )
-}
-
-function Step4({ d, s }: { d: Strategy; s: (x: Partial<Strategy>) => void }) {
-    const ex = d.exit_conditions
-    const upd = (k: keyof typeof ex, v: any) => s({ exit_conditions: { ...ex, [k]: v } })
-    return (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            {[
-                { k: 'target_pct', label: '🎯 Target Profit (%)', hint: 'Exit when price gains this %' },
-                { k: 'stoploss_pct', label: '🛑 Stop Loss (%)', hint: 'Exit when price loses this %' },
-                { k: 'trailing_sl_pct', label: '📉 Trailing Stop Loss (%)', hint: 'Trail from highest point' },
-            ].map(({ k, label, hint }) => (
-                <div key={k}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>{label}</p>
-                    <input type="number" value={(ex as any)[k] || ''} placeholder="e.g. 5"
-                        onChange={e => upd(k as any, Number(e.target.value))}
-                        style={{ width: '100%', padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
-                    <p style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>{hint}</p>
-                </div>
-            ))}
-            {d.asset_type === 'FNO' && (
-                <div>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>⏰ Time Exit (IST)</p>
-                    <input type="time" value={ex.time_exit} onChange={e => upd('time_exit', e.target.value)}
-                        style={{ width: '100%', padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
-                    <p style={{ fontSize: 11, color: T.textMuted, marginTop: 4 }}>Force-exit at this time regardless</p>
-                </div>
-            )}
-        </div>
-    )
-}
-
-function Step5({ d, s }: { d: Strategy; s: (x: Partial<Strategy>) => void }) {
-    const r = d.risk
-    const upd = (k: keyof typeof r, v: any) => s({ risk: { ...r, [k]: v } })
-    return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                {[
-                    { k: 'max_trades_per_day', label: 'Max Trades Per Day' },
-                    { k: 'max_loss_per_day', label: 'Max Loss Per Day (Rs.)' },
-                    { k: 'quantity_lots', label: d.asset_type === 'EQUITY' ? 'Number of Shares' : 'Number of Lots' },
-                    { k: 'lot_size', label: d.asset_type === 'EQUITY' ? 'Lot Size (keep 1 for stocks)' : 'Lot Size (e.g. 50 for NIFTY)' },
-                ].map(({ k, label }) => (
-                    <div key={k}>
-                        <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>{label}</p>
-                        <input type="number" value={(r as any)[k]} onChange={e => upd(k as any, Number(e.target.value))}
-                            style={{ width: '100%', padding: '9px 12px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, fontFamily: "'DM Sans', sans-serif" }} />
-                    </div>
-                ))}
-                <div>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Re-entry After Stop Loss?</p>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        {[['Yes', true], ['No', false]].map(([l, v]) => (
-                            <button key={String(l)} onClick={() => upd('reentry_after_sl', v)} style={{
-                                flex: 1, padding: '8px', border: `2px solid ${r.reentry_after_sl === v ? T.blue : T.border}`,
-                                borderRadius: 8, background: r.reentry_after_sl === v ? T.blueLight : '#fff',
-                                color: r.reentry_after_sl === v ? T.blue : T.textMid, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                            }}>{l as string}</button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-
-            {/* Summary card */}
-            <div style={{ background: T.blueLight, borderRadius: 10, border: `1px solid ${T.blueMid}`, padding: 16 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: T.navy, marginBottom: 10 }}>Strategy Summary</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: 12, color: T.textMid }}>
-                    <span>Type: <b style={{ color: T.navy }}>{d.asset_type}</b></span>
-                    {d.asset_type === 'EQUITY' ? (
-                        <span>Symbol: <b style={{ color: T.blue }}>{d.symbol}</b></span>
-                    ) : (
-                        <>
-                            <span>Index: <b style={{ color: T.navy }}>{d.index}</b></span>
-                            <span>Option: <b style={{ color: T.navy }}>{d.option_type}</b></span>
-                            <span>Strike: <b style={{ color: T.navy }}>{d.strike_type}</b></span>
-                        </>
-                    )}
-                    <span>Timeframe: <b style={{ color: T.navy }}>{d.timeframe}</b></span>
-                    <span>Indicators: <b style={{ color: T.navy }}>{d.entry_conditions.map(c => c.indicator).join(', ') || 'None'}</b></span>
-                    <span>Target: <b style={{ color: T.green }}>{d.exit_conditions.target_pct || '—'}%</b></span>
-                    <span>Period: <b style={{ color: T.navy }}>{d.backtest_from} → {d.backtest_to}</b></span>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-// ── Main ───────────────────────────────────────────────────────────────────────
-function NewStrategyContent() {
-    const [step, setStep] = useState(0)
-    const [data, setData] = useState<Strategy>(DEFAULT)
-    const [loading, setLoading] = useState(false)
+function StrategyBuilderContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const [activeSection, setActiveSection] = useState<Section>('config')
+    const [showPreview, setShowPreview] = useState(true)
+    const [showValidation, setShowValidation] = useState(false)
+    const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
 
-    // Multi-stock support from screener
-    const [selectedStocks, setSelectedStocks] = useState<string[]>([])
-    const [fromScreener, setFromScreener] = useState(false)
-    const [showDeployModal, setShowDeployModal] = useState(false)
-    const [selectedBroker, setSelectedBroker] = useState('dhan')
-    const [isPaper, setIsPaper] = useState(false)
+    const {
+        strategy,
+        isDirty,
+        isValidating,
+        isSaving,
+        isBacktesting,
+        validationResult,
+        editMode,
+        strategyId,
+        updateStrategyField,
+        loadStrategy: loadStrategyIntoHook,
+        resetStrategy,
+        addCondition,
+        removeCondition,
+        updateCondition,
+        reorderConditions,
+        setEntryLogic,
+        addExitRule,
+        removeExitRule,
+        updateExitRule,
+        reorderExitRules,
+        setExitLogic,
+        updateRisk,
+        validate,
+        save,
+        backtest,
+    } = useStrategy()
 
-    const set = (partial: Partial<Strategy>) => setData(p => ({ ...p, ...partial }))
-
+    // Load strategy if editing
     useEffect(() => {
-        setData(p => ({
-            ...p,
-            backtest_from: new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0],
-            backtest_to: new Date().toISOString().split('T')[0]
-        }))
-    }, [])
-
-    // Handle URL params from screener and edit
-    useEffect(() => {
-        const stocksParam = searchParams.get('stocks')
-        const source = searchParams.get('source')
         const editId = searchParams.get('edit')
-
         if (editId) {
-            // Edit mode
-            setLoading(true)
-            fetch(`${API}/api/strategy/${editId}`, { headers: getAuthHeaders() })
-                .then(res => {
-                    if (!res.ok) throw new Error('Failed to fetch strategy')
-                    return res.json()
-                })
-                .then(strategy => {
-                    setData({
-                        name: strategy.name || '',
-                        asset_type: strategy.asset_type || 'EQUITY',
-                        symbol: (strategy.symbols && strategy.symbols.length > 0) ? strategy.symbols[0] : (strategy.symbol || ''),
-                        index: strategy.index || 'NIFTY',
-                        option_type: strategy.option_type || 'CE',
-                        strike_type: strategy.strike_type || 'ATM',
-                        timeframe: strategy.timeframe || '1D',
-                        entry_conditions: strategy.entry_conditions || [],
-                        exit_conditions: strategy.exit_conditions || { target_pct: 5, stoploss_pct: 3, trailing_sl_pct: 0, time_exit: '15:15' },
-                        risk: strategy.risk || { max_trades_per_day: 3, max_loss_per_day: 5000, quantity_lots: 10, lot_size: 1, reentry_after_sl: false },
-                        backtest_from: strategy.backtest_from || new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0],
-                        backtest_to: strategy.backtest_to || new Date().toISOString().split('T')[0],
-                    })
+            loadStrategy(editId)
+                .then(data => {
+                    loadStrategyIntoHook(data.strategy, data.strategy_id)
+                    showNotification('success', `Loaded strategy: ${data.strategy.name}`)
                 })
                 .catch(err => {
-                    console.error("Error loading strategy to edit:", err)
-                    alert("Could not load strategy for editing.")
+                    console.error('Failed to load strategy:', err)
+                    showNotification('error', 'Failed to load strategy')
                 })
-                .finally(() => setLoading(false))
-        } else if (stocksParam && source === 'screener') {
-            const stocks = stocksParam.split(',').filter(Boolean)
-            if (stocks.length > 0) {
-                setSelectedStocks(stocks)
-                setFromScreener(true)
-                // Set first stock as default symbol
-                setData(p => ({ ...p, symbol: stocks[0] }))
-            }
         }
     }, [searchParams])
 
-    const submit = async () => {
-        if (!data.name.trim()) { alert('Please enter a strategy name'); return }
-        if (data.asset_type === 'EQUITY' && selectedStocks.length === 0 && !data.symbol) {
-            alert('Please select a stock symbol');
+    // Set default date range
+    useEffect(() => {
+        if (!strategy.backtest_from || !strategy.backtest_to) {
+            const today = new Date()
+            const yearAgo = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000)
+            updateStrategyField('backtest_from', yearAgo.toISOString().split('T')[0])
+            updateStrategyField('backtest_to', today.toISOString().split('T')[0])
+        }
+    }, [])
+
+    const showNotification = (type: 'success' | 'error' | 'info', message: string) => {
+        setNotification({ type, message })
+        setTimeout(() => setNotification(null), 4000)
+    }
+
+    const handleValidate = async () => {
+        setShowValidation(true)
+        const result = await validate()
+        if (result?.valid) {
+            showNotification('success', 'Strategy is valid!')
+        } else {
+            showNotification('error', 'Strategy has validation errors')
+        }
+    }
+
+    const handleSave = async () => {
+        if (!strategy.name.trim()) {
+            showNotification('error', 'Please enter a strategy name')
+            setActiveSection('config')
             return
         }
-        if (data.entry_conditions.length === 0) {
-            alert('Please add at least one entry indicator');
+        if (strategy.symbols.length === 0) {
+            showNotification('error', 'Please select at least one symbol')
+            setActiveSection('config')
+            return
+        }
+        if (strategy.entry_conditions.length === 0) {
+            showNotification('error', 'Please add at least one entry condition')
+            setActiveSection('entry')
+            return
+        }
+        if (strategy.exit_rules.length === 0) {
+            showNotification('error', 'Please add at least one exit rule')
+            setActiveSection('exit')
             return
         }
 
-        setLoading(true)
-        const editId = searchParams.get('edit')
-        
         try {
-            const payload: any = {
-                name: data.name,
-                asset_type: data.asset_type,
-                timeframe: data.timeframe,
-                entry_conditions: data.entry_conditions,
-                exit_conditions: data.exit_conditions,
-                risk: data.risk,
-                backtest_from: data.backtest_from,
-                backtest_to: data.backtest_to,
-            }
-            if (data.asset_type === 'EQUITY') {
-                payload.symbols = fromScreener && selectedStocks.length > 0 ? selectedStocks : [data.symbol]
-            } else {
-                payload.index = data.index
-                payload.option_type = data.option_type
-                payload.strike_type = data.strike_type
-            }
-
-            const url = editId ? `${API}/api/strategy/${editId}` : `${API}/api/strategy`
-            const method = editId ? 'PUT' : 'POST'
-
-            const res = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                body: JSON.stringify(payload)
-            })
-            if (!res.ok) {
-                const err = await res.json()
-                alert(`Error creating strategy: ${JSON.stringify(err.detail || err)}`)
-                setLoading(false)
-                return
-            }
-            const { strategy_id } = await res.json()
-
-            const bt = await fetch(`${API}/api/backtest/run`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                body: JSON.stringify({ strategy_id })
-            })
-            if (!bt.ok) {
-                const err = await bt.json()
-                alert(`Error running backtest: ${JSON.stringify(err.detail || err)}`)
-                setLoading(false)
-                return
-            }
-            const { backtest_id } = await bt.json()
-            router.push(`/backtest/${backtest_id}`)
+            const id = await save()
+            showNotification('success', `Strategy saved! ID: ${id}`)
         } catch (err: any) {
-            console.error(err)
-            alert('Error — make sure the backend is running and data is updated.')
-        }
-        finally {
-            setLoading(false)
+            showNotification('error', err.message || 'Failed to save strategy')
         }
     }
 
-    const deployLive = async () => {
-        if (!data.name.trim()) { alert('Please enter a strategy name'); return }
-        setLoading(true)
-        const editId = searchParams.get('edit')
-        
+    const handleBacktest = async () => {
+        if (!strategy.name.trim()) {
+            showNotification('error', 'Please enter a strategy name')
+            return
+        }
+
         try {
-            // 1. Save strategy first
-            const payload: any = {
-                name: data.name,
-                asset_type: data.asset_type,
-                timeframe: data.timeframe,
-                entry_conditions: data.entry_conditions,
-                exit_conditions: data.exit_conditions,
-                risk: data.risk,
+            // First validate
+            const result = await validate()
+            if (!result?.valid) {
+                setShowValidation(true)
+                showNotification('error', 'Fix validation errors before backtesting')
+                return
             }
-            if (data.asset_type === 'EQUITY') {
-                payload.symbols = fromScreener && selectedStocks.length > 0 ? selectedStocks : [data.symbol]
+
+            // Save first if dirty
+            if (isDirty || !strategyId) {
+                const id = await save()
+                showNotification('success', `Strategy saved! Running backtest...`)
+            }
+
+            // Run backtest
+            const btResult = await backtest()
+            if (btResult && btResult.backtest_id) {
+                router.push(`/backtest/${btResult.backtest_id}`)
             } else {
-                payload.index = data.index
-                payload.option_type = data.option_type
-                payload.strike_type = data.strike_type
+                showNotification('info', 'Backtest completed! Check results.')
             }
-
-            const url = editId ? `${API}/api/strategy/${editId}` : `${API}/api/strategy`
-            const method = editId ? 'PUT' : 'POST'
-
-            const sres = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                body: JSON.stringify(payload)
-            })
-            if (!sres.ok) {
-                const err = await sres.json()
-                alert(`Error saving strategy: ${JSON.stringify(err.detail || err)}`)
-                setLoading(false)
-                return
-            }
-            const { strategy_id } = await sres.json()
-
-            // 2. Deploy
-            const dres = await fetch(`${API}/api/live/deploy`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                body: JSON.stringify({ strategy_id, broker: selectedBroker, paper: isPaper })
-            })
-            if (!dres.ok) {
-                const err = await dres.json()
-                alert(`Error deploying strategy: ${JSON.stringify(err.detail || err)}`)
-                setLoading(false)
-                return
-            }
-
-            router.push('/live')
-        } catch (err) {
-            alert('Error deploying strategy. Check backend logs.')
-        } finally {
-            setLoading(false)
+        } catch (err: any) {
+            showNotification('error', err.message || 'Backtest failed')
         }
     }
 
-    const steps = [
-        <Step1 key={0} d={data} s={set} selectedStocks={selectedStocks} fromScreener={fromScreener} />,
-        <Step2 key={1} d={data} s={set} />,
-        <Step3 key={2} d={data} s={set} />,
-        <Step4 key={3} d={data} s={set} />,
-        <Step5 key={4} d={data} s={set} />,
-    ]
+    const renderSection = () => {
+        switch (activeSection) {
+            case 'config':
+                return (
+                    <div className="space-y-6">
+                        <StrategyConfig
+                            name={strategy.name}
+                            symbols={strategy.symbols}
+                            assetType={strategy.asset_type}
+                            index={strategy.index}
+                            optionType={strategy.option_type}
+                            strikeType={strategy.strike_type}
+                            timeframe={strategy.timeframe}
+                            backtestFrom={strategy.backtest_from}
+                            backtestTo={strategy.backtest_to}
+                            onNameChange={(name) => updateStrategyField('name', name)}
+                            onSymbolsChange={(symbols) => updateStrategyField('symbols', symbols)}
+                            onAssetTypeChange={(asset_type) => updateStrategyField('asset_type', asset_type)}
+                            onIndexChange={(index) => updateStrategyField('index', index)}
+                            onOptionTypeChange={(option_type) => updateStrategyField('option_type', option_type)}
+                            onStrikeTypeChange={(strike_type) => updateStrategyField('strike_type', strike_type)}
+                            onTimeframeChange={(timeframe) => updateStrategyField('timeframe', timeframe)}
+                            onDateRangeChange={(backtest_from, backtest_to) => {
+                                updateStrategyField('backtest_from', backtest_from)
+                                updateStrategyField('backtest_to', backtest_to)
+                            }}
+                        />
+                    </div>
+                )
+
+            case 'entry':
+                return (
+                    <EntryBuilder
+                        conditions={strategy.entry_conditions}
+                        entryLogic={strategy.entry_logic}
+                        onAddCondition={addCondition}
+                        onRemoveCondition={removeCondition}
+                        onUpdateCondition={updateCondition}
+                        onReorderConditions={reorderConditions}
+                        onSetEntryLogic={setEntryLogic}
+                    />
+                )
+
+            case 'exit':
+                return (
+                    <ExitBuilder
+                        exitRules={strategy.exit_rules}
+                        exitLogic={strategy.exit_logic}
+                        onAddExitRule={addExitRule}
+                        onRemoveExitRule={removeExitRule}
+                        onUpdateExitRule={updateExitRule}
+                        onReorderExitRules={reorderExitRules}
+                        onSetExitLogic={setExitLogic}
+                    />
+                )
+
+            case 'risk':
+                return (
+                    <RiskPanel
+                        risk={strategy.risk}
+                        assetType={strategy.asset_type}
+                        onUpdate={updateRisk}
+                    />
+                )
+
+            default:
+                return null
+        }
+    }
 
     return (
-        <div style={{ maxWidth: 680, margin: '0 auto', padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
-            {/* Header with Back Button */}
-            <div style={{ marginBottom: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                    <BackButton defaultBack="/dashboard" />
-                    <h1 style={{ fontSize: 22, fontWeight: 800, color: T.navy, margin: 0, letterSpacing: '-0.5px' }}>
-                        Build Your Strategy
-                    </h1>
-                </div>
-                <input placeholder="Strategy name (e.g. RELIANCE EMA Breakout)" value={data.name} onChange={e => set({ name: e.target.value })}
-                    style={{ width: '100%', padding: '11px 14px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 15, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", color: T.navy, outline: 'none' }} />
-            </div>
-
-            {/* Step progress */}
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
-                {STEP_LABELS.map((label, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <div onClick={() => i < step && setStep(i)} style={{
-                                width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: 13, fontWeight: 700, transition: 'all 0.15s', cursor: i < step ? 'pointer' : 'default',
-                                border: `2px solid ${i === step ? T.blue : i < step ? T.green : T.border}`,
-                                background: i === step ? T.blue : i < step ? T.green : '#fff',
-                                color: i <= step ? '#fff' : T.textMuted,
-                            }}>{i < step ? '✓' : i + 1}</div>
-                            <span style={{ fontSize: 10, marginTop: 4, color: i === step ? T.blue : T.textMuted, fontWeight: i === step ? 700 : 400 }}>{label}</span>
-                        </div>
-                        {i < 4 && <div style={{ width: 40, height: 2, background: i < step ? T.green : T.border, margin: '0 2px 14px' }} />}
-                    </div>
-                ))}
-            </div>
-
-            {/* Step content */}
-            <Card style={{ marginBottom: 20, minHeight: 300 }}>
-                <h2 style={{ fontSize: 15, fontWeight: 700, color: T.navy, margin: '0 0 18px' }}>Step {step + 1}: {STEP_LABELS[step]}</h2>
-                {steps[step]}
-            </Card>
-
-            {/* Navigation */}
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <button onClick={() => setStep(s => s - 1)} disabled={step === 0} style={{
-                    padding: '10px 20px', border: `1px solid ${T.border}`, borderRadius: 8,
-                    background: '#fff', color: T.textMid, fontSize: 13, fontWeight: 600, cursor: step === 0 ? 'not-allowed' : 'pointer', opacity: step === 0 ? 0.4 : 1,
-                }}>← Back</button>
-                {step < 4 ? (
-                    <button onClick={() => setStep(s => s + 1)} style={{ padding: '10px 24px', background: T.blue, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Next →</button>
-                ) : (
-                    <div style={{ display: 'flex', gap: 10 }}>
-                        <button onClick={() => setShowDeployModal(true)} disabled={loading} style={{ padding: '10px 20px', background: T.green, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
-                            🚀 Deploy Live
-                        </button>
-                        <button onClick={submit} disabled={loading} style={{ padding: '10px 20px', background: T.blue, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: loading ? 0.7 : 1 }}>
-                            {loading ? '⏳ Waiting...' : '📊 Run Backtest'}
-                        </button>
-                    </div>
-                )}
-            </div>
-
-            {/* Deploy Modal */}
-            {showDeployModal && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-                    <div style={{ background: '#fff', borderRadius: 16, padding: 32, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-                        <h2 style={{ fontSize: 18, fontWeight: 800, color: T.navy, margin: '0 0 6px' }}>Ready to Go Live?</h2>
-                        <p style={{ fontSize: 13, color: T.textMuted, margin: '0 0 24px' }}>Choose your broker and execution mode.</p>
-
-                        <div style={{ marginBottom: 16 }}>
-                            <label style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Broker</label>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                                {['dhan', 'zerodha', 'shoonya', 'flattrade'].map(b => (
-                                    <button key={b} onClick={() => setSelectedBroker(b)} style={{
-                                        padding: '10px', border: `2px solid ${selectedBroker === b ? T.blue : T.border}`,
-                                        borderRadius: 8, background: selectedBroker === b ? T.blueLight : '#fff',
-                                        color: selectedBroker === b ? T.blue : T.textMid, fontSize: 13, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize'
-                                    }}>{b}</button>
-                                ))}
+        <div className="min-h-screen bg-slate-50">
+            {/* Header */}
+            <div className="bg-white border-b border-slate-200 sticky top-0 z-30">
+                <div className="max-w-7xl mx-auto px-4 py-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <BackButton defaultBack="/dashboard" />
+                            <div>
+                                <h1 className="text-lg font-bold text-slate-800">
+                                    {editMode ? 'Edit Strategy' : 'Build Strategy'}
+                                </h1>
+                                {isDirty && (
+                                    <span className="text-xs text-amber-500">Unsaved changes</span>
+                                )}
                             </div>
                         </div>
 
-                        <div style={{ marginBottom: 24 }}>
-                            <label style={{ fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>Mode</label>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                                {[['Live', false], ['Paper', true]].map(([l, v]) => (
-                                    <button key={String(l)} onClick={() => setIsPaper(v as boolean)} style={{
-                                        flex: 1, padding: '10px', border: `2px solid ${isPaper === v ? T.blue : T.border}`,
-                                        borderRadius: 8, background: isPaper === v ? T.blueLight : '#fff',
-                                        color: isPaper === v ? T.blue : T.textMid, fontSize: 13, fontWeight: 600, cursor: 'pointer'
-                                    }}>{l as string}</button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 10 }}>
-                            <button onClick={() => setShowDeployModal(false)} style={{ flex: 1, padding: 12, border: `1px solid ${T.border}`, borderRadius: 8, background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: T.textMid }}>Cancel</button>
-                            <button onClick={deployLive} disabled={loading} style={{ flex: 1, padding: 12, border: 'none', borderRadius: 8, background: T.green, fontSize: 13, fontWeight: 700, cursor: 'pointer', color: '#fff' }}>
-                                {loading ? 'Deploying...' : '🚀 Start Trading'}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setShowPreview(!showPreview)}
+                                className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                    showPreview
+                                        ? 'bg-slate-800 text-white'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                            >
+                                📋 Preview
                             </button>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="max-w-7xl mx-auto px-4 py-6">
+                <div className={`grid gap-6 ${showPreview ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
+                    {/* Main Editor */}
+                    <div className={showPreview ? 'lg:col-span-2' : ''}>
+                        {/* Section Tabs */}
+                        <div className="flex gap-1 mb-4 bg-slate-100 p-1 rounded-lg overflow-x-auto">
+                            {SECTIONS.map(section => (
+                                <button
+                                    key={section.id}
+                                    onClick={() => setActiveSection(section.id)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                                        activeSection === section.id
+                                            ? 'bg-white text-blue-600 shadow-sm'
+                                            : 'text-slate-600 hover:text-slate-800'
+                                    }`}
+                                >
+                                    <span>{section.icon}</span>
+                                    <span>{section.label}</span>
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Section Content */}
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            {/* Section Header */}
+                            <div className="px-5 py-4 border-b border-slate-100">
+                                <h2 className="text-lg font-semibold text-slate-800">
+                                    {SECTIONS.find(s => s.id === activeSection)?.label} Configuration
+                                </h2>
+                            </div>
+
+                            {/* Section Body */}
+                            <div className="p-5">
+                                {renderSection()}
+                            </div>
+                        </div>
+
+                        {/* Validation Results */}
+                        {showValidation && (
+                            <div className="mt-4">
+                                <ValidationResults
+                                    result={validationResult}
+                                    isValidating={isValidating}
+                                />
+                            </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="mt-6 flex flex-wrap gap-3">
+                            <button
+                                onClick={handleValidate}
+                                disabled={isValidating}
+                                className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors"
+                            >
+                                {isValidating ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin" />
+                                        Validating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        Validate
+                                    </>
+                                )}
+                            </button>
+
+                            <button
+                                onClick={handleSave}
+                                disabled={isSaving}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg font-medium hover:bg-blue-200 disabled:opacity-50 transition-colors"
+                            >
+                                {isSaving ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                                        </svg>
+                                        Save Strategy
+                                    </>
+                                )}
+                            </button>
+
+                            <button
+                                onClick={handleBacktest}
+                                disabled={isBacktesting}
+                                className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
+                            >
+                                {isBacktesting ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        Running Backtest...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        </svg>
+                                        Run Backtest
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Preview Sidebar */}
+                    {showPreview && (
+                        <div className="lg:col-span-1">
+                            <div className="sticky top-24">
+                                <ZenScriptPreview strategy={strategy} />
+
+                                {/* Quick Stats */}
+                                <div className="mt-4 bg-white rounded-xl border border-slate-200 p-4">
+                                    <h3 className="text-sm font-semibold text-slate-700 mb-3">Quick Stats</h3>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Conditions:</span>
+                                            <span className="font-semibold text-slate-700">
+                                                {strategy.entry_conditions.length}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Exit Rules:</span>
+                                            <span className="font-semibold text-slate-700">
+                                                {strategy.exit_rules.length}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Symbols:</span>
+                                            <span className="font-semibold text-slate-700">
+                                                {strategy.symbols.length}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-500">Timeframe:</span>
+                                            <span className="font-semibold text-slate-700">
+                                                {strategy.timeframe}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Toast Notification */}
+            {notification && (
+                <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-slide-up ${
+                    notification.type === 'success'
+                        ? 'bg-green-50 text-green-800 border border-green-200'
+                        : notification.type === 'error'
+                        ? 'bg-red-50 text-red-800 border border-red-200'
+                        : 'bg-blue-50 text-blue-800 border border-blue-200'
+                }`}>
+                    {notification.type === 'success' ? (
+                        <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    ) : notification.type === 'error' ? (
+                        <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    ) : (
+                        <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    )}
+                    <span className="text-sm font-medium">{notification.message}</span>
+                    <button
+                        onClick={() => setNotification(null)}
+                        className="ml-2 text-slate-400 hover:text-slate-600"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
             )}
         </div>
@@ -708,8 +478,15 @@ function NewStrategyContent() {
 
 export default function NewStrategyPage() {
     return (
-        <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: '#94A3B8' }}>Loading...</div>}>
-            <NewStrategyContent />
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                <div className="text-center">
+                    <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-slate-500">Loading strategy builder...</p>
+                </div>
+            </div>
+        }>
+            <StrategyBuilderContent />
         </Suspense>
     )
 }
