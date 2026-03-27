@@ -35,7 +35,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 NIFTY500_DIR = PROJECT_ROOT / "data" / "candles" / "NIFTY500"
 
 # Target timeframes to generate from 1-minute source
-RESAMPLE_TARGETS = ["5min", "15min", "1D"]
+RESAMPLE_TARGETS = ["5min", "10min", "15min", "30min", "60min", "1D"]
 
 # Market hours IST (used to filter 1D aggregation to intraday hours only)
 MARKET_OPEN = "09:15"
@@ -76,8 +76,14 @@ def resample_with_duckdb(src_path: Path, interval: str) -> pd.DataFrame:
 
     if interval == "5min":
         bucket = "INTERVAL 5 MINUTES"
+    elif interval == "10min":
+        bucket = "INTERVAL 10 MINUTES"
     elif interval == "15min":
         bucket = "INTERVAL 15 MINUTES"
+    elif interval == "30min":
+        bucket = "INTERVAL 30 MINUTES"
+    elif interval == "60min":
+        bucket = "INTERVAL 60 MINUTES"
     elif interval == "1D":
         bucket = "INTERVAL 1 DAY"
     else:

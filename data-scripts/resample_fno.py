@@ -39,7 +39,7 @@ FNO_INDICES   = ["NIFTY", "BANKNIFTY", "FINNIFTY", "GIFTNIFTY"]
 OPTION_TYPES  = ["CE", "PE"]
 
 # Only resample to these timeframes (1D rarely useful for options)
-RESAMPLE_TARGETS = ["5min", "15min"]
+RESAMPLE_TARGETS = ["5min", "10min", "15min", "30min", "60min"]
 
 # UTC equivalents of IST market hours (DuckDB reads parquet timestamps as UTC)
 # 9:15 AM IST = 3:45 AM UTC = 225 min
@@ -79,8 +79,14 @@ def resample_with_duckdb(src_path: Path, interval: str) -> pd.DataFrame:
 
     if interval == "5min":
         bucket = "INTERVAL 5 MINUTES"
+    elif interval == "10min":
+        bucket = "INTERVAL 10 MINUTES"
     elif interval == "15min":
         bucket = "INTERVAL 15 MINUTES"
+    elif interval == "30min":
+        bucket = "INTERVAL 30 MINUTES"
+    elif interval == "60min":
+        bucket = "INTERVAL 60 MINUTES"
     else:
         raise ValueError(f"Unsupported interval: {interval}")
 
