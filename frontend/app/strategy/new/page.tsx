@@ -294,7 +294,7 @@ function StrategyBuilderContent() {
                         </div>
 
                         {/* Section Content */}
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
                             {/* Section Header */}
                             <div className="px-5 py-4 border-b border-slate-100">
                                 <h2 className="text-lg font-semibold text-slate-800">
