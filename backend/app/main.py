@@ -58,6 +58,9 @@ app.add_middleware(
 
 
 # HTTPS redirect middleware for production
+logger = logging.getLogger(__name__)
+
+
 @app.middleware("http")
 async def https_redirect_middleware(request: Request, call_next):
     """Redirect HTTP to HTTPS in production."""
@@ -94,7 +97,16 @@ async def startup():
 
     # Start services for automated trading
     await signal_monitor.start()
-    await position_manager.start()
+
+    # Position manager requires PostgreSQL with raw SQL support
+    # For SQLite (local testing), it will fail gracefully
+    try:
+        await position_manager.start()
+    except Exception as e:
+        logger.warning(
+            f"Position manager unavailable (SQLite mode or DB error): {e}. "
+            "Live trading features will be limited."
+        )
 
 
 @app.get("/health")

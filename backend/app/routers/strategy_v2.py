@@ -107,10 +107,20 @@ async def validate_strategy_v2_endpoint(strategy: StrategyV2):
 
     except Exception as e:
         logger.error(f"Validation error: {e}")
+        # Return error with summary
         return StrategyValidationResult(
             valid=False,
             errors=[str(e)],
             warnings=[],
+            summary={
+                "name": strategy.name if strategy else "Unknown",
+                "symbols": strategy.symbols if strategy else [],
+                "timeframe": strategy.timeframe if strategy else "N/A",
+                "entry_logic": strategy.entry_logic if strategy else "N/A",
+                "entry_conditions_count": len(strategy.entry_conditions) if strategy else 0,
+                "exit_rules_count": len(strategy.exit_rules) if strategy else 0,
+                "risk_config": strategy.risk.model_dump() if strategy and strategy.risk else {},
+            },
         )
 
 

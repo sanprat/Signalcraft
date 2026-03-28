@@ -99,7 +99,7 @@ export function ValidationResults({ result, isValidating }: ValidationResultsPro
                     </div>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                         <div className="text-slate-500">Name:</div>
-                        <div className="font-medium text-slate-700">{result.summary.name}</div>
+                        <div className="font-medium text-slate-700">{result.summary.name || 'Unnamed'}</div>
 
                         <div className="text-slate-500">Symbols:</div>
                         <div className="font-medium text-slate-700">
@@ -107,19 +107,19 @@ export function ValidationResults({ result, isValidating }: ValidationResultsPro
                         </div>
 
                         <div className="text-slate-500">Timeframe:</div>
-                        <div className="font-medium text-slate-700">{result.summary.timeframe}</div>
+                        <div className="font-medium text-slate-700">{result.summary.timeframe || 'N/A'}</div>
 
                         <div className="text-slate-500">Entry Logic:</div>
-                        <div className="font-medium text-slate-700">{result.summary.entry_logic}</div>
+                        <div className="font-medium text-slate-700">{result.summary.entry_logic || 'N/A'}</div>
 
                         <div className="text-slate-500">Entry Conditions:</div>
                         <div className="font-medium text-slate-700">
-                            {result.summary.entry_conditions_count}
+                            {result.summary.entry_conditions_count || 0}
                         </div>
 
                         <div className="text-slate-500">Exit Rules:</div>
                         <div className="font-medium text-slate-700">
-                            {result.summary.exit_rules_count}
+                            {result.summary.exit_rules_count || 0}
                         </div>
                     </div>
                 </div>

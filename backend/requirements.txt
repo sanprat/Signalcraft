@@ -4,8 +4,13 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 
-# Database
+# Database - Choose based on your setup:
+# SQLite: No additional driver needed (built into Python)
+# PostgreSQL: Uncomment below
 psycopg2-binary==2.9.9
+
+# SQLAlchemy ORM (supports both SQLite and PostgreSQL)
+sqlalchemy>=2.0.0
 
 # Environment & Config
 python-dotenv==1.0.0
@@ -27,6 +32,9 @@ duckdb
 pandas
 pyarrow
 scipy
+
+# ZenScript DSL Parser
+lark==1.1.9
 
 # Broker Integrations & External Clients
 requests
