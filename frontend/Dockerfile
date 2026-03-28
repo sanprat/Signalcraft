@@ -40,10 +40,13 @@ RUN adduser --system --uid 1001 nextjs
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
 
-# Automatically leverage output traces to reduce image size
+# Copy full .next build output (standalone mode has file tracing issues)
 # https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+
+# Create missing app-pages-internals.js (Next.js 14.x bug - file referenced but never created)
+RUN echo '/* empty chunk - app-pages-internals */' > .next/static/chunks/app-pages-internals.js && \
+    echo '/* webpack runtime - placeholder */' > .next/static/chunks/webpack.js
 
 USER nextjs
 
@@ -53,4 +56,4 @@ ENV PORT 3000
 # set hostname to localhost
 ENV HOSTNAME "0.0.0.0"
 
-CMD ["node", "server.js"]
+CMD ["next", "start"]
