@@ -82,23 +82,31 @@ function generateZenScript(strategy: StrategyV2): string {
     const lines: string[] = []
     const indent = '    '
 
+    // Debug logging
+    console.log('[ZenScriptPreview] Generating ZenScript for strategy:', strategy.name || 'Untitled')
+    console.log('[ZenScriptPreview] Strategy object keys:', Object.keys(strategy))
+    console.log('[ZenScriptPreview] exit_rules:', strategy.exit_rules)
+    console.log('[ZenScriptPreview] exit_rules type:', typeof strategy.exit_rules, Array.isArray(strategy.exit_rules) ? 'array' : 'not array')
+    console.log('[ZenScriptPreview] exit_rules length:', strategy.exit_rules?.length || 0)
+
     // Strategy declaration
     lines.push(`STRATEGY "${strategy.name || 'Untitled Strategy'}" {`)
 
     // Symbols
-    lines.push(`${indent}SYMBOLS: ${strategy.symbols.join(', ')}`)
+    const symbols = Array.isArray(strategy.symbols) ? strategy.symbols : []
+    lines.push(`${indent}SYMBOLS: ${symbols.join(', ') || 'N/A'}`)
 
     // Asset type specific
     if (strategy.asset_type === 'FNO') {
-        lines.push(`${indent}INDEX: ${strategy.index}`)
-        lines.push(`${indent}OPTION: ${strategy.option_type}`)
+        lines.push(`${indent}INDEX: ${strategy.index || 'NIFTY'}`)
+        lines.push(`${indent}OPTION: ${strategy.option_type || 'CE'}`)
         if (strategy.strike_type) {
             lines.push(`${indent}STRIKE: ${strategy.strike_type}`)
         }
     }
 
     // Timeframe
-    lines.push(`${indent}TIMEFRAME: ${strategy.timeframe}`)
+    lines.push(`${indent}TIMEFRAME: ${strategy.timeframe || '1min'}`)
 
     // Date range
     if (strategy.backtest_from && strategy.backtest_to) {
@@ -107,21 +115,36 @@ function generateZenScript(strategy: StrategyV2): string {
 
     // Entry conditions
     lines.push('')
-    lines.push(`${indent}ENTRY ${strategy.entry_logic} {`)
-    strategy.entry_conditions.forEach((cond, i) => {
-        const leftSide = formatConditionSide(cond.left)
-        const rightSide = formatConditionSide(cond.right)
-        const operator = formatOperator(cond.operator)
-        lines.push(`${indent}${indent}${leftSide} ${operator} ${rightSide}`)
-    })
+    lines.push(`${indent}ENTRY ${strategy.entry_logic || 'AND'} {`)
+    const entryConditions = Array.isArray(strategy.entry_conditions) ? strategy.entry_conditions : []
+    if (entryConditions.length === 0) {
+        lines.push(`${indent}${indent}// No entry conditions configured`)
+    } else {
+        entryConditions.forEach((cond, i) => {
+            const leftSide = formatConditionSide(cond.left)
+            const rightSide = formatConditionSide(cond.right)
+            const operator = formatOperator(cond.operator)
+            lines.push(`${indent}${indent}${leftSide} ${operator} ${rightSide}`)
+        })
+    }
     lines.push(`${indent}}`)
 
-    // Exit rules
+    // Exit rules - with proper null/undefined handling
     lines.push('')
-    lines.push(`${indent}EXIT ${strategy.exit_logic} {`)
-    strategy.exit_rules.forEach(rule => {
-        lines.push(`${indent}${indent}${formatExitRule(rule)}`)
-    })
+    const exitLogic = strategy.exit_logic || 'ALL'
+    lines.push(`${indent}EXIT ${exitLogic} {`)
+    
+    const exitRules = strategy.exit_rules || []
+    console.log('[ZenScriptPreview] Processing exit_rules, count:', exitRules.length)
+    
+    if (exitRules.length === 0) {
+        lines.push(`${indent}${indent}// No exit rules configured`)
+    } else {
+        exitRules.forEach((rule, i) => {
+            console.log('[ZenScriptPreview] Processing exit rule', i, ':', rule?.type)
+            lines.push(`${indent}${indent}${formatExitRule(rule)}`)
+        })
+    }
     lines.push(`${indent}}`)
 
     // Risk configuration
@@ -180,16 +203,37 @@ function formatOperator(op: string): string {
 }
 
 function formatExitRule(rule: any): string {
-    switch (rule.type) {
-        case 'stoploss':
-            return `STOPLOSS: ${rule.percent}%${rule.trailing ? ' (trailing)' : ''}`
-        case 'target':
-            return `TARGET: ${rule.percent}%`
-        case 'trailing':
-            return `TRAILING: ${rule.percent}%${rule.activationPercent ? ` (activate at ${rule.activationPercent}%)` : ''}`
-        case 'time':
-            return `TIME: ${rule.time}`
-        default:
-            return `${rule.type}: unknown`
+    // Debug logging
+    console.log('[ZenScriptPreview] formatExitRule called with rule:', rule)
+    
+    // Handle null/undefined rule
+    if (!rule) {
+        console.warn('[ZenScriptPreview] formatExitRule received null/undefined rule')
+        return '// Invalid rule'
+    }
+    
+    // Handle missing type
+    if (!rule.type) {
+        console.warn('[ZenScriptPreview] formatExitRule received rule without type:', rule)
+        return `// Invalid rule: ${JSON.stringify(rule).slice(0, 50)}...`
+    }
+    
+    try {
+        switch (rule.type) {
+            case 'stoploss':
+                return `STOPLOSS: ${rule.percent || 0}%${rule.trailing ? ' (trailing)' : ''}`
+            case 'target':
+                return `TARGET: ${rule.percent || 0}%`
+            case 'trailing':
+                return `TRAILING: ${rule.percent || 0}%${rule.activationPercent ? ` (activate at ${rule.activationPercent}%)` : ''}`
+            case 'time':
+                return `TIME: ${rule.time || '00:00'}`
+            default:
+                console.warn('[ZenScriptPreview] Unknown exit rule type:', rule.type)
+                return `// Unknown rule type: ${rule.type}`
+        }
+    } catch (err) {
+        console.error('[ZenScriptPreview] Error in formatExitRule:', err)
+        return `// Error formatting rule`
     }
 }

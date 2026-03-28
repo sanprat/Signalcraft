@@ -395,19 +395,19 @@ function StrategyBuilderContent() {
                                         <div className="flex justify-between">
                                             <span className="text-slate-500">Conditions:</span>
                                             <span className="font-semibold text-slate-700">
-                                                {strategy.entry_conditions.length}
+                                                {(strategy.entry_conditions || []).length}
                                             </span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-slate-500">Exit Rules:</span>
                                             <span className="font-semibold text-slate-700">
-                                                {strategy.exit_rules.length}
+                                                {(strategy.exit_rules || []).length}
                                             </span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-slate-500">Symbols:</span>
                                             <span className="font-semibold text-slate-700">
-                                                {strategy.symbols.length}
+                                                {(strategy.symbols || []).length}
                                             </span>
                                         </div>
                                         <div className="flex justify-between">
