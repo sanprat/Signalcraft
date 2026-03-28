@@ -232,7 +232,6 @@ export function ExitBuilder({
                                 e.stopPropagation()
                             }}
                         >
-                            {console.log('[ExitBuilder] Rendering menu with EXIT_RULE_TYPES:', EXIT_RULE_TYPES.length, 'items')}
                             {EXIT_RULE_TYPES.map(({ type, label, icon, description }) => (
                                 <button
                                     key={type}
