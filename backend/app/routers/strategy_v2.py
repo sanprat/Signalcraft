@@ -26,7 +26,12 @@ from app.schemas.strategy_v2 import (
     StrategyValidationResult,
 )
 from app.routers.auth import get_current_user, UserResponse
-from app.core.strategy_engine_v2 import StrategyEngineV2, validate_strategy_v2
+from app.core.strategy_engine_v2 import (
+    StrategyEngineV2,
+    validate_strategy_v2,
+    DATA_DIR,
+    TIMEFRAME_MAP,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +44,64 @@ STORE.mkdir(exist_ok=True)
 # Backtest results directory
 BACKTESTS = Path("backtests")
 BACKTESTS.mkdir(exist_ok=True)
+
+
+def _save_candles_parquet(
+    backtest_dir: Path,
+    symbols: list,
+    timeframe: str,
+    from_date: str,
+    to_date: str,
+):
+    """Load candles from data dir and save as parquet for chart display."""
+    tf_file = TIMEFRAME_MAP.get(timeframe, timeframe)
+    all_candles = []
+
+    for symbol in symbols:
+        parquet_path = DATA_DIR / "NIFTY500" / symbol / f"{tf_file}.parquet"
+        if not parquet_path.exists():
+            logger.warning(f"[V2] Candle file not found: {parquet_path}")
+            continue
+
+        try:
+            df = pd.read_parquet(parquet_path)
+
+            # Normalize time column
+            if "__index_level_0__" in df.columns:
+                df = df.rename(columns={"__index_level_0__": "time"})
+            elif df.index.name and "time" not in df.columns:
+                df = df.reset_index().rename(columns={df.index.name: "time"})
+
+            # Filter by date range if provided
+            if from_date and to_date and "time" in df.columns:
+                df["time"] = pd.to_datetime(df["time"], errors="coerce")
+                df = df[df["time"] >= from_date]
+                df = df[df["time"] <= to_date]
+
+            # Keep only needed columns
+            keep = [
+                c
+                for c in ["time", "open", "high", "low", "close", "volume"]
+                if c in df.columns
+            ]
+            if keep:
+                df = df[keep]
+                all_candles.append(df)
+                logger.info(f"[V2] Loaded {len(df)} candles for {symbol}")
+        except Exception as e:
+            logger.error(f"[V2] Failed to load candles for {symbol}: {e}")
+
+    if all_candles:
+        combined = pd.concat(all_candles, ignore_index=True)
+        combined["time"] = combined["time"].astype(str)
+        combined.to_parquet(
+            backtest_dir / "candles.parquet", compression="lz4", index=False
+        )
+        logger.info(
+            f"[V2] Saved {len(combined)} candles to {backtest_dir / 'candles.parquet'}"
+        )
+    else:
+        logger.warning(f"[V2] No candle data to save for backtest in {backtest_dir}")
 
 
 # ============================================================================
@@ -216,6 +279,15 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
         # Save trades.json
         (backtest_dir / "trades.json").write_text(json.dumps(all_trades, indent=2))
 
+        # Save candles.parquet for chart display
+        _save_candles_parquet(
+            backtest_dir=backtest_dir,
+            symbols=request.strategy.symbols,
+            timeframe=request.strategy.timeframe,
+            from_date=request.strategy.backtest_from or "",
+            to_date=request.strategy.backtest_to or "",
+        )
+
         # Collect all equity curve points for combined chart
         all_equity_points = []
         current_equity = 0.0
@@ -333,6 +405,15 @@ async def run_quick_backtest_v2(
 
         # Save trades.json
         (backtest_dir / "trades.json").write_text(json.dumps(all_trades, indent=2))
+
+        # Save candles.parquet for chart display
+        _save_candles_parquet(
+            backtest_dir=backtest_dir,
+            symbols=strategy.symbols,
+            timeframe=strategy.timeframe,
+            from_date=strategy.backtest_from or "",
+            to_date=strategy.backtest_to or "",
+        )
 
         # Save equity_curve.json
         all_equity_points = []
