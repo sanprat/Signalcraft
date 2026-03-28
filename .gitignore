@@ -16,6 +16,7 @@ ENV/
 dist/
 build/
 *.egg-info/
+backtests/
 
 # Environment files (keep secrets safe!)
 .env
@@ -40,6 +41,8 @@ yarn-error.log*
 .idea/
 .vscode/
 .opencode/
+.agent_memory/
+.gemini/
 *.swp
 *.swo
 *~
@@ -89,3 +92,23 @@ frontend/public/data/
 *.parquet
 *.csv
 *.xlsx
+
+# Agent Scratches and Test Files
+test.py
+test_data.py
+scratch.py
+scratch.md
+task.md
+walkthrough.md
+implementation_plan.md
+progress_report.md
+init_mem_test.py
+test_parquet.py
+test_telegram.py
+backend/scripts/test_*.py
+backend/scripts/*_test_data.py
+backend/scripts/create_test_data.py
+data-scripts/test_*.py
+data-scripts/*_test.py
+data-scripts/*_test_data.py
+data-scripts/download_test_data.py
