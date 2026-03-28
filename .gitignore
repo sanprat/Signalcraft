@@ -108,7 +108,8 @@ test_telegram.py
 backend/scripts/test_*.py
 backend/scripts/*_test_data.py
 backend/scripts/create_test_data.py
-data-scripts/test_*.py
-data-scripts/*_test.py
-data-scripts/*_test_data.py
-data-scripts/download_test_data.py
+# Keeping data-scripts for cronjobs
+!data-scripts/*.csv
+!data-scripts/*.json
+!data-scripts/*.sh
+!data-scripts/*.py
