@@ -192,6 +192,7 @@ export function ExitBuilder({
                     type="button"
                     onClick={() => setShowAddMenu(!showAddMenu)}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    aria-label="Add exit rule"
                 >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -203,15 +204,19 @@ export function ExitBuilder({
                 {showAddMenu && (
                     <>
                         <div
-                            className="fixed inset-0 z-10"
+                            className="fixed inset-0 z-40"
                             onClick={() => setShowAddMenu(false)}
+                            aria-hidden="true"
                         />
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-lg z-20 p-2 space-y-1">
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-xl z-50 p-2 space-y-1">
                             {EXIT_RULE_TYPES.map(({ type, label, icon, description }) => (
                                 <button
                                     key={type}
                                     type="button"
-                                    onClick={() => handleAddRule(type)}
+                                    onClick={() => {
+                                        console.log('Adding exit rule:', type)
+                                        handleAddRule(type)
+                                    }}
                                     className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors text-left"
                                 >
                                     {icon}
