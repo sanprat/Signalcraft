@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { config } from '@/lib/config'
 import { AppShell } from '@/components/AppShell'
+import { loadStrategy, backtestStrategy } from '@/lib/api/strategy'
 
 const T = {
     navy: '#0F2744', blue: '#1D4ED8', blueLight: '#EFF6FF', blueMid: '#BFDBFE',
@@ -63,6 +64,7 @@ function StrategiesContent() {
     const router = useRouter()
     const [strategies, setStrategies] = useState<Strategy[]>([])
     const [loading, setLoading] = useState(true)
+    const [runningBacktestId, setRunningBacktestId] = useState<string | null>(null)
 
     const fetchStrategies = async () => {
         try {
@@ -88,6 +90,21 @@ function StrategiesContent() {
     useEffect(() => {
         fetchStrategies()
     }, [])
+
+    const handleRunBacktest = async (strategyId: string) => {
+        setRunningBacktestId(strategyId)
+        try {
+            // 1. Fetch the complete strategy object
+            const { strategy } = await loadStrategy(strategyId)
+            // 2. Trigger the backtest API
+            const result = await backtestStrategy(strategy, 'quick')
+            // 3. Redirect to the results page
+            router.push(`/backtest/${result.backtest_id}`)
+        } catch (err: any) {
+            alert(`Error running backtest: ${err.message || 'Unknown error'}`)
+            setRunningBacktestId(null)
+        }
+    }
 
     const handleDelete = async (strategyId: string, name: string) => {
         if (!confirm(`Are you sure you want to permanently delete the strategy "${name}"?`)) {
@@ -152,7 +169,7 @@ function StrategiesContent() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {strategies.map(s => {
+                                    {strategies.map((s: Strategy) => {
                                         let displaySymbol = s.asset_type === 'EQUITY' 
                                             ? (s.symbols && s.symbols.length > 0 ? s.symbols.join(', ') : 'No Symbol')
                                             : s.index
@@ -162,6 +179,7 @@ function StrategiesContent() {
                                         }
 
                                         const dateLabel = s.created_at ? new Date(s.created_at).toLocaleDateString() : 'N/A'
+                                        const isRunning = runningBacktestId === s.strategy_id
 
                                         return (
                                             <tr key={s.strategy_id} style={{ borderBottom: `1px solid ${T.border}`, transition: 'background 0.2s' }}
@@ -194,7 +212,21 @@ function StrategiesContent() {
                                                     {dateLabel}
                                                 </td>
                                                 <td style={{ padding: '16px 20px' }}>
-                                                    <div style={{ display: 'flex', gap: 8 }}>
+                                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                        <button 
+                                                            onClick={() => handleRunBacktest(s.strategy_id)}
+                                                            disabled={runningBacktestId !== null}
+                                                            style={{ 
+                                                                padding: '6px 12px', border: `1px solid ${T.greenMid}`, borderRadius: 6, 
+                                                                background: T.greenLight, fontSize: 12, fontWeight: 700, 
+                                                                cursor: runningBacktestId ? 'not-allowed' : 'pointer', color: T.green,
+                                                                opacity: runningBacktestId !== null && !isRunning ? 0.5 : 1,
+                                                                display: 'flex', alignItems: 'center', gap: 4
+                                                            }}
+                                                            title="Run Quick Backtest"
+                                                        >
+                                                            {isRunning ? '⏳ Running...' : '↩ Backtest'}
+                                                        </button>
                                                         <button 
                                                             onClick={() => router.push(`/strategy/new?edit=${s.strategy_id}`)}
                                                             style={{ 
