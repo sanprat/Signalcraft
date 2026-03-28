@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { createChart, IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts'
-import { useRef } from 'react'
+import { init, dispose, KLineData, Chart, DataLoader } from 'klinecharts'
 import Link from 'next/link'
-import { config, getAuthHeaders } from '@/lib/config'
+import { config } from '@/lib/config'
 
 const API = config.apiBaseUrl
 
@@ -30,6 +29,12 @@ type Trade = {
     exit_time: string; exit_price: number; pnl: number; pnl_pct: number; exit_reason: string
 }
 
+type HoveredTrade = {
+    trade: Trade;
+    x: number;
+    y: number;
+} | null
+
 function Card({ children, style = {} }: { children: React.ReactNode; style?: React.CSSProperties }) {
     return <div style={{ background: T.surface, borderRadius: 12, border: `1px solid ${T.border}`, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', padding: 20, ...style }}>{children}</div>
 }
@@ -43,91 +48,185 @@ function Stat({ label, value, color }: { label: string; value: string; color?: s
     )
 }
 
-function CandleChart({ backtestId }: { backtestId: string }) {
-    const ref = useRef<HTMLDivElement>(null)
-    const chartRef = useRef<IChartApi | null>(null)
-    const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
-    const [all, setAll] = useState<CandlestickData[]>([])
-    const [idx, setIdx] = useState(100)
-    const [playing, setPlaying] = useState(false)
-    const [speed, setSpeed] = useState(1)
+function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[] }) {
+    const containerRef = useRef<HTMLDivElement>(null)
+    const chartRef = useRef<Chart | null>(null)
     const [loaded, setLoaded] = useState(false)
+    const [hoveredTrade, setHoveredTrade] = useState<HoveredTrade>(null)
 
-    useEffect(() => {
-        if (!backtestId) return
-            ; (async () => {
-                let page = 0, result: CandlestickData[] = []
-                while (true) {
-                    const r = await fetch(`${API}/api/backtest/${backtestId}/candles?page=${page}&page_size=500`)
-                    const j = await r.json()
-                    const batch = j.candles.time.map((t: number, i: number) => ({
-                        time: t as Time, open: j.candles.open[i], high: j.candles.high[i], low: j.candles.low[i], close: j.candles.close[i],
-                    }))
-                    result = [...result, ...batch]
-                    if (result.length >= j.total) break
-                    page++
-                }
-                setAll(result); setLoaded(true)
-            })()
+    const candleDataRef = useRef<KLineData[]>([])
+
+    const fetchCandleData = useCallback(async (): Promise<KLineData[]> => {
+        let page = 0
+        const allCandles: KLineData[] = []
+
+        while (true) {
+            const response = await fetch(`${API}/api/backtest/${backtestId}/candles?page=${page}&page_size=500`)
+            const json = await response.json()
+
+            const batch: KLineData[] = json.candles.time.map((t: number, i: number) => ({
+                timestamp: t * 1000,
+                open: json.candles.open[i],
+                high: json.candles.high[i],
+                low: json.candles.low[i],
+                close: json.candles.close[i],
+                volume: json.candles.volume?.[i] || 0,
+            }))
+
+            allCandles.push(...batch)
+
+            if (allCandles.length >= json.total) break
+            page++
+        }
+
+        return allCandles
     }, [backtestId])
 
     useEffect(() => {
-        if (!ref.current || !loaded || !all.length) return
-        const chart = createChart(ref.current, {
-            width: ref.current.clientWidth, height: 380,
-            layout: { background: { color: '#FFFFFF' }, textColor: '#94A3B8' },
-            grid: { vertLines: { color: '#F1F5F9' }, horzLines: { color: '#F1F5F9' } },
-            crosshair: { mode: 1 },
-            rightPriceScale: { borderColor: '#E2E8F0' },
-            timeScale: { borderColor: '#E2E8F0', timeVisible: true },
+        if (!backtestId || !containerRef.current) return
+
+        const chart = init(containerRef.current)
+        if (!chart) return
+
+        chartRef.current = chart
+
+        const dataLoader: DataLoader = {
+            getBars: ({ callback }) => {
+                const data = candleDataRef.current
+                callback(data, false)
+            },
+            subscribeBar: ({ callback }) => {
+                const data = candleDataRef.current
+                if (data.length > 0) {
+                    callback(data[data.length - 1])
+                }
+            },
+        }
+
+        chart.setDataLoader(dataLoader)
+
+        fetchCandleData().then((data) => {
+            candleDataRef.current = data
+            chart.setDataLoader(dataLoader)
+            setLoaded(true)
         })
-        const series = chart.addCandlestickSeries({
-            upColor: T.green, downColor: T.red,
-            borderUpColor: T.green, borderDownColor: T.red,
-            wickUpColor: T.green, wickDownColor: T.red,
-        })
-        chartRef.current = chart; seriesRef.current = series
-        series.setData(all.slice(0, 100))
-        return () => chart.remove()
-    }, [loaded, all])
+
+        return () => {
+            dispose(containerRef.current!)
+        }
+    }, [backtestId, fetchCandleData])
 
     useEffect(() => {
-        if (!playing || idx >= all.length) { setPlaying(false); return }
-        const timer = setInterval(() => {
-            setIdx(i => {
-                const next = Math.min(i + speed, all.length)
-                seriesRef.current?.setData(all.slice(0, next))
-                if (next >= all.length) setPlaying(false)
-                return next
-            })
-        }, 300)
-        return () => clearInterval(timer)
-    }, [playing, speed, idx, all])
+        if (!chartRef.current || !loaded || !trades.length || !candleDataRef.current.length) return
 
-    const pct = all.length ? Math.round((idx / all.length) * 100) : 0
+        const chart = chartRef.current
+
+        trades.forEach(trade => {
+            const entryTime = new Date(trade.entry_time).getTime()
+            const exitTime = new Date(trade.exit_time).getTime()
+
+            chart.createOverlay({
+                name: 'simpleAnnotation',
+                points: [{ timestamp: entryTime, value: trade.entry_price }],
+                extendData: '▲ BUY',
+                styles: {
+                    line: { color: T.green },
+                    text: { color: T.green, backgroundColor: T.greenLight },
+                },
+                lock: true,
+            })
+
+            chart.createOverlay({
+                name: 'simpleAnnotation',
+                points: [{ timestamp: exitTime, value: trade.exit_price }],
+                extendData: '▼ SELL',
+                styles: {
+                    line: { color: T.red },
+                    text: { color: T.red, backgroundColor: T.redLight },
+                },
+                lock: true,
+            })
+        })
+
+        chart.subscribeAction('onCrosshairChange', (params) => {
+            if (!params || !trades.length) {
+                setHoveredTrade(null)
+                return
+            }
+
+            const crosshair = params as { timestamp?: number; x?: number; y?: number }
+            if (!crosshair.timestamp) {
+                setHoveredTrade(null)
+                return
+            }
+
+            const timestamp = crosshair.timestamp
+
+            const matchingTrade = trades.find(trade => {
+                const entryTime = new Date(trade.entry_time).getTime()
+                const exitTime = new Date(trade.exit_time).getTime()
+                return timestamp >= entryTime && timestamp <= exitTime
+            })
+
+            if (matchingTrade && crosshair.x !== undefined && crosshair.y !== undefined) {
+                setHoveredTrade({
+                    trade: matchingTrade,
+                    x: crosshair.x,
+                    y: crosshair.y,
+                })
+            } else {
+                setHoveredTrade(null)
+            }
+        })
+    }, [loaded, trades])
 
     return (
         <Card>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: T.navy }}>Candle Replay</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 11, color: T.textMuted, fontFamily: "'DM Mono', monospace" }}>{idx}/{all.length}</span>
-                    <select value={speed} onChange={e => setSpeed(Number(e.target.value))}
-                        style={{ padding: '4px 8px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 12, fontFamily: "'DM Sans', sans-serif" }}>
-                        {[1, 5, 10, 50].map(s => <option key={s} value={s}>{s}×</option>)}
-                    </select>
-                    <button onClick={() => { seriesRef.current?.setData(all.slice(0, 100)); setIdx(100); setPlaying(false) }}
-                        style={{ padding: '5px 10px', border: `1px solid ${T.border}`, borderRadius: 6, background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: T.textMid }}>⟳ Reset</button>
-                    <button onClick={() => setPlaying(p => !p)} disabled={!loaded}
-                        style={{ padding: '5px 14px', border: 'none', background: playing ? T.redLight : T.blue, color: playing ? T.red : '#fff', borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                        {!loaded ? '⏳ Loading...' : playing ? '⏸ Pause' : '▶ Play'}
-                    </button>
+                <span style={{ fontSize: 13, fontWeight: 700, color: T.navy }}>Price Chart</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <span style={{ fontSize: 11, color: T.green }}>▲ Entry</span>
+                    <span style={{ fontSize: 11, color: T.red }}>▼ Exit</span>
                 </div>
             </div>
-            <div style={{ height: 4, background: T.bg, borderRadius: 2, marginBottom: 10 }}>
-                <div style={{ height: 4, background: T.blue, borderRadius: 2, width: `${pct}%`, transition: 'width 0.3s' }} />
-            </div>
-            <div ref={ref} style={{ borderRadius: 8, overflow: 'hidden' }} />
+            <div ref={containerRef} style={{ height: 400, borderRadius: 8, overflow: 'hidden', position: 'relative' }} />
+            {hoveredTrade && (
+                <div style={{
+                    position: 'absolute',
+                    left: Math.min(hoveredTrade.x + 10, 600),
+                    top: hoveredTrade.y - 80,
+                    background: T.surface,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: 8,
+                    padding: '10px 14px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                    zIndex: 100,
+                    fontSize: 12,
+                    minWidth: 180,
+                }}>
+                    <div style={{ fontWeight: 700, marginBottom: 6, color: T.navy }}>
+                        Trade #{hoveredTrade.trade.trade_no}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                        <span style={{ color: T.textMuted }}>Entry:</span>
+                        <span style={{ fontFamily: "'DM Mono', monospace", color: T.green }}>Rs. {hoveredTrade.trade.entry_price}</span>
+                        <span style={{ color: T.textMuted }}>Exit:</span>
+                        <span style={{ fontFamily: "'DM Mono', monospace", color: T.red }}>Rs. {hoveredTrade.trade.exit_price}</span>
+                        <span style={{ color: T.textMuted }}>P&L:</span>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: hoveredTrade.trade.pnl >= 0 ? T.green : T.red }}>
+                            Rs. {hoveredTrade.trade.pnl?.toLocaleString()} ({hoveredTrade.trade.pnl_pct}%)
+                        </span>
+                        <span style={{ color: T.textMuted }}>Reason:</span>
+                        <span style={{
+                            fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
+                            background: hoveredTrade.trade.exit_reason === 'TARGET' ? T.greenLight : hoveredTrade.trade.exit_reason === 'SL' ? T.redLight : T.amberLight,
+                            color: hoveredTrade.trade.exit_reason === 'TARGET' ? T.green : hoveredTrade.trade.exit_reason === 'SL' ? T.red : T.amber,
+                        }}>
+                            {hoveredTrade.trade.exit_reason}
+                        </span>
+                    </div>
+                </div>
+            )}
         </Card>
     )
 }
@@ -137,10 +236,6 @@ export default function BacktestResultsPage() {
     const router = useRouter()
     const [summary, setSummary] = useState<Summary | null>(null)
     const [trades, setTrades] = useState<Trade[]>([])
-    const [deploying, setDeploying] = useState(false)
-    const [deployed, setDeployed] = useState(false)
-    const [deployModal, setDeployModal] = useState(false)
-    const [broker, setBroker] = useState('shoonya')
 
     useEffect(() => {
         if (!id) return
@@ -148,25 +243,10 @@ export default function BacktestResultsPage() {
         fetch(`${API}/api/backtest/${id}/trades`).then(r => r.json()).then(setTrades)
     }, [id])
 
-    const deployLive = async () => {
-        setDeploying(true)
-        try {
-            await fetch(`${API}/api/live/deploy`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                body: JSON.stringify({ strategy_id: summary?.strategy_id, broker, paper: false }),
-            })
-            setDeployed(true)
-        } catch { }
-        setDeploying(false)
-        setDeployModal(false)
-    }
-
     if (!summary) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: T.textMuted, fontSize: 13 }}>⏳ Loading backtest results...</div>
 
     return (
         <div style={{ maxWidth: 1100, margin: '0 auto', padding: 24, fontFamily: "'DM Sans', sans-serif" }}>
-            {/* Header */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
                 <div>
                     <button onClick={() => router.back()} style={{ background: 'none', border: 'none', color: T.textMuted, fontSize: 12, cursor: 'pointer', marginBottom: 4, padding: 0 }}>← Back</button>
@@ -175,20 +255,9 @@ export default function BacktestResultsPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                     <Link href="/strategy/new" style={{ padding: '9px 16px', border: `1px solid ${T.border}`, borderRadius: 8, background: '#fff', fontSize: 13, fontWeight: 600, color: T.textMid, textDecoration: 'none' }}>✏️ Modify</Link>
-                    {deployed ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', background: T.greenLight, border: `1px solid ${T.greenMid}`, borderRadius: 8 }}>
-                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: T.green, display: 'inline-block' }} />
-                            <span style={{ fontSize: 13, fontWeight: 700, color: T.green }}>Live — Trading Active</span>
-                        </div>
-                    ) : (
-                        <button onClick={() => setDeployModal(true)} style={{ padding: '9px 18px', background: T.blue, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                            ◉ Deploy Live
-                        </button>
-                    )}
                 </div>
             </div>
 
-            {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
                 <Stat label="Total P&L" value={`Rs. ${summary.total_pnl?.toLocaleString() || '0'}`} color={summary.total_pnl >= 0 ? T.green : T.red} />
                 <Stat label="Win Rate" value={`${summary.win_rate}%`} color={summary.win_rate >= 50 ? T.green : T.red} />
@@ -200,12 +269,10 @@ export default function BacktestResultsPage() {
                 <Stat label="Win / Loss" value={`${summary.winning_trades} / ${summary.losing_trades}`} />
             </div>
 
-            {/* Chart */}
-            <div style={{ marginBottom: 20 }}>
-                <CandleChart backtestId={id} />
+            <div style={{ marginBottom: 20, position: 'relative' }}>
+                <KlineChart backtestId={id} trades={trades} />
             </div>
 
-            {/* Trade table */}
             <Card>
                 <div style={{ fontSize: 13, fontWeight: 700, color: T.textMid, letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: 14 }}>All Trades ({trades.length})</div>
                 {trades.length === 0 ? (
@@ -242,31 +309,6 @@ export default function BacktestResultsPage() {
                     </table>
                 )}
             </Card>
-
-            {/* Deploy modal */}
-            {deployModal && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
-                    <div style={{ background: '#fff', borderRadius: 16, padding: 32, maxWidth: 400, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-                        <h2 style={{ fontSize: 18, fontWeight: 800, color: T.navy, margin: '0 0 6px' }}>Deploy Live</h2>
-                        <p style={{ fontSize: 13, color: T.textMuted, margin: '0 0 20px' }}>Select broker to deploy this strategy</p>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 24 }}>
-                            {['shoonya', 'zerodha', 'flattrade', 'dhan'].map(b => (
-                                <button key={b} onClick={() => setBroker(b)} style={{
-                                    padding: 12, border: `2px solid ${broker === b ? T.blue : T.border}`,
-                                    borderRadius: 8, background: broker === b ? T.blueLight : '#fff',
-                                    color: broker === b ? T.blue : T.textMid, fontSize: 13, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
-                                }}>{b}</button>
-                            ))}
-                        </div>
-                        <div style={{ display: 'flex', gap: 10 }}>
-                            <button onClick={() => setDeployModal(false)} style={{ flex: 1, padding: 12, border: `1px solid ${T.border}`, borderRadius: 8, background: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: T.textMid }}>Cancel</button>
-                            <button onClick={deployLive} disabled={deploying} style={{ flex: 1, padding: 12, border: 'none', background: T.blue, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', color: '#fff' }}>
-                                {deploying ? 'Deploying...' : `◉ Go Live via ${broker}`}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     )
 }
