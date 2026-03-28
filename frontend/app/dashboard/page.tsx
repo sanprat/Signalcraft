@@ -166,9 +166,7 @@ function MarketBanner() {
 function DashboardContent() {
     const router = useRouter()
     const [strategies, setStrategies] = useState<Strategy[]>([])
-    const [liveStrategies, setLiveStrategies] = useState<any[]>([])
     const [backtests, setBacktests] = useState<Backtest[]>([])
-    const [analytics, setAnalytics] = useState<any>(null)
     const [loading, setLoading] = useState(true)
     const { quotes, connected, isLive, marketOpen, lastUpdate } = useQuotes()
     const searchParams = useSearchParams()
@@ -186,7 +184,6 @@ function DashboardContent() {
             } catch { }
         }
 
-        // Fetch strategies and backtests from API
         fetchDashboardData()
     }, [])
 
@@ -201,9 +198,6 @@ function DashboardContent() {
                 const data = await strategiesRes.json()
                 setStrategies(Array.isArray(data) ? data : (data.strategies || []))
             } else if (strategiesRes.status === 401) {
-                localStorage.removeItem(config.authTokenKey)
-                localStorage.removeItem(config.authUserKey)
-                document.cookie = `${config.authTokenKey}=; path=/; max-age=0`
                 router.push('/login')
                 return
             }
@@ -213,25 +207,6 @@ function DashboardContent() {
             if (backtestsRes.ok) {
                 const data = await backtestsRes.json()
                 setBacktests(Array.isArray(data) ? data : (data.backtests || []))
-            } else if (backtestsRes.status === 401) {
-                localStorage.removeItem(config.authTokenKey)
-                localStorage.removeItem(config.authUserKey)
-                document.cookie = `${config.authTokenKey}=; path=/; max-age=0`
-                router.push('/login')
-            }
-
-            // Fetch live strategies
-            const liveRes = await fetch(`${config.apiBaseUrl}/api/live/strategies`, { headers })
-            if (liveRes.ok) {
-                const data = await liveRes.json()
-                setLiveStrategies(data || [])
-            }
-
-            // Fetch analytics
-            const anaRes = await fetch(`${config.apiBaseUrl}/api/live/analytics`, { headers })
-            if (anaRes.ok) {
-                const data = await anaRes.json()
-                setAnalytics(data)
             }
         } catch (error) {
             console.error('Failed to fetch dashboard data:', error)
@@ -240,30 +215,7 @@ function DashboardContent() {
         }
     }
 
-    // Simulate live P&L ticking, driven by ACTUAL underlying price changes
-    const prevLtpRef = useRef<Record<string, number>>({})
-
-    useEffect(() => {
-        if (!marketOpen) return
-
-        let actualPriceChanged = false
-        for (const sym in quotes) {
-            const ltp = quotes[sym].ltp
-            if (ltp !== prevLtpRef.current[sym]) {
-                actualPriceChanged = true
-                prevLtpRef.current[sym] = ltp
-            }
-        }
-    }, [quotes, marketOpen])
-
-    const totalPnl = analytics?.total_today_pnl || liveStrategies.reduce((a, s) => a + (s.pnl || 0), 0)
-    const liveCount = liveStrategies.filter(s => {
-        const status = s.status?.toUpperCase()
-        return status === 'ACTIVE' || status === 'PAPER'
-    }).length
-    const totalOrders = analytics?.total_orders || liveStrategies.reduce((a, s) => a + (s.orders || 0), 0)
     const [today, setToday] = useState('')
-    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
     useEffect(() => {
         setToday(new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', year: 'numeric' }))
@@ -289,18 +241,10 @@ function DashboardContent() {
                                 marginLeft: 8,
                                 color: T.blue,
                                 fontWeight: 600,
-                                animation: connected ? 'pulse 2s infinite' : 'none'
                             }}>
                                 {connected ? `· Updates: ${lastUpdate}` : '· Connecting...'}
                             </span>
                         </p>
-                        <style jsx>{`
-                        @keyframes pulse {
-                            0% { opacity: 1; }
-                            50% { opacity: 0.5; }
-                            100% { opacity: 1; }
-                        }
-                    `}</style>
                     </div>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                         {currentSegment === 'Options' && (
@@ -366,18 +310,15 @@ function DashboardContent() {
                         </div>
 
                         {/* Summary stats */}
-                        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14, marginBottom: 20 }}>
+                        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
                             {[
-                                { label: "Today's P&L", type: 'pnl' },
-                                { label: 'Active Strategies', value: liveCount, sub: `of ${strategies.length} total`, color: T.blue },
-                                { label: 'Orders Today', value: totalOrders, sub: 'across all strategies', color: T.navy },
-                                { label: 'Win Rate (Last 10)', value: 68, sub: 'backtests', pct: true, color: T.green },
+                                { label: 'Total Strategies', value: strategies.length, sub: `Built in SignalCraft`, color: T.blue },
+                                { label: 'Total Backtests', value: backtests.length, sub: 'Performed all time', color: T.navy },
+                                { label: 'Win Rate (Last 10)', value: 68, sub: 'Recent performance', pct: true, color: T.green },
                             ].map(stat => (
                                 <Card key={stat.label} style={{ padding: '16px 20px' }}>
                                     <div style={{ fontSize: 11, color: T.textMuted, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 8 }}>{stat.label}</div>
-                                    {stat.type === 'pnl' ? (
-                                        <PnlBadge val={totalPnl} pct={(totalPnl / 100).toFixed(1)} size="md" />
-                                    ) : stat.pct ? (
+                                    {stat.pct ? (
                                         <div style={{ fontSize: 26, fontWeight: 800, color: stat.color, letterSpacing: '-1px', fontFamily: "'DM Mono', monospace" }}>{stat.value}%</div>
                                     ) : (
                                         <div style={{ fontSize: 26, fontWeight: 800, color: stat.color, letterSpacing: '-1px' }}>
@@ -392,65 +333,53 @@ function DashboardContent() {
                         {/* Two column layout */}
                         <div className="two-column-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16 }}>
 
-                            {/* LEFT: Active strategies */}
+                            {/* LEFT: strategies */}
                             <Card>
-                                <SectionHeader title="Active Strategies" actionLabel="View all" action={() => router.push('/strategy')} />
+                                <SectionHeader title="Your Strategies" actionLabel="View all" action={() => router.push('/strategy')} />
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     {loading ? (
                                         <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 13 }}>Loading strategies...</div>
-                                    ) : liveStrategies.length === 0 ? (
+                                    ) : strategies.length === 0 ? (
                                         <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 13 }}>
-                                            No active strategies.<br />
-                                            <Link href="/strategy" style={{ color: T.blue, fontWeight: 600 }}>Browse all strategies</Link> to get started.
+                                            No strategies built yet.<br />
+                                            <Link href="/strategy/new" style={{ color: T.blue, fontWeight: 600 }}>Create your first strategy</Link>
                                         </div>
                                     ) : (
-                                        liveStrategies.map(s => {
-                                            const status = s.status?.toLowerCase()
-                                            const segment = s.segment || s.asset_type || 'Options'
-                                            // Handle symbols string vs array from DB
-                                            let displaySymbol = s.instrument || s.symbol || ""
+                                        strategies.slice(0, 5).map(s => {
+                                            const segment = s.asset_type || 'Options'
+                                            let displaySymbol = s.symbol || ""
                                             if (!displaySymbol && s.symbols) {
                                                 try {
                                                     const parsed = typeof s.symbols === 'string' ? JSON.parse(s.symbols) : s.symbols
                                                     displaySymbol = Array.isArray(parsed) ? parsed.join(', ') : parsed
                                                 } catch {
-                                                    displaySymbol = s.symbols
+                                                    displaySymbol = s.symbols as string
                                                 }
                                             }
 
                                             return (
                                                 <div key={s.id || s.strategy_id} style={{
                                                     border: `1px solid ${T.border}`, borderRadius: 10, padding: '14px 16px', cursor: 'pointer',
-                                                    background: (status === 'live' || status === 'active') ? T.greenLight : status === 'paper' ? T.blueLight : status === 'paused' ? T.amberLight : T.bg,
+                                                    background: T.bg,
                                                     transition: 'all 0.15s',
                                                     marginBottom: 10
                                                 }}
+                                                    onClick={() => router.push(`/strategy/new?edit=${s.strategy_id}`)}
                                                     onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)')}
                                                     onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
                                                 >
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                                                         <div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                                                <StatusPill status={status === 'active' ? 'live' : status} />
                                                                 <span style={{ background: T.blueMid, color: T.blue, borderRadius: 4, padding: '1px 7px', fontSize: 10, fontWeight: 700, letterSpacing: '0.8px', textTransform: 'uppercase' }}>{segment}</span>
                                                             </div>
                                                             <div style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>{s.name}</div>
                                                             <div style={{ fontSize: 12, color: T.textMuted, marginTop: 2, fontFamily: "'DM Mono', monospace" }}>{displaySymbol}</div>
                                                         </div>
-                                                        <PnlBadge val={s.pnl || 0} pct={s.pnlPct || 0} />
-                                                    </div>
-
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
-                                                        {[
-                                                            { label: 'Broker', value: s.broker },
-                                                            { label: 'Last Signal', value: s.lastSignal || 'NONE', mono: true },
-                                                            { label: 'Mode', value: status === 'paper' ? 'Paper Trading' : 'Live Trading' },
-                                                        ].map(f => (
-                                                            <div key={f.label}>
-                                                                <div style={{ fontSize: 10, color: T.textMuted, fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: 2 }}>{f.label}</div>
-                                                                <div style={{ fontSize: 12, fontWeight: 500, color: T.text, fontFamily: f.mono ? "'DM Mono', monospace" : 'inherit' }}>{f.value}</div>
-                                                            </div>
-                                                        ))}
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <div style={{ fontSize: 10, color: T.textMuted, textTransform: 'uppercase' }}>Built on</div>
+                                                            <div style={{ fontSize: 12, fontWeight: 600, color: T.navy }}>{s.lastSignal || 'Recent'}</div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             )
@@ -470,7 +399,7 @@ function DashboardContent() {
                                             { label: '⚡  Build New Options Strategy', href: '/strategy/new', color: T.blue, bg: T.blueLight },
                                             { label: '📁  Browse All Built Strategies', href: '/strategy', color: T.navy, bg: T.pill },
                                             { label: '↩  Run Backtest on Saved Strategy', href: '/backtest', color: T.textMid, bg: T.surfaceHover },
-                                            { label: '◉  Go Live with Approved Strategy', href: '/live', color: T.green, bg: T.greenLight },
+                                            { label: '⚙  Configure Global Settings', href: '/settings', color: T.amber, bg: T.amberLight },
                                         ].map(a => (
                                             <Link key={a.label} href={a.href} style={{
                                                 width: '100%', padding: '10px 14px', border: `1px solid ${T.border}`,
@@ -487,7 +416,7 @@ function DashboardContent() {
 
                                 {/* Recent backtests */}
                                 <Card style={{ padding: 16, flex: 1 }}>
-                                    <SectionHeader title="Recent Backtests" actionLabel="View all" />
+                                    <SectionHeader title="Recent Backtests" actionLabel="View all" action={() => router.push('/backtest')} />
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                         {loading ? (
                                             <div style={{ padding: 20, textAlign: 'center', color: T.textMuted, fontSize: 13 }}>Loading backtests...</div>
@@ -519,7 +448,7 @@ function DashboardContent() {
                                                     </div>
                                                     <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                                                         <button style={{ padding: '3px 10px', border: `1px solid ${T.border}`, borderRadius: 5, background: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer', color: T.blue }}>▶ Replay Chart</button>
-                                                        <button style={{ padding: '3px 10px', border: `1px solid ${T.greenMid}`, borderRadius: 5, background: T.greenLight, fontSize: 10, fontWeight: 600, cursor: 'pointer', color: T.green }}>◉ Go Live</button>
+                                                        <button style={{ padding: '3px 10px', border: `1px solid ${T.border}`, borderRadius: 5, background: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer', color: T.textMid }}>📁 View Report</button>
                                                     </div>
                                                 </div>
                                             ))

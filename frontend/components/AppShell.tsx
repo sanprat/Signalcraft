@@ -133,7 +133,6 @@ export function AppShell({ children, title, showBack = false, defaultBack = '/da
         { href: '/dashboard', label: 'Home', icon: '🏠' },
         { href: '/strategy/new', label: 'Build', icon: '⚡' },
         { href: '/backtest', label: 'Backtest', icon: '📊' },
-        { href: '/live', label: 'Live', icon: '🔴' },
         { href: '/settings', label: 'Settings', icon: '⚙' },
     ]
 

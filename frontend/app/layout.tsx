@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Suspense } from 'react'
 import './globals.css'
-import ConditionalSidebar from '@/components/ConditionalSidebar'
+import TopNavbar from '@/components/TopNavbar'
 
 export const metadata: Metadata = {
     title: 'Zenalys — No-Code Platform for Traders',
@@ -19,9 +19,15 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
         <html lang="en">
-            <body style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#F8FAFC' }}>
+            <body style={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                height: '100vh', 
+                overflow: 'hidden', 
+                background: '#F8FAFC' 
+            }}>
                 <Suspense fallback={null}>
-                    <ConditionalSidebar />
+                    <TopNavbar />
                 </Suspense>
                 <main style={{ flex: 1, overflow: 'auto' }}>{children}</main>
             </body>

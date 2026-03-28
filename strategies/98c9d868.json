@@ -1,0 +1,52 @@
+{
+  "name": "strategy",
+  "version": "2.0",
+  "symbols": [
+    "RELIANCE"
+  ],
+  "asset_type": "EQUITY",
+  "index": null,
+  "option_type": null,
+  "strike_type": null,
+  "timeframe": "5m",
+  "entry_logic": "ALL",
+  "entry_conditions": [
+    {
+      "id": "cond_1774692987822_vtw3j1uoy",
+      "left": {
+        "type": "indicator",
+        "name": "SMA",
+        "params": [
+          20
+        ]
+      },
+      "operator": ">",
+      "right": {
+        "type": "value",
+        "value": 50.0
+      }
+    }
+  ],
+  "exit_logic": "ANY",
+  "exit_rules": [
+    {
+      "type": "target",
+      "percent": 5.0,
+      "priority": 1,
+      "id": "exit_1774693023923_0y7nsyz6b"
+    }
+  ],
+  "risk": {
+    "max_trades_per_day": 3,
+    "max_loss_per_day": 5000.0,
+    "quantity": 1,
+    "reentry_after_sl": false,
+    "max_concurrent_trades": 1,
+    "partial_exit_pct": null
+  },
+  "backtest_from": "2025-03-28",
+  "backtest_to": "2026-03-28",
+  "strategy_id": "98c9d868",
+  "user_id": 14,
+  "created_at": "2026-03-28T10:17:14.007099"
+}

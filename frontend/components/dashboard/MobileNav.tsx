@@ -80,7 +80,6 @@ export function MobileNav({ userName }: MobileNavProps) {
         { href: '/dashboard', label: 'Home', icon: '🏠' },
         { href: '/strategy/new', label: 'Build', icon: '⚡' },
         { href: '/backtest', label: 'Backtest', icon: '📊' },
-        { href: '/live', label: 'Live', icon: '🔴' },
         { href: '/settings', label: 'Settings', icon: '⚙' },
     ]
 
