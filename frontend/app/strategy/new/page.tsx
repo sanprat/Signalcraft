@@ -21,6 +21,15 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
     { id: 'risk', label: 'Risk', icon: '🛡️' },
 ]
 
+const T = {
+    navy: '#0F2744', blue: '#1D4ED8', blueLight: '#EFF6FF', blueMid: '#BFDBFE',
+    green: '#059669', greenLight: '#ECFDF5', greenMid: '#A7F3D0',
+    red: '#DC2626', redLight: '#FEF2F2', redMid: '#FECACA',
+    amber: '#D97706', amberLight: '#FFFBEB',
+    text: '#0F172A', textMid: '#475569', textMuted: '#94A3B8', pill: '#F1F5F9',
+    border: '#E2E8F0', surface: '#FFFFFF', bg: '#F8FAFC', surfaceHover: '#F1F5F9'
+}
+
 function StrategyBuilderContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
@@ -323,7 +332,12 @@ function StrategyBuilderContent() {
                             <button
                                 onClick={handleValidate}
                                 disabled={isValidating}
-                                className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors"
+                                style={{ 
+                                    background: T.bg, color: T.textMid, border: `1px solid ${T.border}`,
+                                    borderRadius: 10, padding: '10px 20px', fontSize: 13, fontWeight: 700,
+                                    cursor: isValidating ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
+                                    display: 'flex', alignItems: 'center', gap: 8, opacity: isValidating ? 0.6 : 1,
+                                }}
                             >
                                 {isValidating ? (
                                     <>
@@ -343,7 +357,12 @@ function StrategyBuilderContent() {
                             <button
                                 onClick={handleSave}
                                 disabled={isSaving}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg font-medium hover:bg-blue-200 disabled:opacity-50 transition-colors"
+                                style={{ 
+                                    background: T.blueLight, color: T.blue, border: `1px solid ${T.blueMid}`,
+                                    borderRadius: 10, padding: '10px 20px', fontSize: 13, fontWeight: 700,
+                                    cursor: isSaving ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
+                                    display: 'flex', alignItems: 'center', gap: 8, opacity: isSaving ? 0.6 : 1,
+                                }}
                             >
                                 {isSaving ? (
                                     <>
@@ -363,7 +382,13 @@ function StrategyBuilderContent() {
                             <button
                                 onClick={handleBacktest}
                                 disabled={isBacktesting}
-                                className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
+                                style={{ 
+                                    background: T.green, color: 'white', border: `1px solid ${T.green}`,
+                                    borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 800,
+                                    cursor: isBacktesting ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
+                                    display: 'flex', alignItems: 'center', gap: 8, opacity: isBacktesting ? 0.6 : 1,
+                                    boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)'
+                                }}
                             >
                                 {isBacktesting ? (
                                     <>
