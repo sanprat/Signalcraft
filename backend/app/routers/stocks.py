@@ -20,12 +20,15 @@ FALLBACK_STOCKS = [
     "ZYDUSWELL", "POLICYBZR", "PAYTM", "NYKAA", "IREDA", "IRFC", "RVNL",
 ]
 
+# Minimum expected stocks (NIFTY 500 should have ~500 stocks)
+MIN_EXPECTED_STOCKS = 50
+
 @router.get("")
 def get_stock_list():
     """
     Returns a list of all available Nifty 500 stock symbols based on the
     subdirectories in data/candles/NIFTY500.
-    Falls back to a predefined list if the directory doesn't exist or is empty.
+    Falls back to a predefined list if the directory doesn't exist or has very few stocks.
     """
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     nifty500_dir = os.path.join(base_dir, "data", "candles", "NIFTY500")
@@ -41,6 +44,14 @@ def get_stock_list():
             ]
             symbols.sort()
             logger.info(f"Found {len(symbols)} symbols in NIFTY500 directory")
+            
+            # If we have very few stocks, use fallback instead (likely incomplete data)
+            if len(symbols) < MIN_EXPECTED_STOCKS:
+                logger.warning(
+                    f"Only {len(symbols)} stocks found (expected >= {MIN_EXPECTED_STOCKS}), "
+                    f"using {len(FALLBACK_STOCKS)} fallback stocks"
+                )
+                symbols = FALLBACK_STOCKS
         except Exception as e:
             logger.error(f"Error listing NIFTY500 symbols: {e}")
             # Fall through to fallback list
