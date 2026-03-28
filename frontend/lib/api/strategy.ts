@@ -80,10 +80,27 @@ export async function validateStrategy(strategy: StrategyV2): Promise<Validation
         })
 
         if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Validation failed' }))
+            const errorData = await response.json().catch(() => null)
+            
+            // Handle FastAPI 422 validation errors (array of errors)
+            if (response.status === 422 && errorData?.detail && Array.isArray(errorData.detail)) {
+                const errors = errorData.detail.map((err: any) => {
+                    const path = err.loc?.join('.') || 'Unknown field'
+                    const message = err.msg || 'Validation error'
+                    return `${path}: ${message}`
+                })
+                return {
+                    valid: false,
+                    errors,
+                    warnings: [],
+                }
+            }
+            
+            // Handle other error formats
+            const errorMessage = errorData?.detail || errorData?.message || 'Validation failed'
             return {
                 valid: false,
-                errors: [error.detail || 'Validation failed'],
+                errors: [errorMessage],
                 warnings: [],
             }
         }

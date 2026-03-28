@@ -90,11 +90,16 @@ function StrategyBuilderContent() {
 
     const handleValidate = async () => {
         setShowValidation(true)
-        const result = await validate()
-        if (result?.valid) {
-            showNotification('success', 'Strategy is valid!')
-        } else {
-            showNotification('error', 'Strategy has validation errors')
+        try {
+            const result = await validate()
+            if (result?.valid) {
+                showNotification('success', 'Strategy is valid!')
+            } else {
+                showNotification('error', 'Strategy has validation errors')
+            }
+        } catch (err: any) {
+            console.error('Validation error:', err)
+            showNotification('error', err.message || 'Validation failed')
         }
     }
 
@@ -267,9 +272,9 @@ function StrategyBuilderContent() {
 
             {/* Main Content */}
             <div className="max-w-7xl mx-auto px-4 py-6">
-                <div className={`grid gap-6 ${showPreview ? 'lg:grid-cols-3' : 'lg:grid-cols-1'}`}>
+                <div className={`grid gap-6 ${showPreview ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'}`}>
                     {/* Main Editor */}
-                    <div className={showPreview ? 'lg:col-span-2' : ''}>
+                    <div className={showPreview ? 'lg:col-span-2' : 'col-span-1'}>
                         {/* Section Tabs */}
                         <div className="flex gap-1 mb-4 bg-slate-100 p-1 rounded-lg overflow-x-auto">
                             {SECTIONS.map(section => (

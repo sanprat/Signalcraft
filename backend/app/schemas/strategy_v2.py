@@ -201,6 +201,7 @@ class Condition(BaseModel):
     Compares left side to right side using the operator.
     """
 
+    id: Optional[str] = Field(default=None, description="Frontend-generated ID")
     left: MathExprT = Field(..., description="Left side of comparison")
     operator: Literal["<", ">", "<=", ">=", "==", "!="] = Field(
         ..., description="Comparison operator"
@@ -230,6 +231,8 @@ class StopLossRule(BaseModel):
         default=1, ge=1, le=4, description="Execution priority (1=highest)"
     )
     trailing: bool = Field(default=False, description="Use trailing stop loss")
+    # Optional fields for frontend compatibility
+    id: Optional[str] = Field(default=None, description="Frontend-generated ID")
 
 
 class TargetRule(BaseModel):
@@ -240,6 +243,8 @@ class TargetRule(BaseModel):
     priority: int = Field(
         default=3, ge=1, le=4, description="Execution priority (1=highest)"
     )
+    # Optional fields for frontend compatibility
+    id: Optional[str] = Field(default=None, description="Frontend-generated ID")
 
 
 class TrailingStopRule(BaseModel):
@@ -249,6 +254,11 @@ class TrailingStopRule(BaseModel):
     percent: float = Field(..., gt=0, description="Trailing stop percentage from peak")
     priority: int = Field(
         default=2, ge=1, le=4, description="Execution priority (1=highest)"
+    )
+    # Optional fields for frontend compatibility
+    id: Optional[str] = Field(default=None, description="Frontend-generated ID")
+    activationPercent: Optional[float] = Field(
+        default=None, gt=0, description="Activation threshold for trailing stop"
     )
 
 
@@ -262,6 +272,8 @@ class TimeExitRule(BaseModel):
     priority: int = Field(
         default=4, ge=1, le=4, description="Execution priority (1=highest)"
     )
+    # Optional fields for frontend compatibility
+    id: Optional[str] = Field(default=None, description="Frontend-generated ID")
 
 
 class IndicatorExitRule(BaseModel):
@@ -270,6 +282,8 @@ class IndicatorExitRule(BaseModel):
     type: Literal["indicator_exit"] = "indicator_exit"
     condition: Condition = Field(..., description="Indicator condition to trigger exit")
     priority: int = Field(default=5, ge=1, le=10, description="Execution priority")
+    # Optional fields for frontend compatibility
+    id: Optional[str] = Field(default=None, description="Frontend-generated ID")
 
 
 # Union type for all exit rules
