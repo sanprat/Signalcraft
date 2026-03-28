@@ -3008,6 +3008,50 @@ backend/app/
     └── zenscript_converter.py # ZenScript ↔ JSON (+200 lines)
 ```
 
+## Strategy Engine Pivot & UI Overhaul (2026-03-28)
+
+### 1. Major Architecture Shift
+- **Strategic Pivot**: Transitioned SignalCraft from a live trading platform to a dedicated **strategy building and backtesting visualization engine**.
+- **Live Trading Removal**: 
+  - Deleted the `/app/live` directory and all live trading frontend modules.
+  - Removed "Emergency Stop", live P&L tickers, and broker deployment indicators.
+  - Cleaned up the Dashboard to focus on built strategies and backtest history.
+- **UI Architecture**:
+  - Replaced the fixed left Sidebar with a modern, horizontal **Top Navbar**.
+  - Optimized workspace for data-heavy charting by reclaiming horizontal screen estate.
+  - Updated Root Layout to a column-based flex structure.
+
+### 2. Implementation Details
+- **New Component**: `TopNavbar.tsx` featuring navigation, segment toggles (Stocks/Options), and User profile management.
+- **Cleanup**: 
+  - Simplified `app/dashboard/page.tsx` and `app/strategy/page.tsx`.
+  - Removed obsolete `Sidebar.tsx`, `ConditionalSidebar.tsx`, and `MobileSidebar.tsx`.
+  - Updated `MobileNav.tsx` and `AppShell.tsx` navigation.
+- **Build Fix**: Resolved a TypeScript error in `ExitBuilder.tsx` involving console logs in JSX.
+
+### 3. Testing & Deployment
+- **Local Verification**: Successfully rebuilt and launched via `docker-compose up -d --build`.
+- **Git Sync**: Pushed all changes to the [main branch](https://github.com/sanprat/Signalcraft.git).
+- **URLs**:
+  - Dashboard: http://localhost:3000/dashboard
+  - Strategy Builder (Production Ready): http://localhost:3000/strategy/new
+  - Backtests: http://localhost:3000/backtest
+
+### 4. Updated What's Working
+- **Full Horizontal Workspace**: Clean, focused UI for strategy development.
+- **Strategy Management**: Simplified list view without live deployment clutter.
+- **Visual Builder**: Reviewed and confirmed ready for production deployment.
+- **Fast Navigation**: Top navbar allows quick switching between Builder, Dashboard, and Backtests.
+
+### 5. Revised Next Steps
+- **Backtest Result Visualization**: (High Priority) Build the KlineChart result viewer.
+- **Backend API Cleanup**: Remove unused live trading endpoints from FastAPI.
+- **ZenScript Integration**: Implementation of the code editor for advanced strategy scripting.
+
+---
+
+*Updated: 2026-03-28 21:42 (UTC+5:30)*
+
 ### **Test Files**
 
 ```
@@ -3020,7 +3064,7 @@ backend/tests/
 
 ---
 
-## 10. Testing Checklist
+### 10. Testing Checklist
 
 ### **API Validation**
 - [ ] Valid strategy returns `{valid: true}`
@@ -3224,5 +3268,226 @@ Add Monaco Editor integration:
 - Code editing capabilities
 
 ---
+
+## 🚀 Implementation Roadmap (Updated: March 28, 2026)
+
+### Critical Issue Identified
+
+**Problem:** V2 backtest runs but doesn't save results to disk. The results page expects files in `/backtests/{id}/` directory, but V2 engine only returns results in the API response.
+
+**Impact:** After clicking "Run Backtest", users are redirected to results page but it shows "Loading..." forever because the files don't exist.
+
+---
+
+### PRIORITY 1: Fix End-to-End Flow [CRITICAL]
+**Status:** ⚠️ BLOCKING - Needs immediate fix
+**Estimated:** 1-2 days
+
+#### Task 1.1: Fix V2 Backtest Persistence
+
+**Problem:** V2 backtest doesn't save results to disk like V1 does
+
+**Solution:** Modify backend to persist results
+
+**Files to modify:**
+- `backend/app/routers/strategy_v2.py` (lines 132-149)
+
+**Implementation:**
+```python
+# After running backtest, save results to disk
+backtest_dir = Path("backtests") / backtest_id
+backtest_dir.mkdir(parents=True, exist_ok=True)
+
+# Save summary.json
+(backtest_dir / "summary.json").write_text(json.dumps({
+    "backtest_id": backtest_id,
+    "strategy_id": strategy_id,
+    "total_trades": len(results["trades"]),
+    "win_rate": calculate_win_rate(results["trades"]),
+    "total_pnl": sum(t["pnl"] for t in results["trades"]),
+    "date_range": f"{start_date} to {end_date}",
+    "candle_count": len(candles),
+}))
+
+# Save trades.json
+(backtest_dir / "trades.json").write_text(json.dumps(results["trades"]))
+
+# Save candles.parquet
+results["candles"].to_parquet(backtest_dir / "candles.parquet")
+```
+
+**Testing Checklist:**
+- [ ] Build strategy in Visual Builder
+- [ ] Click "Run Backtest"
+- [ ] Verify redirect to `/backtest/{id}`
+- [ ] Confirm results page loads with stats
+- [ ] Confirm chart loads with candle data
+- [ ] Confirm trades table displays
+
+---
+
+### PRIORITY 2: Trade Visualization (Markers + Hover)
+**Estimated:** 3-4 days
+
+#### Task 2.1: Add Trade Markers to Chart
+
+**File:** `frontend/app/backtest/[id]/page.tsx`
+
+**Requirements:**
+- Green up arrow (▲) at entry point = BUY
+- Red down arrow (▼) at exit point = SELL
+- Show ALL trades (no filtering in v1)
+
+**Implementation:**
+```typescript
+trades.forEach(trade => {
+  // Entry marker (BUY)
+  chart.addMarker({
+    time: trade.entry_time,
+    position: 'belowBar',
+    color: '#22c55e',
+    shape: 'arrowUp',
+    text: 'BUY',
+  })
+  
+  // Exit marker (SELL)
+  chart.addMarker({
+    time: trade.exit_time,
+    position: 'aboveBar',
+    color: '#ef4444',
+    shape: 'arrowDown',
+    text: 'SELL',
+  })
+})
+```
+
+#### Task 2.2: Add Hover Tooltips
+
+**Show on hover:**
+- Price: Entry/Exit price
+- Time: Entry/Exit timestamp
+- PnL: Profit/Loss amount
+
+---
+
+### PRIORITY 3: Strategy Management Page
+**Estimated:** 4-5 days
+
+#### Task 3.1: Create Strategy List Page
+
+**New Page:** `/frontend/app/strategies/page.tsx`
+
+**Features:**
+- Separate page (not dashboard)
+- Accessible via navbar
+- User-isolated (each user sees only their strategies)
+
+**Columns:**
+- Name
+- Symbols
+- Timeframe
+- Last Updated
+
+**Actions:**
+- View (read-only detail)
+- Edit (open in Strategy Builder)
+- Delete (with confirmation)
+- Run Backtest
+
+**Backend:** Already supports user isolation via `user_id`
+
+#### Task 3.2: Add Navigation
+
+**Add to sidebar:**
+- "My Strategies" link
+- Route: `/strategies`
+
+---
+
+### PRIORITY 4: ZenScript Editor
+**Estimated:** 5-7 days
+
+#### Task 4.1: Monaco Editor Integration
+
+**New Component:** `/frontend/components/strategy/ZenScriptEditor.tsx`
+
+**Features:**
+- Monaco Editor with syntax highlighting
+- Read-only view of generated ZenScript
+- Side-by-side with Visual Builder
+
+#### Task 4.2: ZenScript Parser
+
+**New File:** `/frontend/lib/zenscript/parser.ts`
+
+**Function:**
+```typescript
+parseZenScript(zenscript: string): StrategyV2 | null
+```
+
+**Features:**
+- Parse ZenScript text to StrategyV2 JSON
+- Error handling for invalid syntax
+- Validation of strategy structure
+
+#### Task 4.3: Two-Way Sync with Apply Button
+
+**Behavior:**
+- Visual Builder → ZenScript: Automatic (read-only view updates)
+- ZenScript → Visual Builder: Manual (click "Apply" button)
+- No auto-sync to prevent accidental overwrites
+
+---
+
+### Current Status Summary
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Visual Builder → JSON | ✅ Working | Types and state management complete |
+| JSON → Backend (Save) | ✅ Working | Saves to `/strategies/` directory with user_id |
+| Backend → Backtest | ⚠️ Partial | Runs but doesn't persist results to disk |
+| Backtest → Chart | ❌ Broken | Results page expects saved files that don't exist |
+| User Isolation | ✅ Working | user_id filtering implemented |
+
+---
+
+### Implementation Schedule
+
+| Priority | Task | Days | Dependencies |
+|----------|------|------|--------------|
+| **P1** | Fix backtest persistence | 1-2 | None - CRITICAL |
+| **P2** | Trade markers on chart | 2-3 | P1 complete |
+| **P2** | Hover tooltips | 1 | P2 markers |
+| **P3** | Strategy list page | 2-3 | None |
+| **P3** | Strategy actions | 2 | P3 list |
+| **P4** | Monaco Editor | 2-3 | None |
+| **P4** | ZenScript parser | 3-4 | P4 editor |
+
+**Total: 15-20 days**
+
+---
+
+### User Requirements Documented
+
+1. **Strategy List:**
+   - Separate page (not dashboard)
+   - Columns: Name, Symbols, Timeframe, Last Updated
+   - User-isolated (one user cannot see another's strategies)
+   - Minimal v1 implementation
+
+2. **Chart Markers:**
+   - Green up arrow = BUY
+   - Red down arrow = SELL
+   - Hover shows: Price, Time, PnL
+   - Show all trades (no filtering)
+
+3. **ZenScript Editor:**
+   - Monaco Editor
+   - No auto-sync
+   - "Apply" button to parse and update
+
+---
+
+*Next Steps: Complete Priority 1 (backtest persistence fix) to unblock end-to-end flow*
 
 *Generated: 2026-03-28*
