@@ -3445,9 +3445,12 @@ parseZenScript(zenscript: string): StrategyV2 | null
 |-----------|--------|-------|
 | Visual Builder → JSON | ✅ Working | Types and state management complete |
 | JSON → Backend (Save) | ✅ Working | Saves to `/strategies/` directory with user_id |
-| Backend → Backtest | ⚠️ Partial | Runs but doesn't persist results to disk |
-| Backtest → Chart | ❌ Broken | Results page expects saved files that don't exist |
+| Backend → Backtest | ✅ Working | Fixed: Now persists results to `/backtests/{id}/` |
+| Backtest → Chart | ✅ Working | Results page loads correctly with stats, chart, trades |
 | User Isolation | ✅ Working | user_id filtering implemented |
+
+**Priority 1 Status:** ✅ COMPLETE - End-to-end flow now functional
+**Commit:** `7d0bf30`
 
 ---
 
@@ -3464,6 +3467,31 @@ parseZenScript(zenscript: string): StrategyV2 | null
 | **P4** | ZenScript parser | 3-4 | P4 editor |
 
 **Total: 15-20 days**
+
+---
+
+### Completed Tasks
+
+#### ✅ Priority 1: Fix End-to-End Flow (March 28, 2026)
+**Status:** COMPLETE
+**Commit:** `7d0bf30`
+
+**Fix Applied:**
+- Modified `backend/app/routers/strategy_v2.py`
+- Backtest results now saved to `backtests/{backtest_id}/` directory
+- Files created per backtest:
+  - `summary.json` - Aggregated metrics (win rate, P&L, drawdown, etc.)
+  - `trades.json` - All trade records
+  - `equity_curve.json` - Equity curve data
+  - `per_symbol.json` - Detailed per-symbol breakdown
+- Results page now loads correctly with statistics, candle chart, and trades table
+- End-to-end flow: Strategy Builder → JSON → Backend → Backtest → Chart is now functional
+
+**Testing Verified:**
+- Build strategy in Visual Builder ✅
+- Click "Run Backtest" ✅
+- Redirect to `/backtest/{id}` ✅
+- Results page loads with all data ✅
 
 ---
 
@@ -3488,6 +3516,6 @@ parseZenScript(zenscript: string): StrategyV2 | null
 
 ---
 
-*Next Steps: Complete Priority 1 (backtest persistence fix) to unblock end-to-end flow*
+*Next Steps: Priority 2 (Trade Markers & Hover Tooltips) and Priority 3 (Strategy List Page)*
 
 *Generated: 2026-03-28*
