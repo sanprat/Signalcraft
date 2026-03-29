@@ -43,7 +43,7 @@ MARKET_CLOSE = "15:30"
 
 # PyArrow schema for all output files
 SCHEMA = pa.schema([
-    ("time",   pa.timestamp("s", tz="Asia/Kolkata")),
+    ("time",   pa.timestamp("s")),
     ("open",   pa.float32()),
     ("high",   pa.float32()),
     ("low",    pa.float32()),
@@ -138,8 +138,13 @@ def is_up_to_date(src_path: Path, dst_path: Path) -> bool:
 
 def save_parquet(df: pd.DataFrame, path: Path):
     """Cast types and save as a compressed parquet file."""
-    df["time"]   = pd.to_datetime(df["time"], utc=True).dt.tz_convert("Asia/Kolkata")
-    df["time"]   = df["time"].astype("datetime64[s, Asia/Kolkata]")
+    # Convert to pure UTC naive to bypass Pandas/Pyarrow timezone metadata bugs
+    if df["time"].dt.tz is None:
+        df["time"] = pd.to_datetime(df["time"]).dt.tz_localize("Asia/Kolkata").dt.tz_convert("UTC").dt.tz_localize(None)
+    else:
+        df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_localize(None)
+        
+    df["time"]   = df["time"].astype("datetime64[s]")
     df["open"]   = df["open"].astype("float32")
     df["high"]   = df["high"].astype("float32")
     df["low"]    = df["low"].astype("float32")

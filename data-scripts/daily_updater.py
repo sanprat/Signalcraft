@@ -64,7 +64,7 @@ INDICES = {
 
 SCHEMA = pa.schema(
     [
-        ("time", pa.timestamp("s", tz="Asia/Kolkata")),
+        ("time", pa.timestamp("s")),
         ("open", pa.float32()),
         ("high", pa.float32()),
         ("low", pa.float32()),
@@ -162,23 +162,24 @@ def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA)
         try:
             existing = pd.read_parquet(path)
             combined = pd.concat([existing, new_df], ignore_index=True)
-        except Exception:
-            combined = new_df
+        except Exception as e:
+            log.error(f"FATAL ERROR: Could not read existing file {path} ({e}). Attempting to overwrite it will cause permanent historical data loss! Skipping.")
+            return 0
     else:
         combined = new_df
 
-    # Normalize time to Asia/Kolkata — use utc=True to safely handle mixed
-    # tz-aware / tz-naive timestamps (avoids ValueError in pandas 2.x)
-    combined["time"] = pd.to_datetime(combined["time"], utc=True).dt.tz_convert(
-        "Asia/Kolkata"
-    )
+    # Normalize time by strictly converting to naive UTC to bypass PyArrow tz bugs
+    if combined["time"].dt.tz is None:
+        combined["time"] = pd.to_datetime(combined["time"]).dt.tz_localize("Asia/Kolkata").dt.tz_convert("UTC").dt.tz_localize(None)
+    else:
+        combined["time"] = pd.to_datetime(combined["time"], utc=True).dt.tz_localize(None)
 
     combined = (
         combined.drop_duplicates("time").sort_values("time").reset_index(drop=True)
     )
 
     # Cast columns present in the target schema
-    combined["time"] = combined["time"].astype("datetime64[s, Asia/Kolkata]")
+    combined["time"] = combined["time"].astype("datetime64[s]")
     combined["open"] = combined["open"].astype("float32")
     combined["high"] = combined["high"].astype("float32")
     combined["low"] = combined["low"].astype("float32")

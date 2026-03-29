@@ -52,7 +52,7 @@ DEFAULT_END = date.today()
 # Parquet schema for 1-min data
 SCHEMA = pa.schema(
     [
-        ("time", pa.timestamp("s", tz="Asia/Kolkata")),
+        ("time", pa.timestamp("s")),
         ("open", pa.float64()),
         ("high", pa.float64()),
         ("low", pa.float64()),
