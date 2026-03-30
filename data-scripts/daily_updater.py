@@ -6,8 +6,8 @@ Detects the last date in each Parquet file and downloads only the gap.
 Designed to run once daily after market close (3:45 PM IST) via cron.
 
 Covers:
-  1. NIFTY500 stocks    → data/candles/NIFTY500/{SYMBOL}/{interval}.parquet
-  2. Index underlying   → data/underlying/{INDEX}/{interval}.parquet
+  1. NIFTY 50 stocks     → data/candles/NIFTY500/{SYMBOL}/{interval}.parquet
+  2. Index underlying    → data/underlying/{INDEX}/{interval}.parquet
   3. FnO expired options → data/candles/{INDEX}/{CE|PE}/{interval}/dhan_ec1_*.parquet
 
 Usage:
@@ -19,7 +19,7 @@ Usage:
   python daily_updater.py --limit 5       # test with first 5 stocks
 
 Cron example (run daily at 3:45 PM IST, resample immediately after):
-  45 15 * * 1-5 cd /path/to/Pytrader && python3 data-scripts/daily_updater.py >> data/logs/daily_update.log 2>&1 && python3 data-scripts/resample_nifty500.py >> data/logs/resample_nifty500.log 2>&1 && python3 data-scripts/resample_fno.py >> data/logs/resample_fno.log 2>&1
+  45 15 * * 1-5 cd /path/to/Pytrader && python3 data-scripts/daily_updater.py >> data/logs/daily_update.log 2>&1 && python3 data-scripts/resample_nifty50.py >> data/logs/resample_nifty50.log 2>&1 && python3 data-scripts/resample_fno.py >> data/logs/resample_fno.log 2>&1
 """
 
 import argparse
@@ -47,7 +47,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 NIFTY500_DIR = PROJECT_ROOT / "data" / "candles" / "NIFTY500"
 UNDERLYING_DIR = PROJECT_ROOT / "data" / "underlying"
 FNO_DIR = PROJECT_ROOT / "data" / "candles"
-MAPPING_FILE = Path(__file__).parent / "nifty500_dhan_mapping.json"
+MAPPING_FILE = Path(__file__).parent / "nifty50_dhan_mapping.json"
 
 STOCK_INTERVALS = ["1min"]  # 5min/15min/1D derived via resample_nifty500.py
 INDEX_INTERVALS = ["1min", "5min", "15min"]
@@ -215,7 +215,7 @@ def update_nifty500_stocks(
 ):
     """Update NIFTY500 stocks with missing data."""
     log.info("=" * 60)
-    log.info("  NIFTY500 STOCKS UPDATE")
+    log.info("  NIFTY 50 STOCKS UPDATE")
     log.info("=" * 60)
 
     if not MAPPING_FILE.exists():
@@ -238,7 +238,7 @@ def update_nifty500_stocks(
     method_stats = {"daily": 0, "intraday_d": 0, "intraday_1min": 0, "failed": 0}
     failed_symbols = []
 
-    log.info(f"Starting NIFTY500 update: {total_symbols} symbols")
+    log.info(f"Starting NIFTY 50 update: {total_symbols} symbols")
 
     for i, sym in enumerate(symbols, 1):
         sec_id = mapping[sym]
@@ -403,7 +403,7 @@ def update_nifty500_stocks(
     # Summary report
     total_elapsed = time.time() - start_time
     log.info("=" * 60)
-    log.info("  NIFTY500 UPDATE COMPLETE")
+    log.info("  NIFTY 50 UPDATE COMPLETE")
     log.info("=" * 60)
     log.info(f"  Total symbols:     {total_symbols}")
     log.info(f"  Updated:           {total_updated}")

@@ -12,10 +12,9 @@ Data layout:
   data/candles/NIFTY500/{SYMBOL}/1D.parquet     ← generated
 
 Usage:
-  python3 data-scripts/resample_nifty500.py                 # resample all stocks
-  python3 data-scripts/resample_nifty500.py --symbol RELIANCE  # single stock
-  python3 data-scripts/resample_nifty500.py --force         # overwrite existing files
-  python3 data-scripts/resample_nifty500.py --dry-run       # preview only
+  python3 data-scripts/Cron example (run daily at 3:45 PM IST, resample immediately after):
+  45 15 * * 1-5 cd /path/to/Pytrader && python3 data-scripts/daily_updater.py >> data/logs/daily_update.log 2>&1 && python3 data-scripts/resample_nifty50.py >> data/logs/resample_nifty50.log 2>&1 && python3 data-scripts/resample_fno.py >> data/logs/resample_fno.log 2>&1
+      # preview only
 """
 
 import argparse
@@ -201,7 +200,7 @@ def main():
 
     total = len(sym_dirs)
     log.info("=" * 70)
-    log.info("  NIFTY500 1-Minute → Resample (5min / 15min / 1D)")
+    log.info("  NIFTY 50 1-Minute → Resample (5min / 15min / 1D)")
     log.info(f"  Stocks to process : {total}")
     log.info(f"  Targets           : {', '.join(RESAMPLE_TARGETS)}")
     log.info(f"  Force overwrite   : {args.force}")

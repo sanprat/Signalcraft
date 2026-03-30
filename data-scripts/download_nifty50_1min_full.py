@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
 """
-download_nifty500_1min_full.py — Download 1-minute data for ALL 500 NIFTY 500 stocks
+download_nifty50_1min_full.py — Download 1-minute data for NIFTY 50 stocks
 
-Fetches 1-min intraday OHLCV from Jan 2020 to current date.
+Fetches 1-min intraday OHLCV from Jan 2021 to current date (Dhan depth limit).
 Saves to data/candles/NIFTY500/{SYMBOL}/1min.parquet
 
-Features:
-- Resumable (skips already downloaded data)
-- Progress tracking with ETA
-- Graceful cancellation (Ctrl+C saves progress)
-- Error handling and retry logic
-- Rate limiting (1 req/sec)
-
 Usage:
-    python download_nifty500_1min_full.py
-    python download_nifty500_1min_full.py --start-date 2022-01-01
-    python download_nifty500_1min_full.py --limit 50  # Test with first 50 stocks
+    python download_nifty50_1min_full.py
+    python download_nifty50_1min_full.py --start-date 2021-01-01
 
 To cancel: Press Ctrl+C (progress is saved, can resume later)
 """
@@ -42,12 +34,23 @@ from dhan_client import DhanClient
 
 # Configuration
 BASE_DIR = Path(__file__).parent.parent / "data" / "candles" / "NIFTY500"
-MAPPING_FILE = Path(__file__).parent / "nifty500_dhan_mapping.json"
+MAPPING_FILE = Path(__file__).parent / "nifty50_dhan_mapping.json"
 CHUNK_DAYS = 85  # Dhan limit for intraday (using 85 to be safe)
 
 # Date range
-DEFAULT_START = date(2020, 1, 1)
+DEFAULT_START = date(2021, 1, 1)
 DEFAULT_END = date.today()
+
+# NIFTY 50 blue-chip stocks (Deep historical data support)
+NIFTY_50 = [
+    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "INFY", "LICI",
+    "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "HCLTECH", "MARUTI", "SUNPHARMA",
+    "TATAMOTORS", "TATASTEEL", "KOTAKBANK", "TITAN", "NTPC", "ULTRACEMCO", "ONGC",
+    "AXISBANK", "WIPRO", "NESTLEIND", "M&M", "POWERGRID", "GRASIM", "JSWSTEEL",
+    "ASIANPAINT", "HDFCLIFE", "SBILIFE", "BRITANNIA", "EICHERMOT", "APOLLOHOSP",
+    "DIVISLAB", "TATACONSUM", "BAJAJFINSV", "HINDALCO", "TECHM", "DRREDDY", "CIPLA",
+    "INDUSINDBK", "ADANIPORTS", "ADANIENT", "BPCL", "COALINDIA", "HEROMOTOCO", "UPL", "TATAPOWER"
+]
 
 # Parquet schema for 1-min data
 SCHEMA = pa.schema(
@@ -95,11 +98,9 @@ def load_mapping() -> dict:
         return json.load(f)
 
 
-def load_nifty500_symbols() -> list:
-    """Load NIFTY 500 symbols from CSV."""
-    csv_path = Path(__file__).parent / "nifty500_symbols.csv"
-    df = pd.read_csv(csv_path)
-    return df["Symbol"].tolist()
+def load_nifty50_symbols() -> list:
+    """Return the hardcoded NIFTY 50 symbols."""
+    return NIFTY_50
 
 
 def date_chunks(start: date, end: date, chunk_days: int):
@@ -277,7 +278,7 @@ def format_time(seconds: float) -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download 1-minute data for ALL 500 NIFTY 500 stocks",
+        description="Download 1-minute data for NIFTY 50 stocks",
         epilog="Press Ctrl+C to cancel gracefully (progress is saved)",
     )
     parser.add_argument(
@@ -317,7 +318,7 @@ def main():
 
     # Load data
     mapping = load_mapping()
-    all_symbols = load_nifty500_symbols()
+    all_symbols = load_nifty50_symbols()
 
     # Filter to requested limit
     symbols = all_symbols[: args.limit] if args.limit else all_symbols
@@ -352,7 +353,7 @@ def main():
     estimated_time_hours = (estimated_requests * 1.1) / 3600
 
     log.info("=" * 70)
-    log.info("NIFTY 500 1-Minute Data Download - FULL (All Stocks)")
+    log.info("NIFTY 50 1-Minute Data Download - FULL")
     log.info("=" * 70)
     log.info(f"Stocks to download: {total_stocks}")
     log.info(f"Date range: {start} to {end}")
