@@ -17,8 +17,9 @@ Intraday active contracts: POST /v2/charts/intraday (up to 90 days/call)
 
 import logging
 import time
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -50,6 +51,7 @@ OPTION_TYPE_MAP = {
 }
 
 REQUIRED_DATA = ["open", "high", "low", "close", "volume", "strike"]
+IST = ZoneInfo("Asia/Kolkata")
 
 
 def strike_label(offset: int) -> str:
@@ -82,6 +84,21 @@ class DhanClient:
         if elapsed < RATE_LIMIT_SLEEP:
             time.sleep(RATE_LIMIT_SLEEP - elapsed)
         self._last_request_time = time.time()
+
+    @staticmethod
+    def _epoch_to_ist_iso(ts: int | str) -> str:
+        """
+        Convert Dhan epoch seconds to an explicit Asia/Kolkata ISO timestamp.
+
+        This must not depend on the host timezone. On a UTC VPS, using
+        datetime.fromtimestamp(ts) would produce UTC wall-clock values and
+        incorrectly label them as IST later in the pipeline.
+        """
+        return (
+            datetime.fromtimestamp(int(ts), tz=timezone.utc)
+            .astimezone(IST)
+            .isoformat()
+        )
 
     def verify_connection(self) -> bool:
         """Test connection using fund limit endpoint."""
@@ -159,9 +176,8 @@ class DhanClient:
 
             normalized = []
             for i, ts in enumerate(timestamps):
-                dt_str = datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%dT%H:%M:%S+05:30")
                 normalized.append({
-                    "time":   dt_str,
+                    "time":   self._epoch_to_ist_iso(ts),
                     "open":   float(opens[i]),
                     "high":   float(highs[i]),
                     "low":    float(lows[i]),
@@ -247,9 +263,8 @@ class DhanClient:
             volumes    = data.get("volume", [])
             normalized = []
             for i, ts in enumerate(timestamps):
-                dt_str = datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%dT%H:%M:%S+05:30")
                 normalized.append({
-                    "time":   dt_str,
+                    "time":   self._epoch_to_ist_iso(ts),
                     "open":   float(opens[i]),
                     "high":   float(highs[i]),
                     "low":    float(lows[i]),

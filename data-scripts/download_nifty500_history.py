@@ -36,7 +36,7 @@ DEFAULT_START = date(2020, 1, 1)
 INTERVALS     = ["15min", "5min"]  # 1D throws DH-905 errors on Dhan's intraday endpoint
 
 SCHEMA = pa.schema([
-    ("time",   pa.timestamp("s", tz="Asia/Kolkata")),
+    ("time",   pa.timestamp("s")),
     ("open",   pa.float32()),
     ("high",   pa.float32()),
     ("low",    pa.float32()),
@@ -68,8 +68,7 @@ def candles_to_df(raw: list) -> pd.DataFrame:
     if not raw:
         return pd.DataFrame()
     df = pd.DataFrame(raw)[["time", "open", "high", "low", "close", "volume"]]
-    df["time"] = pd.to_datetime(df["time"], utc=False).dt.tz_localize(
-        None).dt.tz_localize("Asia/Kolkata")
+    df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert("Asia/Kolkata")
     
     # Filter market hours for intraday
     t = df["time"]
@@ -102,7 +101,9 @@ def merge_and_save(new_df: pd.DataFrame, path: Path):
                 .sort_values("time")
                 .reset_index(drop=True))
 
-    combined["time"]   = combined["time"].astype("datetime64[s, Asia/Kolkata]")
+    # Store timestamps as naive UTC for cross-host compatibility.
+    combined["time"]   = pd.to_datetime(combined["time"], utc=True).dt.tz_localize(None)
+    combined["time"]   = combined["time"].astype("datetime64[s]")
     combined["open"]   = combined["open"].astype("float32")
     combined["high"]   = combined["high"].astype("float32")
     combined["low"]    = combined["low"].astype("float32")

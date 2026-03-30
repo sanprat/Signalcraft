@@ -117,8 +117,7 @@ def candles_to_df(raw: list) -> pd.DataFrame:
         return pd.DataFrame()
 
     df = pd.DataFrame(raw)
-    df["time"] = pd.to_datetime(df["time"], utc=False)
-    df["time"] = df["time"].dt.tz_localize(None).dt.tz_localize("Asia/Kolkata")
+    df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_convert("Asia/Kolkata")
 
     # Filter market hours (9:15 AM - 3:30 PM IST)
     t = df["time"]
@@ -154,6 +153,13 @@ def merge_and_save(new_df: pd.DataFrame, path: Path):
         .sort_values("time")
         .reset_index(drop=True)
     )
+
+    # Store timestamps as naive UTC for cross-host compatibility.
+    if combined["time"].dt.tz is None:
+        combined["time"] = pd.to_datetime(combined["time"], utc=True)
+    else:
+        combined["time"] = pd.to_datetime(combined["time"], utc=True)
+    combined["time"] = combined["time"].dt.tz_localize(None).astype("datetime64[s]")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(combined, schema=SCHEMA, preserve_index=False)
