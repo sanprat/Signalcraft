@@ -62,6 +62,17 @@ INDICES = {
     "GIFTNIFTY": {"id": "5024", "segment": "IDX_I", "instrument": "INDEX"},
 }
 
+# NIFTY 50 blue-chip stocks (Deep historical data support)
+NIFTY_50 = [
+    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "INFY", "LICI",
+    "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "HCLTECH", "MARUTI", "SUNPHARMA",
+    "TATAMOTORS", "TATASTEEL", "KOTAKBANK", "TITAN", "NTPC", "ULTRACEMCO", "ONGC",
+    "AXISBANK", "WIPRO", "NESTLEIND", "M&M", "POWERGRID", "GRASIM", "JSWSTEEL",
+    "ASIANPAINT", "HDFCLIFE", "SBILIFE", "BRITANNIA", "EICHERMOT", "APOLLOHOSP",
+    "DIVISLAB", "TATACONSUM", "BAJAJFINSV", "HINDALCO", "TECHM", "DRREDDY", "CIPLA",
+    "INDUSINDBK", "ADANIPORTS", "ADANIENT", "BPCL", "COALINDIA", "HEROMOTOCO", "UPL", "TATAPOWER"
+]
+
 SCHEMA = pa.schema(
     [
         ("time", pa.timestamp("s")),
@@ -214,7 +225,8 @@ def update_nifty500_stocks(
     with open(MAPPING_FILE) as f:
         mapping = json.load(f)
 
-    symbols = list(mapping.keys())
+    # Strictly target NIFTY 50 for deep history stability
+    symbols = [s for s in NIFTY_50 if s in mapping]
     if limit:
         symbols = symbols[:limit]
 

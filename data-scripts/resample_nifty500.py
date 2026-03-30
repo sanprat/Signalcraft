@@ -37,6 +37,17 @@ NIFTY500_DIR = PROJECT_ROOT / "data" / "candles" / "NIFTY500"
 # Target timeframes to generate from 1-minute source
 RESAMPLE_TARGETS = ["5min", "10min", "15min", "30min", "60min", "1D"]
 
+# NIFTY 50 blue-chip stocks (Deep historical data support)
+NIFTY_50 = [
+    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "INFY", "LICI",
+    "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "HCLTECH", "MARUTI", "SUNPHARMA",
+    "TATAMOTORS", "TATASTEEL", "KOTAKBANK", "TITAN", "NTPC", "ULTRACEMCO", "ONGC",
+    "AXISBANK", "WIPRO", "NESTLEIND", "M&M", "POWERGRID", "GRASIM", "JSWSTEEL",
+    "ASIANPAINT", "HDFCLIFE", "SBILIFE", "BRITANNIA", "EICHERMOT", "APOLLOHOSP",
+    "DIVISLAB", "TATACONSUM", "BAJAJFINSV", "HINDALCO", "TECHM", "DRREDDY", "CIPLA",
+    "INDUSINDBK", "ADANIPORTS", "ADANIENT", "BPCL", "COALINDIA", "HEROMOTOCO", "UPL", "TATAPOWER"
+]
+
 # Market hours IST (used to filter 1D aggregation to intraday hours only)
 MARKET_OPEN = "09:15"
 MARKET_CLOSE = "15:30"
@@ -180,7 +191,13 @@ def main():
             log.error(f"Symbol directory not found: {sym_dirs[0]}")
             sys.exit(1)
     else:
-        sym_dirs = sorted([d for d in NIFTY500_DIR.iterdir() if d.is_dir()])
+        # Strictly target NIFTY 50 for deep history stability
+        sym_dirs = []
+        for sym in NIFTY_50:
+            d = NIFTY500_DIR / sym
+            if d.exists():
+                sym_dirs.append(d)
+        sym_dirs.sort()
 
     total = len(sym_dirs)
     log.info("=" * 70)
