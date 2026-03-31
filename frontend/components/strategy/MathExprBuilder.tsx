@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { MathOperand, MathExpr, PriceField } from '@/lib/types/strategy'
+import { IndicatorPicker } from './IndicatorPicker'
 
 interface MathExprBuilderProps {
     value: MathOperand
@@ -20,7 +21,19 @@ const PRICE_FIELDS: { value: PriceField; label: string }[] = [
 ]
 
 export function MathExprBuilder({ value, onChange, side }: MathExprBuilderProps) {
-    const [mode, setMode] = useState<'simple' | 'expression'>('simple')
+    const getModeFromValue = (operand: MathOperand): 'value' | 'price' | 'indicator' => {
+        if (operand && typeof operand === 'object' && 'type' in operand) {
+            if (operand.type === 'price') return 'price'
+            if (operand.type === 'indicator') return 'indicator'
+        }
+        return 'value'
+    }
+
+    const [mode, setMode] = useState<'value' | 'price' | 'indicator'>(getModeFromValue(value))
+
+    useEffect(() => {
+        setMode(getModeFromValue(value))
+    }, [value])
 
     const renderValue = () => {
         if (typeof value === 'number' || typeof value === 'string') {
@@ -85,7 +98,23 @@ export function MathExprBuilder({ value, onChange, side }: MathExprBuilderProps)
             )
         }
 
-        return null
+            return null
+    }
+
+    const handleModeChange = (nextMode: 'value' | 'price' | 'indicator') => {
+        setMode(nextMode)
+
+        if (nextMode === 'value') {
+            onChange({ type: 'value', value: 0 })
+            return
+        }
+
+        if (nextMode === 'price') {
+            onChange({ type: 'price', field: 'close' })
+            return
+        }
+
+        onChange({ type: 'indicator', name: 'SMA', params: [20] })
     }
 
     return (
@@ -94,20 +123,31 @@ export function MathExprBuilder({ value, onChange, side }: MathExprBuilderProps)
             <div className="flex gap-1">
                 <button
                     type="button"
-                    onClick={() => setMode('simple')}
+                    onClick={() => handleModeChange('value')}
                     className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                        mode === 'simple'
+                        mode === 'value'
                             ? 'bg-blue-100 text-blue-700'
                             : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                     }`}
                 >
-                    Simple
+                    Value
                 </button>
                 <button
                     type="button"
-                    onClick={() => setMode('expression')}
+                    onClick={() => handleModeChange('price')}
                     className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                        mode === 'expression'
+                        mode === 'price'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    }`}
+                >
+                    Price
+                </button>
+                <button
+                    type="button"
+                    onClick={() => handleModeChange('indicator')}
+                    className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                        mode === 'indicator'
                             ? 'bg-blue-100 text-blue-700'
                             : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                     }`}
@@ -117,7 +157,18 @@ export function MathExprBuilder({ value, onChange, side }: MathExprBuilderProps)
             </div>
 
             {/* Value Input */}
-            {renderValue()}
+            {mode === 'indicator' ? (
+                <IndicatorPicker
+                    value={
+                        value && typeof value === 'object' && 'type' in value && value.type === 'indicator'
+                            ? { name: value.name, params: value.params }
+                            : { name: 'SMA', params: [20] }
+                    }
+                    onChange={(indicator) => onChange({ type: 'indicator', name: indicator.name, params: indicator.params })}
+                />
+            ) : (
+                renderValue()
+            )}
         </div>
     )
 }

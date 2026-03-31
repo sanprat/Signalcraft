@@ -152,7 +152,9 @@ export function ConditionBlock({
                          condition.operator === '<=' ? '≤' :
                          condition.operator === '>=' ? '≥' :
                          condition.operator === '==' ? '=' :
-                         condition.operator === '!=' ? '≠' : condition.operator}
+                         condition.operator === '!=' ? '≠' :
+                         condition.operator === 'crosses_above' ? '↗' :
+                         condition.operator === 'crosses_below' ? '↘' : condition.operator}
                     </span>
                     {' '}
                     {typeof condition.right === 'object' && condition.right && 'type' in condition.right

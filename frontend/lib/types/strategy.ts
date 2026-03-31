@@ -86,7 +86,15 @@ export type MathOperator = '*' | '+' | '-' | '/'
 // CONDITION TYPES
 // ============================================================================
 
-export type ComparisonOperator = '<' | '>' | '<=' | '>=' | '==' | '!='
+export type ComparisonOperator =
+    | '<'
+    | '>'
+    | '<='
+    | '>='
+    | '=='
+    | '!='
+    | 'crosses_above'
+    | 'crosses_below'
 
 export interface Condition {
     id: string
@@ -267,6 +275,8 @@ export const OPERATORS: { value: ComparisonOperator; label: string; symbol: stri
     { value: '>=', label: 'Greater or equal', symbol: '≥' },
     { value: '==', label: 'Equal to', symbol: '=' },
     { value: '!=', label: 'Not equal', symbol: '≠' },
+    { value: 'crosses_above', label: 'Crosses Above', symbol: '↗' },
+    { value: 'crosses_below', label: 'Crosses Below', symbol: '↘' },
 ]
 
 export const INDICATORS_LIST: IndicatorDefinition[] = [

@@ -189,6 +189,8 @@ function formatOperator(op: string): string {
         '>=': 'GTE',
         '==': 'EQ',
         '!=': 'NEQ',
+        'crosses_above': 'CROSSES_ABOVE',
+        'crosses_below': 'CROSSES_BELOW',
     }
     return opMap[op] || op
 }

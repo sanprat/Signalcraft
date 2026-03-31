@@ -105,6 +105,15 @@ class TestCondition:
         assert cond.operator == "<"
         assert cond.right.value == 30
 
+    def test_crossover_condition(self):
+        """Test crossover condition validation."""
+        cond = Condition(
+            left=IndicatorRef(name="SMA", params=["close", 20]),
+            operator="crosses_above",
+            right=IndicatorRef(name="SMA", params=["close", 50]),
+        )
+        assert cond.operator == "crosses_above"
+
     def test_math_expression_condition(self):
         """Test condition with math expression."""
         cond = Condition(
@@ -589,6 +598,100 @@ class TestStrategyEngine:
         assert trades[0]["exit_reason"] == "END_OF_TEST"
         assert trades[0]["pnl"] == 20.0
         assert len(equity_curve) == 2
+
+    def test_crosses_above_generates_single_entry(self):
+        """Test crossover operator enters only on the crossing candle."""
+        import pandas as pd
+
+        engine = StrategyEngineV2()
+        executable = StrategyBuilderV2().build(
+            StrategyV2(
+                name="Crossover Test",
+                symbols=["RELIANCE"],
+                timeframe="1d",
+                entry_conditions=[
+                    Condition(
+                        left=IndicatorRef(name="SMA", params=["close", 2]),
+                        operator="crosses_above",
+                        right=IndicatorRef(name="SMA", params=["close", 3]),
+                    )
+                ],
+                exit_rules=[
+                    TargetRule(percent=20.0, priority=1),
+                    StopLossRule(percent=20.0, priority=2),
+                ],
+                risk=RiskConfig(quantity=1, max_trades_per_day=5, max_loss_per_day=5000),
+            )
+        )
+
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(
+                    [
+                        "2025-01-01T09:15:00+05:30",
+                        "2025-01-02T09:15:00+05:30",
+                        "2025-01-03T09:15:00+05:30",
+                        "2025-01-04T09:15:00+05:30",
+                        "2025-01-05T09:15:00+05:30",
+                    ]
+                ),
+                "open": [10.0, 9.0, 8.0, 12.0, 14.0],
+                "high": [10.0, 9.0, 12.0, 14.0, 15.0],
+                "low": [10.0, 9.0, 8.0, 12.0, 14.0],
+                "close": [10.0, 9.0, 8.0, 12.0, 14.0],
+                "volume": [1000, 1000, 1000, 1000, 1000],
+            }
+        )
+
+        df = engine._compute_indicators(df, executable)
+        trades, _ = engine._simulate(df, executable)
+
+        assert len(trades) == 1
+        assert trades[0]["entry_time"] == df.iloc[3]["time"].isoformat()
+
+    def test_stoploss_fills_at_trigger_price(self):
+        """Test stop loss exits at the configured trigger, not candle close."""
+        import pandas as pd
+
+        engine = StrategyEngineV2()
+        executable = StrategyBuilderV2().build(
+            StrategyV2(
+                name="Stoploss Fill Test",
+                symbols=["RELIANCE"],
+                timeframe="1d",
+                entry_conditions=[
+                    Condition(
+                        left=PriceRef(field="close"),
+                        operator=">",
+                        right=ValueRef(value=0),
+                    )
+                ],
+                exit_rules=[StopLossRule(percent=2.0, priority=1)],
+                risk=RiskConfig(quantity=10, max_trades_per_day=3, max_loss_per_day=5000),
+            )
+        )
+
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(
+                    ["2025-01-01T09:15:00+05:30", "2025-01-02T09:15:00+05:30"]
+                ),
+                "open": [100.0, 101.0],
+                "high": [101.0, 102.0],
+                "low": [99.0, 97.0],
+                "close": [100.0, 95.0],
+                "volume": [1000, 1200],
+            }
+        )
+
+        df = engine._compute_indicators(df, executable)
+        trades, _ = engine._simulate(df, executable)
+
+        assert len(trades) == 1
+        assert trades[0]["exit_reason"] == "SL"
+        assert trades[0]["exit_price"] == 98.0
+        assert trades[0]["pnl_pct"] == -2.0
+        assert trades[0]["pnl"] == -20.0
 
     def test_resolve_data_dir_prefers_env_path(self, monkeypatch, tmp_path):
         """Test data dir resolution supports explicit environment override."""

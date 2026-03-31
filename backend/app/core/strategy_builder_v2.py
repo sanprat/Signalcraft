@@ -46,6 +46,7 @@ class CompiledCondition:
     id: str
     evaluator: Callable[[pd.Series], bool]
     description: str
+    source_condition: Optional[Condition] = None
 
 
 @dataclass
@@ -54,7 +55,7 @@ class CompiledExitRule:
 
     rule_type: str
     priority: int
-    evaluator: Callable[[pd.Series, Dict], Optional[str]]
+    evaluator: Callable[[pd.Series, Dict], Optional[Dict[str, Any]]]
     config: Dict[str, Any]
     description: str
 
@@ -537,28 +538,29 @@ class ExitRuleBuilder:
         sl_pct = rule.percent
         is_trailing = rule.trailing
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
             entry_price = state["entry_price"]
-            current_price = row["close"]
+            current_low = float(row.get("low", row["close"]))
+            current_close = float(row["close"])
+            trigger_price = entry_price * (1 - sl_pct / 100)
 
             if is_trailing:
                 # Trailing stop from entry
                 highest_price = state.get("highest_price", entry_price)
-                new_highest = max(highest_price, current_price)
+                new_highest = max(highest_price, float(row.get("high", current_close)))
                 state["highest_price"] = new_highest
 
                 if new_highest > entry_price:
                     trigger_price = new_highest * (1 - sl_pct / 100)
-                    if current_price <= trigger_price:
-                        return "TRAILING_SL"
+                    if current_low <= trigger_price:
+                        return {"reason": "TRAILING_SL", "exit_price": trigger_price}
             else:
                 # Fixed stop loss
-                pnl_pct = (current_price - entry_price) / entry_price * 100
-                if pnl_pct <= -sl_pct:
-                    return "SL"
+                if current_low <= trigger_price:
+                    return {"reason": "SL", "exit_price": trigger_price}
 
             return None
 
@@ -574,16 +576,16 @@ class ExitRuleBuilder:
         """Build target/profit exit rule."""
         target_pct = rule.percent
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
             entry_price = state["entry_price"]
-            current_price = row["close"]
-            pnl_pct = (current_price - entry_price) / entry_price * 100
+            current_high = float(row.get("high", row["close"]))
+            trigger_price = entry_price * (1 + target_pct / 100)
 
-            if pnl_pct >= target_pct:
-                return "TARGET"
+            if current_high >= trigger_price:
+                return {"reason": "TARGET", "exit_price": trigger_price}
 
             return None
 
@@ -601,23 +603,25 @@ class ExitRuleBuilder:
         """Build trailing stop exit rule."""
         trailing_pct = rule.percent
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
-            current_price = row["close"]
+            current_price = float(row["close"])
+            current_low = float(row.get("low", current_price))
             highest_price = state.get("highest_price", state["entry_price"])
 
             # Update highest
-            if current_price > highest_price:
-                state["highest_price"] = current_price
-                highest_price = current_price
+            current_high = float(row.get("high", current_price))
+            if current_high > highest_price:
+                state["highest_price"] = current_high
+                highest_price = current_high
 
             # Check trailing stop from peak
             if highest_price > state["entry_price"]:
-                drawdown_pct = (highest_price - current_price) / highest_price * 100
-                if drawdown_pct >= trailing_pct:
-                    return "TRAILING"
+                trigger_price = highest_price * (1 - trailing_pct / 100)
+                if current_low <= trigger_price:
+                    return {"reason": "TRAILING", "exit_price": trigger_price}
 
             return None
 
@@ -633,7 +637,7 @@ class ExitRuleBuilder:
         """Build time-based exit rule."""
         exit_time = rule.time
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
@@ -641,7 +645,7 @@ class ExitRuleBuilder:
             if hasattr(row_time, "strftime"):
                 bar_time = row_time.strftime("%H:%M")
                 if bar_time >= exit_time:
-                    return "TIME"
+                    return {"reason": "TIME", "exit_price": float(row["close"])}
 
             return None
 
@@ -661,12 +665,12 @@ class ExitRuleBuilder:
         builder = ConditionBuilder(self.df)
         compiled = builder.build(condition, "indicator_exit")
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
             if compiled.evaluator(row):
-                return "INDICATOR"
+                return {"reason": "INDICATOR", "exit_price": float(row["close"])}
 
             return None
 
@@ -753,6 +757,7 @@ class StrategyBuilderV2:
                     id=f"entry_{i}",
                     evaluator=self._make_condition_evaluator(cond),
                     description=str(cond),
+                    source_condition=cond,
                 )
             )
 
@@ -815,6 +820,8 @@ class StrategyBuilderV2:
                     return abs(left_val - right_val) < 1e-10
                 elif op == "!=":
                     return abs(left_val - right_val) > 1e-10
+                elif op in ("crosses_above", "crosses_below"):
+                    return False
 
                 return False
             except Exception as e:
@@ -912,16 +919,16 @@ class StrategyBuilderV2:
         """Create stop loss evaluator."""
         sl_pct = rule.percent
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
             entry_price = state["entry_price"]
-            current_price = row["close"]
-            pnl_pct = (current_price - entry_price) / entry_price * 100
+            current_low = float(row.get("low", row["close"]))
+            trigger_price = entry_price * (1 - sl_pct / 100)
 
-            if pnl_pct <= -sl_pct:
-                return "SL"
+            if current_low <= trigger_price:
+                return {"reason": "SL", "exit_price": trigger_price}
 
             return None
 
@@ -931,16 +938,16 @@ class StrategyBuilderV2:
         """Create target evaluator."""
         target_pct = rule.percent
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
             entry_price = state["entry_price"]
-            current_price = row["close"]
-            pnl_pct = (current_price - entry_price) / entry_price * 100
+            current_high = float(row.get("high", row["close"]))
+            trigger_price = entry_price * (1 + target_pct / 100)
 
-            if pnl_pct >= target_pct:
-                return "TARGET"
+            if current_high >= trigger_price:
+                return {"reason": "TARGET", "exit_price": trigger_price}
 
             return None
 
@@ -950,23 +957,25 @@ class StrategyBuilderV2:
         """Create trailing stop evaluator."""
         trailing_pct = rule.percent
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
             current_price = row["close"]
+            current_low = float(row.get("low", current_price))
+            current_high = float(row.get("high", current_price))
             highest_price = state.get("highest_price", state["entry_price"])
 
             # Update highest
-            if current_price > highest_price:
-                state["highest_price"] = current_price
-                highest_price = current_price
+            if current_high > highest_price:
+                state["highest_price"] = current_high
+                highest_price = current_high
 
             # Check trailing stop from peak
             if highest_price > state["entry_price"]:
-                drawdown_pct = (highest_price - current_price) / highest_price * 100
-                if drawdown_pct >= trailing_pct:
-                    return "TRAILING"
+                trigger_price = highest_price * (1 - trailing_pct / 100)
+                if current_low <= trigger_price:
+                    return {"reason": "TRAILING", "exit_price": trigger_price}
 
             return None
 
@@ -976,7 +985,7 @@ class StrategyBuilderV2:
         """Create time exit evaluator."""
         exit_time = rule.time
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
@@ -984,7 +993,7 @@ class StrategyBuilderV2:
             if hasattr(row_time, "strftime"):
                 bar_time = row_time.strftime("%H:%M")
                 if bar_time >= exit_time:
-                    return "TIME"
+                    return {"reason": "TIME", "exit_price": float(row["close"])}
 
             return None
 
@@ -995,12 +1004,12 @@ class StrategyBuilderV2:
         condition = rule.condition
         cond_evaluator = self._make_condition_evaluator(condition)
 
-        def evaluator(row: pd.Series, state: Dict) -> Optional[str]:
+        def evaluator(row: pd.Series, state: Dict) -> Optional[Dict[str, Any]]:
             if not state.get("in_trade"):
                 return None
 
             if cond_evaluator(row):
-                return "INDICATOR"
+                return {"reason": "INDICATOR", "exit_price": float(row["close"])}
 
             return None
 

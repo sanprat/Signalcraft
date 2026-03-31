@@ -203,7 +203,16 @@ class Condition(BaseModel):
 
     id: Optional[str] = Field(default=None, description="Frontend-generated ID")
     left: MathExprT = Field(..., description="Left side of comparison")
-    operator: Literal["<", ">", "<=", ">=", "==", "!="] = Field(
+    operator: Literal[
+        "<",
+        ">",
+        "<=",
+        ">=",
+        "==",
+        "!=",
+        "crosses_above",
+        "crosses_below",
+    ] = Field(
         ..., description="Comparison operator"
     )
     right: MathExprT = Field(..., description="Right side of comparison")
