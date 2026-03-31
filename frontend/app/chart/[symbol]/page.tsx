@@ -7,9 +7,9 @@ import dynamic from 'next/dynamic';
 import { ArrowLeft, Zap, X } from 'lucide-react';
 import { config } from '@/lib/config';
 import { useQuotes } from '@/hooks/useQuotes';
-import type { HoveredBar } from '@/components/TradingViewChart';
+import type { HoveredBar } from '@/components/KLineChart';
 
-const TradingViewChart = dynamic(() => import('@/components/TradingViewChart'), { ssr: false });
+const KLineChart = dynamic(() => import('@/components/KLineChart'), { ssr: false });
 
 // ─── Indicator helpers ────────────────────────────────────────────────────────
 
@@ -497,7 +497,7 @@ export default function ChartSymbolPage() {
           </div>
         ) : chartData.length ? (
           <div style={{ width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden', border: '1px solid #E5E7EB', background: '#fff' }}>
-            <TradingViewChart
+            <KLineChart
               data={chartData.map(d => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close }))}
               volumeData={volumeData}
               indicators={indicators}
