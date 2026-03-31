@@ -31,6 +31,7 @@ import time
 from collections import defaultdict
 from datetime import date, timedelta, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pyarrow as pa
@@ -86,6 +87,8 @@ SCHEMA = pa.schema(
 
 LOG_DIR = PROJECT_ROOT / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+IST = ZoneInfo("Asia/Kolkata")
+MARKET_OPEN_MINUTES_IST = 9 * 60 + 15
 
 logging.basicConfig(
     level=logging.INFO,
@@ -119,6 +122,35 @@ def next_business_day(d: date) -> date:
     while nd.weekday() >= 5:  # Skip weekends
         nd += timedelta(days=1)
     return nd
+
+
+def previous_business_day(d: date) -> date:
+    """Return the previous business day before d."""
+    pd_ = d - timedelta(days=1)
+    while pd_.weekday() >= 5:  # Skip weekends
+        pd_ -= timedelta(days=1)
+    return pd_
+
+
+def resolve_effective_end_date(requested_end: date) -> tuple[date, datetime]:
+    """
+    Resolve the trading date to update based on current IST market session.
+
+    Before market open, requesting today's date should fall back to the previous
+    business day because no intraday candles exist yet for the current session.
+    """
+    now_ist = datetime.now(IST)
+    ist_today = now_ist.date()
+    effective_end = min(requested_end, ist_today)
+
+    if effective_end.weekday() >= 5:
+        effective_end = previous_business_day(effective_end)
+
+    now_minutes = now_ist.hour * 60 + now_ist.minute
+    if effective_end == ist_today and now_minutes < MARKET_OPEN_MINUTES_IST:
+        effective_end = previous_business_day(effective_end)
+
+    return effective_end, now_ist
 
 
 def _normalize_time_to_utc_naive(series: pd.Series) -> pd.Series:
@@ -673,7 +705,15 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
 def parse_args():
     p = argparse.ArgumentParser(description="Daily Incremental Data Updater")
     p.add_argument(
-        "--end", default=str(date.today()), help="End date for update (default: today)"
+        "--end",
+        default=str(datetime.now(IST).date()),
+        help="End date for update in YYYY-MM-DD (default: current IST date)",
+    )
+    p.add_argument(
+        "--respect-market-session",
+        action="store_true",
+        default=True,
+        help="Before IST market open, fall back to the previous business day",
     )
     p.add_argument("--dry-run", action="store_true", help="Preview without downloading")
     p.add_argument(
@@ -700,7 +740,12 @@ def parse_args():
 
 def main():
     args = parse_args()
-    end_date = date.fromisoformat(args.end)
+    requested_end_date = date.fromisoformat(args.end)
+    now_ist = datetime.now(IST)
+    if args.respect_market_session:
+        end_date, now_ist = resolve_effective_end_date(requested_end_date)
+    else:
+        end_date = requested_end_date
     do_all = not (
         args.stocks_only or args.indices_only or args.fno_only or args.fno_live_only
     )
@@ -728,7 +773,9 @@ def main():
     )
     log.info("=" * 60)
     log.info("  DAILY INCREMENTAL UPDATER")
-    log.info(f"  End date : {end_date}")
+    log.info(f"  Requested end date : {requested_end_date}")
+    log.info(f"  Effective end date : {end_date}")
+    log.info(f"  Current IST        : {now_ist.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     log.info(f"  Dry run  : {args.dry_run}")
     log.info(f"  Mode     : {mode}")
     log.info("=" * 60)
