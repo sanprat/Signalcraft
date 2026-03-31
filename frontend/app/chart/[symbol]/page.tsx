@@ -503,6 +503,7 @@ export default function ChartSymbolPage() {
               indicators={indicators}
               realtimeData={realtimeCandle}
               isIntraday={isIntraday}
+              interval={interval}
               symbol={symbol}
               onCrosshairMove={handleCrosshairMove}
             />

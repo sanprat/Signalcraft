@@ -52,9 +52,7 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
     const containerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<Chart | null>(null)
     const [loaded, setLoaded] = useState(false)
-    const [hoveredTrade, setHoveredTrade] = useState<HoveredTrade>(null)
     const [chartError, setChartError] = useState<string | null>(null)
-
     const candleDataRef = useRef<KLineData[]>([])
 
     const fetchCandleData = useCallback(async (): Promise<KLineData[]> => {
@@ -102,11 +100,21 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
         if (!chart) return
 
         chartRef.current = chart
+        chart.setTimezone('Asia/Kolkata')
 
         const dataLoader: DataLoader = {
-            getBars: ({ callback }) => {
-                const data = candleDataRef.current
-                callback(data, false)
+            getBars: async ({ callback }) => {
+                try {
+                    const data = await fetchCandleData()
+                    candleDataRef.current = data
+                    callback(data, false)
+                    setLoaded(data.length > 0)
+                    setChartError(data.length === 0 ? 'Chart data is empty for this backtest.' : null)
+                } catch (error: any) {
+                    callback([], false)
+                    setLoaded(false)
+                    setChartError(error?.message || 'Failed to load chart data.')
+                }
             },
             subscribeBar: ({ callback }) => {
                 const data = candleDataRef.current
@@ -117,23 +125,15 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
         }
 
         chart.setDataLoader(dataLoader)
-
-        fetchCandleData()
-            .then((data) => {
-                candleDataRef.current = data
-                chart.setDataLoader(dataLoader)
-                setLoaded(true)
-                setChartError(
-                    data.length === 0
-                        ? 'Chart data is empty for this backtest.'
-                        : null
-                )
-            })
-            .catch((error: Error) => {
-                candleDataRef.current = []
-                setLoaded(false)
-                setChartError(error.message)
-            })
+        chart.setSymbol({
+            ticker: backtestId,
+            pricePrecision: 2,
+            volumePrecision: 0,
+        })
+        chart.setPeriod({
+            type: 'minute',
+            span: 5,
+        })
 
         return () => {
             dispose(containerRef.current!)
@@ -141,9 +141,10 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
     }, [backtestId, fetchCandleData])
 
     useEffect(() => {
-        if (!chartRef.current || !loaded || !trades.length || !candleDataRef.current.length) return
+        if (!chartRef.current || !loaded || !trades.length) return
 
         const chart = chartRef.current
+        chart.removeOverlay()
 
         trades.forEach(trade => {
             const entryTime = new Date(trade.entry_time).getTime()
@@ -171,37 +172,6 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
                 lock: true,
             })
         })
-
-        chart.subscribeAction('onCrosshairChange', (params) => {
-            if (!params || !trades.length) {
-                setHoveredTrade(null)
-                return
-            }
-
-            const crosshair = params as { timestamp?: number; x?: number; y?: number }
-            if (!crosshair.timestamp) {
-                setHoveredTrade(null)
-                return
-            }
-
-            const timestamp = crosshair.timestamp
-
-            const matchingTrade = trades.find(trade => {
-                const entryTime = new Date(trade.entry_time).getTime()
-                const exitTime = new Date(trade.exit_time).getTime()
-                return timestamp >= entryTime && timestamp <= exitTime
-            })
-
-            if (matchingTrade && crosshair.x !== undefined && crosshair.y !== undefined) {
-                setHoveredTrade({
-                    trade: matchingTrade,
-                    x: crosshair.x,
-                    y: crosshair.y,
-                })
-            } else {
-                setHoveredTrade(null)
-            }
-        })
     }, [loaded, trades])
 
     return (
@@ -217,43 +187,6 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
             {chartError && (
                 <div style={{ marginTop: 12, fontSize: 12, color: T.textMuted }}>
                     {chartError}
-                </div>
-            )}
-            {hoveredTrade && (
-                <div style={{
-                    position: 'absolute',
-                    left: Math.min(hoveredTrade.x + 10, 600),
-                    top: hoveredTrade.y - 80,
-                    background: T.surface,
-                    border: `1px solid ${T.border}`,
-                    borderRadius: 8,
-                    padding: '10px 14px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    zIndex: 100,
-                    fontSize: 12,
-                    minWidth: 180,
-                }}>
-                    <div style={{ fontWeight: 700, marginBottom: 6, color: T.navy }}>
-                        Trade #{hoveredTrade.trade.trade_no}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                        <span style={{ color: T.textMuted }}>Entry:</span>
-                        <span style={{ fontFamily: "'DM Mono', monospace", color: T.green }}>Rs. {hoveredTrade.trade.entry_price}</span>
-                        <span style={{ color: T.textMuted }}>Exit:</span>
-                        <span style={{ fontFamily: "'DM Mono', monospace", color: T.red }}>Rs. {hoveredTrade.trade.exit_price}</span>
-                        <span style={{ color: T.textMuted }}>P&L:</span>
-                        <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700, color: hoveredTrade.trade.pnl >= 0 ? T.green : T.red }}>
-                            Rs. {hoveredTrade.trade.pnl?.toLocaleString()} ({hoveredTrade.trade.pnl_pct}%)
-                        </span>
-                        <span style={{ color: T.textMuted }}>Reason:</span>
-                        <span style={{
-                            fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
-                            background: hoveredTrade.trade.exit_reason === 'TARGET' ? T.greenLight : hoveredTrade.trade.exit_reason === 'SL' ? T.redLight : T.amberLight,
-                            color: hoveredTrade.trade.exit_reason === 'TARGET' ? T.green : hoveredTrade.trade.exit_reason === 'SL' ? T.red : T.amber,
-                        }}>
-                            {hoveredTrade.trade.exit_reason}
-                        </span>
-                    </div>
                 </div>
             )}
         </Card>
