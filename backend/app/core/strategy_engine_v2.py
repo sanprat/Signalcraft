@@ -15,7 +15,7 @@ import time
 import uuid
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Callable
 
 import pandas as pd
 import numpy as np
@@ -45,7 +45,7 @@ DATA_DIR = Path(__file__).parent.parent.parent.parent / "data" / "candles"
 # Timeframe mapping to file format
 TIMEFRAME_MAP = {
     "1m": "1m",
-    "5m": "5m",
+    "5m": "5min",
     "15m": "15min",
     "30m": "30min",
     "1h": "1h",
@@ -279,40 +279,98 @@ class StrategyEngineV2:
         self, df: pd.DataFrame, executable: ExecutableStrategy
     ) -> pd.DataFrame:
         """Compute all indicators needed for the strategy."""
-        # Collect all unique indicators needed
-        indicators_needed = set()
+        from app.schemas.strategy_v2 import IndicatorRef
+
+        # Collect all indicators and their params from the strategy conditions
+        indicators_to_compute: Dict[str, List] = {}  # "SMA" -> [[20], [50]]
+
+        def _extract_indicators(expr):
+            """Recursively extract IndicatorRef from condition expressions."""
+            if isinstance(expr, IndicatorRef):
+                key = expr.name.upper()
+                params = tuple(
+                    int(p) if isinstance(p, float) and p == int(p) else p
+                    for p in expr.params
+                )
+                if key not in indicators_to_compute:
+                    indicators_to_compute[key] = []
+                if params not in indicators_to_compute[key]:
+                    indicators_to_compute[key].append(params)
+            elif hasattr(expr, "__dict__"):
+                for val in expr.__dict__.values():
+                    if hasattr(val, "type") or isinstance(val, IndicatorRef):
+                        _extract_indicators(val)
 
         for cond in executable.entry_conditions:
-            # Extract indicator names from condition description
-            # This is a simplified approach - full parsing would be more robust
+            # The compiled condition's description is str(cond) which isn't useful
+            # We need to extract from the original Condition objects
             pass
 
-        # Compute standard indicators
-        # RSI
-        if any("RSI" in str(c.description) for c in executable.entry_conditions):
-            period = 14  # Default, should parse from condition
-            df["rsi_14"] = self._compute_rsi(df["close"], period)
-            df["indicator_RSI_14"] = df["rsi_14"]
+        # Also extract from the strategy builder's source conditions
+        # Since ExecutableStrategy doesn't store originals, extract from description
+        # Better approach: compute indicators based on what the evaluators need
 
-        # SMA
-        if any("SMA" in str(c.description) for c in executable.entry_conditions):
-            for period in [10, 20, 50]:
-                df[f"sma_{period}"] = df["close"].rolling(period).mean()
-                df[f"indicator_SMA_{period}_close"] = df[f"sma_{period}"]
+        # Collect indicator names referenced in evaluator descriptions
+        all_indicator_names = set()
+        for cond in executable.entry_conditions:
+            desc = cond.description
+            # Parse "IndicatorRef(name='SMA', params=[20])" patterns
+            import re
 
-        # EMA
-        if any("EMA" in str(c.description) for c in executable.entry_conditions):
-            for period in [9, 21]:
-                df[f"ema_{period}"] = df["close"].ewm(span=period, adjust=False).mean()
-                df[f"indicator_EMA_{period}_close"] = df[f"ema_{period}"]
+            for match in re.finditer(r"name='(\w+)'.*?params=\[([^\]]*)\]", desc):
+                name = match.group(1).upper()
+                params_str = match.group(2)
+                params = []
+                for p in params_str.split(","):
+                    p = p.strip().strip("'\"")
+                    try:
+                        params.append(int(p))
+                    except ValueError:
+                        try:
+                            params.append(float(p))
+                        except ValueError:
+                            params.append(p)
+                key = tuple(params) if params else ()
+                all_indicator_names.add((name, key))
 
-        # Volume SMA for volume-based conditions
-        if any("VOLUME" in str(c.description) for c in executable.entry_conditions):
-            df["sma_volume_20"] = df["volume"].rolling(20).mean()
-            df["indicator_SMA_20_volume"] = df["sma_volume_20"]
+        # Compute indicators
+        for name, params in all_indicator_names:
+            col_key = "_".join(str(p) for p in params) if params else ""
+            col_name = f"indicator_{name}_{col_key}" if col_key else f"indicator_{name}"
 
-        # Fill NaN values
-        df = df.fillna(method="ffill").fillna(0)
+            if name == "SMA" and params:
+                period = int(params[0])
+                df[col_name] = df["close"].rolling(period).mean()
+                logger.debug(f"[V2] Computed {col_name} with period={period}")
+
+            elif name == "EMA" and params:
+                period = int(params[0])
+                df[col_name] = df["close"].ewm(span=period, adjust=False).mean()
+                logger.debug(f"[V2] Computed {col_name} with period={period}")
+
+            elif name == "RSI" and params:
+                period = int(params[0])
+                df[col_name] = self._compute_rsi(df["close"], period)
+                logger.debug(f"[V2] Computed {col_name} with period={period}")
+
+            elif name == "ATR" and params:
+                period = int(params[0])
+                high_low = df["high"] - df["low"]
+                high_close = (df["high"] - df["close"].shift()).abs()
+                low_close = (df["low"] - df["close"].shift()).abs()
+                true_range = pd.concat([high_low, high_close, low_close], axis=1).max(
+                    axis=1
+                )
+                df[col_name] = true_range.rolling(period).mean()
+
+            elif name == "VOLUME":
+                df[col_name] = df["volume"]
+
+            else:
+                logger.warning(f"[V2] Unknown indicator: {name} with params {params}")
+
+        # Forward-fill NaN values
+        df = df.ffill().fillna(0)
 
         return df
 
@@ -473,16 +531,86 @@ class StrategyEngineV2:
         self, df: pd.DataFrame, executable: ExecutableStrategy
     ) -> Callable[[pd.Series], bool]:
         """Build entry condition evaluator for the strategy."""
+        # Use the pre-built evaluators from StrategyBuilderV2
+        # They already handle IndicatorRef, PriceRef, ValueRef, MathExpr correctly
         conditions = executable.entry_conditions
         logic = executable.entry_logic
 
-        # Create evaluators for each condition
-        condition_builders = []
+        if not conditions:
+            return lambda row: False
 
+        # Pre-compute crossover states for crosses_above/crosses_below operators
+        # Store previous bar's indicator values in a shifted column
+        crossover_cols = {}
         for cond in conditions:
-            # Build evaluator based on condition structure
-            evaluator = self._build_condition_evaluator(df, cond)
-            condition_builders.append(evaluator)
+            desc = cond.description
+            if "crosses_above" in desc or "crosses_below" in desc:
+                # Extract indicator column names from description
+                import re
+
+                names = re.findall(r"name='(\w+)'.*?params=\[([^\]]*)\]", desc)
+                for name, params_str in names:
+                    params = params_str.replace(", ", "_").replace(",", "_")
+                    col = (
+                        f"indicator_{name}_{params}" if params else f"indicator_{name}"
+                    )
+                    prev_col = f"{col}_prev"
+                    if col in df.columns and prev_col not in df.columns:
+                        df[prev_col] = df[col].shift(1)
+                        crossover_cols[col] = prev_col
+
+        # Wrap the builder's evaluators to handle crossover detection
+        def make_evaluator(cond):
+            def evaluator(row: pd.Series) -> bool:
+                desc = cond.description
+                # Handle crosses_above: left > right AND left_prev <= right_prev
+                if "crosses_above" in desc:
+                    try:
+                        left_val = self._get_indicator_value(row, desc, "left")
+                        right_val = self._get_indicator_value(row, desc, "right")
+                        left_prev = self._get_prev_indicator_value(
+                            row, desc, "left", df, crossover_cols
+                        )
+                        right_prev = self._get_prev_indicator_value(
+                            row, desc, "right", df, crossover_cols
+                        )
+                        if any(
+                            np.isnan(v)
+                            for v in [left_val, right_val, left_prev, right_prev]
+                        ):
+                            return False
+                        return left_val > right_val and left_prev <= right_prev
+                    except:
+                        return False
+                # Handle crosses_below: left < right AND left_prev >= right_prev
+                elif "crosses_below" in desc:
+                    try:
+                        left_val = self._get_indicator_value(row, desc, "left")
+                        right_val = self._get_indicator_value(row, desc, "right")
+                        left_prev = self._get_prev_indicator_value(
+                            row, desc, "left", df, crossover_cols
+                        )
+                        right_prev = self._get_prev_indicator_value(
+                            row, desc, "right", df, crossover_cols
+                        )
+                        if any(
+                            np.isnan(v)
+                            for v in [left_val, right_val, left_prev, right_prev]
+                        ):
+                            return False
+                        return left_val < right_val and left_prev >= right_prev
+                    except:
+                        return False
+                # Default: use the builder's compiled evaluator
+                else:
+                    try:
+                        return cond.evaluator(row)
+                    except:
+                        return False
+
+            return evaluator
+
+        condition_builders = [make_evaluator(cond) for cond in conditions]
 
         # Return combined evaluator
         if logic == "ALL":
@@ -504,56 +632,47 @@ class StrategyEngineV2:
 
             return entry_any
 
-    def _build_condition_evaluator(
-        self, df: pd.DataFrame, cond
-    ) -> Callable[[pd.Series], bool]:
-        """Build evaluator for a single condition."""
-        # Parse condition from description or model
-        desc = cond.description if hasattr(cond, "description") else str(cond)
+    def _get_indicator_value(self, row, desc, side):
+        """Extract indicator value from row based on description."""
+        import re
 
-        # Simple heuristic: extract operator and values from description
-        # This should be enhanced with proper condition parsing
+        # Find the IndicatorRef for the given side
+        pattern = rf"{side}=IndicatorRef\(name='(\w+)', params=\[([^\]]*)\]\)"
+        match = re.search(pattern, desc)
+        if not match:
+            # Try alternate format: left=IndicatorRef(...)
+            pattern = r"name='(\w+)'.*?params=\[([^\]]*)\]"
+            matches = re.findall(pattern, desc)
+            if matches:
+                name, params_str = matches[0] if side == "left" else matches[-1]
+            else:
+                return np.nan
+        else:
+            name = match.group(1)
+            params_str = match.group(2)
 
-        def evaluator(row: pd.Series) -> bool:
-            try:
-                # Check common indicator patterns
-                if "RSI" in desc and "<" in desc:
-                    # RSI < value (oversold)
-                    rsi_val = row.get("indicator_RSI_14", row.get("rsi_14", np.nan))
-                    # Extract threshold from description
-                    parts = desc.split("<")
-                    if len(parts) == 2:
-                        try:
-                            threshold = float(parts[1].strip().rstrip(")"))
-                            return rsi_val < threshold
-                        except:
-                            pass
+        col_key = params_str.replace(", ", "_").replace(",", "_")
+        col = f"indicator_{name}_{col_key}" if col_key else f"indicator_{name}"
+        return row.get(col, np.nan)
 
-                if "SMA" in desc and ">" in desc:
-                    # Price > SMA
-                    sma_20 = row.get(
-                        "indicator_SMA_20_close", row.get("sma_20", np.nan)
-                    )
-                    close = row.get("close", np.nan)
-                    if not np.isnan(sma_20) and not np.isnan(close):
-                        return close > sma_20
+    def _get_prev_indicator_value(self, row, desc, side, df, crossover_cols):
+        """Get previous bar's indicator value (for crossover detection)."""
+        val = self._get_indicator_value(row, desc, side)
+        col = None
+        import re
 
-                if "EMA" in desc and ">" in desc:
-                    # EMA crossover
-                    ema_9 = row.get("indicator_EMA_9_close", row.get("ema_9", np.nan))
-                    ema_21 = row.get(
-                        "indicator_EMA_21_close", row.get("ema_21", np.nan)
-                    )
-                    if not np.isnan(ema_9) and not np.isnan(ema_21):
-                        return ema_9 > ema_21
+        pattern = r"name='(\w+)'.*?params=\[([^\]]*)\]"
+        matches = re.findall(pattern, desc)
+        if matches:
+            idx = 0 if side == "left" else -1
+            name, params_str = matches[idx]
+            col_key = params_str.replace(", ", "_").replace(",", "_")
+            col = f"indicator_{name}_{col_key}" if col_key else f"indicator_{name}"
 
-                # Default: return True (conservative for testing)
-                return True
-            except Exception as e:
-                logger.debug(f"Condition eval error: {e}")
-                return False
-
-        return evaluator
+        if col and col in crossover_cols:
+            prev_col = crossover_cols[col]
+            return row.get(prev_col, np.nan)
+        return np.nan
 
     def _check_exit_rules(
         self,
