@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import type { ActionType, Chart, DataLoader, KLineData } from 'klinecharts';
-import { dispose, init } from 'klinecharts';
+import { dispose, init, registerOverlay } from 'klinecharts';
 
 export interface IndicatorPoint {
   time: string | number;
@@ -58,6 +58,97 @@ export interface ChartAnnotation {
   text: string;
   color: string;
   backgroundColor: string;
+  side?: 'above' | 'below';
+}
+
+let tradeSignalOverlayRegistered = false;
+
+function ensureTradeSignalOverlayRegistered() {
+  if (tradeSignalOverlayRegistered) {
+    return;
+  }
+
+  registerOverlay({
+    name: 'tradeSignalMarker',
+    totalStep: 1,
+    lock: true,
+    visible: true,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: false,
+    createPointFigures: ({ overlay, coordinates, bounding }) => {
+      const point = coordinates[0];
+      const data = (overlay.extendData ?? {}) as ChartAnnotation;
+
+      if (!point) {
+        return [];
+      }
+
+      const side = data.side === 'below' ? 'below' : 'above';
+      const direction = side === 'below' ? 1 : -1;
+      const lineGap = 10;
+      const labelOffset = 28;
+      const lineEndY = point.y + lineGap * direction;
+      const desiredLabelY = point.y + labelOffset * direction;
+      const labelY = Math.max(18, Math.min(bounding.height - 18, desiredLabelY));
+      const baseline = side === 'below' ? 'top' : 'bottom';
+
+      return [
+        {
+          type: 'circle',
+          attrs: { x: point.x, y: point.y, r: 4 },
+          styles: {
+            color: data.backgroundColor,
+            borderColor: data.color,
+            borderSize: 2,
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'line',
+          attrs: {
+            coordinates: [
+              { x: point.x, y: point.y },
+              { x: point.x, y: lineEndY },
+            ],
+          },
+          styles: {
+            color: data.color,
+            size: 2,
+            style: 'solid',
+          },
+          ignoreEvent: true,
+        },
+        {
+          type: 'text',
+          attrs: {
+            x: point.x,
+            y: labelY,
+            text: data.text,
+            align: 'center',
+            baseline,
+          },
+          styles: {
+            style: 'stroke_fill',
+            color: data.color,
+            size: 12,
+            weight: 700,
+            backgroundColor: data.backgroundColor,
+            borderColor: data.color,
+            borderSize: 1,
+            borderRadius: 4,
+            paddingLeft: 8,
+            paddingRight: 8,
+            paddingTop: 4,
+            paddingBottom: 4,
+          },
+          ignoreEvent: true,
+        },
+      ];
+    },
+  });
+
+  tradeSignalOverlayRegistered = true;
 }
 
 function normalizeTimestamp(value: string | number, isIntraday: boolean): number {
@@ -147,6 +238,10 @@ export default function KLineChart({
       timestamp: normalizeTimestamp(annotation.time, isIntraday),
     }));
   }, [annotations, isIntraday]);
+
+  useEffect(() => {
+    ensureTradeSignalOverlayRegistered();
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || !normalizedData.length) {
@@ -298,21 +393,11 @@ export default function KLineChart({
 
     normalizedAnnotations.forEach((annotation) => {
       chart.createOverlay({
-        name: 'simpleAnnotation',
+        name: 'tradeSignalMarker',
         points: [{ timestamp: annotation.timestamp, value: annotation.value }],
-        extendData: annotation.text,
-        styles: {
-          line: { color: annotation.color, size: 2 },
-          point: {
-            color: annotation.color,
-            borderColor: annotation.color,
-          },
-          text: {
-            color: annotation.color,
-            backgroundColor: annotation.backgroundColor,
-          },
-        },
+        extendData: annotation,
         lock: true,
+        zLevel: 80,
       });
     });
   }, [normalizedAnnotations]);

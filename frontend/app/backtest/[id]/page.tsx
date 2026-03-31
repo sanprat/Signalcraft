@@ -185,16 +185,18 @@ function BacktestChart({
                 {
                     time: entryTime,
                     value: trade.entry_price,
-                    text: `BUY #${trade.trade_no}`,
+                    text: `BUY ${trade.trade_no}`,
                     color: T.green,
                     backgroundColor: T.greenLight,
+                    side: 'below',
                 },
                 {
                     time: exitTime,
                     value: trade.exit_price,
-                    text: `SELL #${trade.trade_no}`,
+                    text: `SELL ${trade.trade_no}`,
                     color: T.red,
                     backgroundColor: T.redLight,
+                    side: 'above',
                 },
             ]
         })
