@@ -46,6 +46,15 @@ def run(body: BacktestRequest, current_user: UserResponse = Depends(get_current_
     candles_df: pd.DataFrame = result.pop("candles", pd.DataFrame())
     result["summary"]["backtest_id"] = backtest_id
     result["summary"]["user_id"] = current_user.id  # Store owner
+    result["summary"]["timeframe"] = strategy.get("timeframe")
+    result["summary"]["strategy_name"] = strategy.get("name")
+
+    if strategy.get("symbols") and "symbols" not in result["summary"]:
+        result["summary"]["symbols"] = strategy.get("symbols")
+    elif strategy.get("symbol") and "symbol" not in result["summary"]:
+        result["summary"]["symbol"] = strategy.get("symbol")
+    elif strategy.get("index") and "symbol" not in result["summary"]:
+        result["summary"]["symbol"] = strategy.get("index")
 
     out_dir = BACKTEST_STORE / backtest_id
     out_dir.mkdir(exist_ok=True)
@@ -92,10 +101,12 @@ def get_candles(backtest_id: str, page: int = 0, page_size: int = 500):
     df = duckdb.query(f"""
         SELECT time, open, high, low, close, volume
         FROM read_parquet('{path}')
+        ORDER BY time
         LIMIT {page_size} OFFSET {page * page_size}
     """).df()
 
-    df["time_ts"] = pd.to_datetime(df["time"]).astype("int64") // 10**9
+    parsed_time = pd.to_datetime(df["time"], utc=True).dt.tz_convert("Asia/Kolkata")
+    df["time_iso"] = parsed_time.apply(lambda value: value.isoformat())
 
     return {
         "page": page,
@@ -103,7 +114,7 @@ def get_candles(backtest_id: str, page: int = 0, page_size: int = 500):
             duckdb.query(f"SELECT COUNT(*) FROM read_parquet('{path}')").fetchone()[0]
         ),
         "candles": {
-            "time": df["time_ts"].tolist(),
+            "time": df["time_iso"].tolist(),
             "open": df["open"].tolist(),
             "high": df["high"].tolist(),
             "low": df["low"].tolist(),

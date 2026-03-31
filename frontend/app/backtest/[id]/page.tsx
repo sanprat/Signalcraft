@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { config } from '@/lib/config'
+import { config, getAuthHeaders } from '@/lib/config'
 import KLineChart, { ChartAnnotation } from '@/components/KLineChart'
 
 const API = config.apiBaseUrl
@@ -23,6 +23,7 @@ type Summary = {
     total_pnl: number; max_drawdown: number; avg_trade_pnl: number
     best_trade: number; worst_trade: number; candle_count: number; date_range: string
     symbol?: string; symbols?: string[]
+    timeframe?: string; strategy_name?: string
 }
 
 type Trade = {
@@ -97,7 +98,7 @@ function BacktestChart({
     trades: Trade[]
 }) {
     const [candles, setCandles] = useState<Array<{
-        time: number
+        time: string
         open: number
         high: number
         low: number
@@ -113,7 +114,7 @@ function BacktestChart({
             try {
                 let page = 0
                 const allCandles: Array<{
-                    time: number
+                    time: string
                     open: number
                     high: number
                     low: number
@@ -137,7 +138,7 @@ function BacktestChart({
                         break
                     }
 
-                    const batch = candleBatch.time.map((time: number, index: number) => ({
+                    const batch = candleBatch.time.map((time: string, index: number) => ({
                         time,
                         open: candleBatch.open[index],
                         high: candleBatch.high[index],
@@ -250,7 +251,7 @@ export default function BacktestResultsPage() {
             .then((data) => {
                 setSummary(data)
                 if (data?.strategy_id) {
-                    fetch(`${API}/api/strategy/${data.strategy_id}`)
+                    fetch(`${API}/api/strategy/${data.strategy_id}`, { headers: getAuthHeaders() })
                         .then((response) => response.ok ? response.json() : null)
                         .then((strategyData) => {
                             if (strategyData) {
@@ -269,8 +270,8 @@ export default function BacktestResultsPage() {
     }, [id])
 
     const chartSymbol = useMemo(() => getChartSymbol(summary, strategy, trades), [summary, strategy, trades])
-    const chartInterval = strategy?.timeframe || '5min'
-    const chartTitle = `${chartSymbol} · ${formatTimeframe(strategy?.timeframe)}`
+    const chartInterval = summary?.timeframe || strategy?.timeframe || '5min'
+    const chartTitle = `${chartSymbol} · ${formatTimeframe(summary?.timeframe || strategy?.timeframe)}`
 
     if (!summary) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: T.textMuted, fontSize: 13 }}>⏳ Loading backtest results...</div>
 
