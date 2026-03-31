@@ -38,6 +38,7 @@ export interface ChartProps {
   isIntraday?: boolean;
   interval?: string;
   symbol?: string;
+  annotations?: ChartAnnotation[];
   onCrosshairMove?: (bar: HoveredBar | null) => void;
 }
 
@@ -49,6 +50,14 @@ export interface HoveredBar {
   close: number;
   change: number;
   changePct: number;
+}
+
+export interface ChartAnnotation {
+  time: string | number;
+  value: number;
+  text: string;
+  color: string;
+  backgroundColor: string;
 }
 
 function normalizeTimestamp(value: string | number, isIntraday: boolean): number {
@@ -101,6 +110,7 @@ export default function KLineChart({
   isIntraday = false,
   interval,
   symbol,
+  annotations,
   onCrosshairMove,
 }: ChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -130,6 +140,13 @@ export default function KLineChart({
       ),
     }));
   }, [indicators, isIntraday]);
+
+  const normalizedAnnotations = useMemo(() => {
+    return (annotations ?? []).map((annotation) => ({
+      ...annotation,
+      timestamp: normalizeTimestamp(annotation.time, isIntraday),
+    }));
+  }, [annotations, isIntraday]);
 
   useEffect(() => {
     if (!containerRef.current || !normalizedData.length) {
@@ -270,6 +287,35 @@ export default function KLineChart({
       chartRef.current = null;
     };
   }, [indicatorMaps, interval, isIntraday, normalizedData, onCrosshairMove, symbol]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) {
+      return;
+    }
+
+    chart.removeOverlay();
+
+    normalizedAnnotations.forEach((annotation) => {
+      chart.createOverlay({
+        name: 'simpleAnnotation',
+        points: [{ timestamp: annotation.timestamp, value: annotation.value }],
+        extendData: annotation.text,
+        styles: {
+          line: { color: annotation.color, size: 2 },
+          point: {
+            color: annotation.color,
+            borderColor: annotation.color,
+          },
+          text: {
+            color: annotation.color,
+            backgroundColor: annotation.backgroundColor,
+          },
+        },
+        lock: true,
+      });
+    });
+  }, [normalizedAnnotations]);
 
   useEffect(() => {
     if (!realtimeData || !pushBarRef.current) {
