@@ -88,7 +88,7 @@ SCHEMA = pa.schema(
 LOG_DIR = PROJECT_ROOT / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 IST = ZoneInfo("Asia/Kolkata")
-MARKET_OPEN_MINUTES_IST = 9 * 60 + 15
+MARKET_CLOSE_MINUTES_IST = 15 * 60 + 30
 
 logging.basicConfig(
     level=logging.INFO,
@@ -136,8 +136,9 @@ def resolve_effective_end_date(requested_end: date) -> tuple[date, datetime]:
     """
     Resolve the trading date to update based on current IST market session.
 
-    Before market open, requesting today's date should fall back to the previous
-    business day because no intraday candles exist yet for the current session.
+    Before IST market close, requesting today's date should fall back to the
+    previous business day because the current session's full data is not yet
+    available for the daily batch update.
     """
     now_ist = datetime.now(IST)
     ist_today = now_ist.date()
@@ -147,7 +148,7 @@ def resolve_effective_end_date(requested_end: date) -> tuple[date, datetime]:
         effective_end = previous_business_day(effective_end)
 
     now_minutes = now_ist.hour * 60 + now_ist.minute
-    if effective_end == ist_today and now_minutes < MARKET_OPEN_MINUTES_IST:
+    if effective_end == ist_today and now_minutes < MARKET_CLOSE_MINUTES_IST:
         effective_end = previous_business_day(effective_end)
 
     return effective_end, now_ist
