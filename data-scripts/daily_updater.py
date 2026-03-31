@@ -121,16 +121,36 @@ def next_business_day(d: date) -> date:
     return nd
 
 
+def _normalize_time_to_utc_naive(series: pd.Series) -> pd.Series:
+    """
+    Normalize a timestamp series to naive UTC for stable parquet storage.
+
+    Handles strings, tz-aware timestamps, and legacy tz-naive values that were
+    intended to represent Asia/Kolkata wall-clock time.
+    """
+    parsed = pd.to_datetime(series, errors="coerce")
+    if parsed.isna().all():
+        raise ValueError("time column could not be parsed as datetimes")
+
+    if parsed.dt.tz is None:
+        return (
+            parsed.dt.tz_localize("Asia/Kolkata")
+            .dt.tz_convert("UTC")
+            .dt.tz_localize(None)
+        )
+
+    return parsed.dt.tz_convert("UTC").dt.tz_localize(None)
+
+
 def candles_to_df_intraday(raw: list) -> pd.DataFrame:
     """Convert raw intraday candles to DataFrame with market hours filter."""
     if not raw:
         return pd.DataFrame()
     df = pd.DataFrame(raw)[["time", "open", "high", "low", "close", "volume"]]
-    df["time"] = (
-        pd.to_datetime(df["time"], utc=False)
-        .dt.tz_localize(None)
-        .dt.tz_localize("Asia/Kolkata")
+    df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce").dt.tz_convert(
+        "Asia/Kolkata"
     )
+    df = df.dropna(subset=["time"])
     # Filter market hours
     t = df["time"]
     if t.dt.hour.max() > 0:
@@ -146,11 +166,10 @@ def candles_to_df_daily(raw: list) -> pd.DataFrame:
     if not raw:
         return pd.DataFrame()
     df = pd.DataFrame(raw)[["time", "open", "high", "low", "close", "volume"]]
-    df["time"] = (
-        pd.to_datetime(df["time"], utc=False)
-        .dt.tz_localize(None)
-        .dt.tz_localize("Asia/Kolkata")
+    df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce").dt.tz_convert(
+        "Asia/Kolkata"
     )
+    df = df.dropna(subset=["time"])
     df["time"] = df["time"].dt.normalize()
     return df.drop_duplicates("time").sort_values("time").reset_index(drop=True)
 
@@ -180,10 +199,7 @@ def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA)
         combined = new_df
 
     # Normalize time by strictly converting to naive UTC to bypass PyArrow tz bugs
-    if combined["time"].dt.tz is None:
-        combined["time"] = pd.to_datetime(combined["time"]).dt.tz_localize("Asia/Kolkata").dt.tz_convert("UTC").dt.tz_localize(None)
-    else:
-        combined["time"] = pd.to_datetime(combined["time"], utc=True).dt.tz_localize(None)
+    combined["time"] = _normalize_time_to_utc_naive(combined["time"])
 
     combined = (
         combined.drop_duplicates("time").sort_values("time").reset_index(drop=True)
