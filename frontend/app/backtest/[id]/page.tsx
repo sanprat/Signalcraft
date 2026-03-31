@@ -53,6 +53,7 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
     const chartRef = useRef<Chart | null>(null)
     const [loaded, setLoaded] = useState(false)
     const [hoveredTrade, setHoveredTrade] = useState<HoveredTrade>(null)
+    const [chartError, setChartError] = useState<string | null>(null)
 
     const candleDataRef = useRef<KLineData[]>([])
 
@@ -62,20 +63,32 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
 
         while (true) {
             const response = await fetch(`${API}/api/backtest/${backtestId}/candles?page=${page}&page_size=500`)
-            const json = await response.json()
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error('Chart data is not available for this backtest.')
+                }
+                throw new Error('Failed to load chart data.')
+            }
 
-            const batch: KLineData[] = json.candles.time.map((t: number, i: number) => ({
+            const json = await response.json()
+            const candles = json?.candles
+
+            if (!candles || !Array.isArray(candles.time)) {
+                break
+            }
+
+            const batch: KLineData[] = candles.time.map((t: number, i: number) => ({
                 timestamp: t * 1000,
-                open: json.candles.open[i],
-                high: json.candles.high[i],
-                low: json.candles.low[i],
-                close: json.candles.close[i],
-                volume: json.candles.volume?.[i] || 0,
+                open: candles.open[i],
+                high: candles.high[i],
+                low: candles.low[i],
+                close: candles.close[i],
+                volume: candles.volume?.[i] || 0,
             }))
 
             allCandles.push(...batch)
 
-            if (allCandles.length >= json.total) break
+            if (allCandles.length >= (json.total || 0) || batch.length === 0) break
             page++
         }
 
@@ -105,11 +118,22 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
 
         chart.setDataLoader(dataLoader)
 
-        fetchCandleData().then((data) => {
-            candleDataRef.current = data
-            chart.setDataLoader(dataLoader)
-            setLoaded(true)
-        })
+        fetchCandleData()
+            .then((data) => {
+                candleDataRef.current = data
+                chart.setDataLoader(dataLoader)
+                setLoaded(true)
+                setChartError(
+                    data.length === 0
+                        ? 'Chart data is empty for this backtest.'
+                        : null
+                )
+            })
+            .catch((error: Error) => {
+                candleDataRef.current = []
+                setLoaded(false)
+                setChartError(error.message)
+            })
 
         return () => {
             dispose(containerRef.current!)
@@ -190,6 +214,11 @@ function KlineChart({ backtestId, trades }: { backtestId: string; trades: Trade[
                 </div>
             </div>
             <div ref={containerRef} style={{ height: 400, borderRadius: 8, overflow: 'hidden', position: 'relative' }} />
+            {chartError && (
+                <div style={{ marginTop: 12, fontSize: 12, color: T.textMuted }}>
+                    {chartError}
+                </div>
+            )}
             {hoveredTrade && (
                 <div style={{
                     position: 'absolute',

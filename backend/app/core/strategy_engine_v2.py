@@ -11,6 +11,7 @@ This module handles:
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, date, timedelta
@@ -39,8 +40,27 @@ from app.core.strategy_builder_v2 import (
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_data_dir() -> Path:
+    """Resolve candle data path across local and container layouts."""
+    env_path = os.getenv("SIGNALCRAFT_DATA_DIR")
+    candidates = [
+        Path(env_path) if env_path else None,
+        Path("/app/data/candles"),
+        Path(__file__).resolve().parents[2] / "data" / "candles",
+        Path(__file__).resolve().parents[3] / "data" / "candles",
+    ]
+
+    for candidate in candidates:
+        if candidate and candidate.exists():
+            return candidate
+
+    # Fall back to the expected container path for clearer logging.
+    return Path("/app/data/candles")
+
+
 # Path to Parquet data
-DATA_DIR = Path(__file__).parent.parent.parent.parent / "data" / "candles"
+DATA_DIR = _resolve_data_dir()
 
 # Timeframe mapping to file format
 TIMEFRAME_MAP = {
@@ -524,6 +544,29 @@ class StrategyEngineV2:
                         }
                 except Exception as e:
                     logger.debug(f"Entry evaluation error: {e}")
+
+        if in_trade and not df.empty:
+            last_row = df.iloc[-1]
+            exit_price = last_row["close"]
+            pnl = (exit_price - entry_price) * quantity
+            pnl_pct = (exit_price - entry_price) / entry_price * 100
+
+            trades.append(
+                {
+                    "trade_no": trade_no,
+                    "symbol": last_row.get("symbol", "UNKNOWN"),
+                    "entry_time": entry_time.isoformat() if entry_time else "",
+                    "entry_price": round(entry_price, 2),
+                    "exit_time": last_row["time"].isoformat(),
+                    "exit_price": round(exit_price, 2),
+                    "pnl": round(pnl, 2),
+                    "pnl_pct": round(pnl_pct, 2),
+                    "exit_reason": "END_OF_TEST",
+                    "quantity": quantity,
+                    "holding_period": len(equity_curve) - trade_state.get("entry_bar", 0),
+                }
+            )
+            equity += pnl
 
         return trades, equity_curve
 

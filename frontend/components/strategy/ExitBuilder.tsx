@@ -191,11 +191,9 @@ export function ExitBuilder({
                 <button
                     type="button"
                     onClick={(e) => {
-                        console.log('[ExitBuilder] Button clicked, current showAddMenu:', showAddMenu)
                         try {
                             e.stopPropagation()
                             setShowAddMenu(!showAddMenu)
-                            console.log('[ExitBuilder] showAddMenu toggled to:', !showAddMenu)
                         } catch (err) {
                             console.error('[ExitBuilder] Error toggling menu:', err)
                         }
@@ -217,7 +215,6 @@ export function ExitBuilder({
                         <div
                             className="fixed inset-0 z-40"
                             onClick={(e) => {
-                                console.log('[ExitBuilder] Backdrop clicked, closing menu')
                                 e.stopPropagation()
                                 setShowAddMenu(false)
                             }}
@@ -228,7 +225,6 @@ export function ExitBuilder({
                             className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-xl z-[100] p-2 space-y-1 pointer-events-auto"
                             style={{ zIndex: 100 }}
                             onClick={(e) => {
-                                console.log('[ExitBuilder] Dropdown clicked')
                                 e.stopPropagation()
                             }}
                         >
@@ -238,10 +234,8 @@ export function ExitBuilder({
                                     type="button"
                                     onClick={(e) => {
                                         e.stopPropagation()
-                                        console.log('[ExitBuilder] Rule type clicked:', type)
                                         try {
                                             handleAddRule(type)
-                                            console.log('[ExitBuilder] handleAddRule completed for:', type)
                                         } catch (err) {
                                             console.error('[ExitBuilder] Error in handleAddRule:', err)
                                         }

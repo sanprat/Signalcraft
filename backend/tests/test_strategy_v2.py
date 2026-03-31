@@ -5,6 +5,7 @@ Tests for Strategy V2 — JSON-first strategy engine.
 import pytest
 from datetime import date, timedelta
 from typing import List, Dict, Any
+from pathlib import Path
 
 # Test imports
 import sys
@@ -33,6 +34,7 @@ from app.core.strategy_builder_v2 import (
     ExpressionEvaluator,
 )
 from app.core.strategy_engine_v2 import StrategyEngineV2
+from app import core as app_core
 
 
 # ============================================================================
@@ -544,6 +546,62 @@ class TestStrategyEngine:
 
         from_date, to_date = engine._get_date_range(strategy, "full")
         assert (to_date - from_date).days >= 365 * 2  # At least 2 years
+
+    def test_open_trade_is_closed_at_end_of_backtest(self):
+        """Test open trades are realized on the last candle."""
+        import pandas as pd
+
+        engine = StrategyEngineV2()
+        executable = StrategyBuilderV2().build(
+            StrategyV2(
+                name="End Of Test Exit",
+                symbols=["RELIANCE"],
+                timeframe="1d",
+                entry_conditions=[
+                    Condition(
+                        left=PriceRef(field="close"),
+                        operator=">",
+                        right=ValueRef(value=0),
+                    )
+                ],
+                exit_rules=[StopLossRule(percent=50.0, priority=1)],
+                risk=RiskConfig(quantity=10),
+            )
+        )
+
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(
+                    ["2025-01-01T09:15:00+05:30", "2025-01-02T09:15:00+05:30"]
+                ),
+                "open": [100.0, 101.0],
+                "high": [101.0, 103.0],
+                "low": [99.0, 100.0],
+                "close": [100.0, 102.0],
+                "volume": [1000, 1200],
+            }
+        )
+
+        df = engine._compute_indicators(df, executable)
+        trades, equity_curve = engine._simulate(df, executable)
+
+        assert len(trades) == 1
+        assert trades[0]["exit_reason"] == "END_OF_TEST"
+        assert trades[0]["pnl"] == 20.0
+        assert len(equity_curve) == 2
+
+    def test_resolve_data_dir_prefers_env_path(self, monkeypatch, tmp_path):
+        """Test data dir resolution supports explicit environment override."""
+        from app.core import strategy_engine_v2
+
+        data_dir = tmp_path / "candles"
+        data_dir.mkdir()
+
+        monkeypatch.setenv("SIGNALCRAFT_DATA_DIR", str(data_dir))
+
+        resolved = strategy_engine_v2._resolve_data_dir()
+
+        assert resolved == Path(data_dir)
 
 
 # ============================================================================

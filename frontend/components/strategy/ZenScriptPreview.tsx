@@ -82,13 +82,6 @@ function generateZenScript(strategy: StrategyV2): string {
     const lines: string[] = []
     const indent = '    '
 
-    // Debug logging
-    console.log('[ZenScriptPreview] Generating ZenScript for strategy:', strategy.name || 'Untitled')
-    console.log('[ZenScriptPreview] Strategy object keys:', Object.keys(strategy))
-    console.log('[ZenScriptPreview] exit_rules:', strategy.exit_rules)
-    console.log('[ZenScriptPreview] exit_rules type:', typeof strategy.exit_rules, Array.isArray(strategy.exit_rules) ? 'array' : 'not array')
-    console.log('[ZenScriptPreview] exit_rules length:', strategy.exit_rules?.length || 0)
-
     // Strategy declaration
     lines.push(`STRATEGY "${strategy.name || 'Untitled Strategy'}" {`)
 
@@ -135,13 +128,11 @@ function generateZenScript(strategy: StrategyV2): string {
     lines.push(`${indent}EXIT ${exitLogic} {`)
     
     const exitRules = strategy.exit_rules || []
-    console.log('[ZenScriptPreview] Processing exit_rules, count:', exitRules.length)
     
     if (exitRules.length === 0) {
         lines.push(`${indent}${indent}// No exit rules configured`)
     } else {
-        exitRules.forEach((rule, i) => {
-            console.log('[ZenScriptPreview] Processing exit rule', i, ':', rule?.type)
+        exitRules.forEach((rule) => {
             lines.push(`${indent}${indent}${formatExitRule(rule)}`)
         })
     }
@@ -203,18 +194,13 @@ function formatOperator(op: string): string {
 }
 
 function formatExitRule(rule: any): string {
-    // Debug logging
-    console.log('[ZenScriptPreview] formatExitRule called with rule:', rule)
-    
     // Handle null/undefined rule
     if (!rule) {
-        console.warn('[ZenScriptPreview] formatExitRule received null/undefined rule')
         return '// Invalid rule'
     }
     
     // Handle missing type
     if (!rule.type) {
-        console.warn('[ZenScriptPreview] formatExitRule received rule without type:', rule)
         return `// Invalid rule: ${JSON.stringify(rule).slice(0, 50)}...`
     }
     
@@ -229,11 +215,9 @@ function formatExitRule(rule: any): string {
             case 'time':
                 return `TIME: ${rule.time || '00:00'}`
             default:
-                console.warn('[ZenScriptPreview] Unknown exit rule type:', rule.type)
                 return `// Unknown rule type: ${rule.type}`
         }
     } catch (err) {
-        console.error('[ZenScriptPreview] Error in formatExitRule:', err)
         return `// Error formatting rule`
     }
 }
