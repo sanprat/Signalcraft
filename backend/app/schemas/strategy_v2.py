@@ -89,6 +89,16 @@ INDICATOR_REGISTRY: dict[str, dict] = {
         "returns": "scalar",
         "description": "Volume Weighted Average Price",
     },
+    "ORB_HIGH": {
+        "params": [("period", int, 15)],
+        "returns": "scalar",
+        "description": "Opening Range High (period in minutes)",
+    },
+    "ORB_LOW": {
+        "params": [("period", int, 15)],
+        "returns": "scalar",
+        "description": "Opening Range Low (period in minutes)",
+    },
 }
 
 # Valid price/field references
@@ -212,9 +222,7 @@ class Condition(BaseModel):
         "!=",
         "crosses_above",
         "crosses_below",
-    ] = Field(
-        ..., description="Comparison operator"
-    )
+    ] = Field(..., description="Comparison operator")
     right: MathExprT = Field(..., description="Right side of comparison")
 
     model_config = {"arbitrary_types_allowed": True}

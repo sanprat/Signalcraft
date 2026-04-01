@@ -22,6 +22,8 @@ export type IndicatorName =
     | 'WILLR'
     | 'OBV'
     | 'VWAP'
+    | 'ORB_HIGH'
+    | 'ORB_LOW'
 
 export interface IndicatorParam {
     name: string
@@ -294,6 +296,8 @@ export const INDICATORS_LIST: IndicatorDefinition[] = [
     { name: 'WILLR', params: [{ name: 'period', type: 'number', default: 14 }], description: 'Williams %R' },
     { name: 'OBV', params: [], description: 'On Balance Volume' },
     { name: 'VWAP', params: [], description: 'Volume Weighted Average Price' },
+    { name: 'ORB_HIGH', params: [{ name: 'period', type: 'number', default: 15 }], description: 'Opening Range High (minutes)' },
+    { name: 'ORB_LOW', params: [{ name: 'period', type: 'number', default: 15 }], description: 'Opening Range Low (minutes)' },
 ]
 
 export const DATE_PRESETS = [

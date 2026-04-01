@@ -265,6 +265,14 @@ class ExpressionEvaluator:
         elif name == "VWAP":
             col = self._compute_vwap()
 
+        elif name == "ORB_HIGH":
+            period = int(params[0]) if params else 15
+            col = self._compute_orb_high(period)
+
+        elif name == "ORB_LOW":
+            period = int(params[0]) if params else 15
+            col = self._compute_orb_low(period)
+
         else:
             raise ValueError(f"Unknown indicator: {name}")
 
@@ -396,6 +404,63 @@ class ExpressionEvaluator:
         cum_vol = self.df["volume"].cumsum()
         cum_tp_vol = (tp * self.df["volume"]).cumsum()
         return cum_tp_vol / cum_vol
+
+    def _infer_candle_minutes(self) -> int:
+        """Infer candle timeframe in minutes from the data."""
+        if "time" not in self.df.columns or len(self.df) < 2:
+            return 5
+        diff = (self.df["time"].iloc[1] - self.df["time"].iloc[0]).total_seconds() / 60
+        if diff <= 1:
+            return 1
+        if diff <= 5:
+            return 5
+        if diff <= 15:
+            return 15
+        if diff <= 30:
+            return 30
+        if diff <= 60:
+            return 60
+        return 5
+
+    def _compute_orb_high(self, period_minutes: int) -> pd.Series:
+        """Compute Opening Range High.
+
+        period_minutes: Opening range duration in minutes (5 or 15).
+        Returns: Series where every candle of a day has the same ORB_HIGH value.
+        """
+        df = self.df
+        if "time" not in df.columns:
+            return pd.Series(index=df.index, dtype=float)
+        candle_minutes = self._infer_candle_minutes()
+        num_candles = max(1, period_minutes // candle_minutes)
+        dates = df["time"].dt.date
+        result = pd.Series(index=df.index, dtype=float)
+        for _, group in df.groupby(dates):
+            if len(group) == 0:
+                continue
+            orb_val = group.head(num_candles)["high"].max()
+            result.loc[group.index] = orb_val
+        return result
+
+    def _compute_orb_low(self, period_minutes: int) -> pd.Series:
+        """Compute Opening Range Low.
+
+        period_minutes: Opening range duration in minutes (5 or 15).
+        Returns: Series where every candle of a day has the same ORB_LOW value.
+        """
+        df = self.df
+        if "time" not in df.columns:
+            return pd.Series(index=df.index, dtype=float)
+        candle_minutes = self._infer_candle_minutes()
+        num_candles = max(1, period_minutes // candle_minutes)
+        dates = df["time"].dt.date
+        result = pd.Series(index=df.index, dtype=float)
+        for _, group in df.groupby(dates):
+            if len(group) == 0:
+                continue
+            orb_val = group.head(num_candles)["low"].min()
+            result.loc[group.index] = orb_val
+        return result
 
     def _eval_math_expr(self, expr: MathExpr, row_idx: int) -> float:
         """Recursively evaluate a math expression."""

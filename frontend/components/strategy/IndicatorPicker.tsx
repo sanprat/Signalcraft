@@ -110,12 +110,23 @@ export function IndicatorPicker({ value, onChange }: IndicatorPickerProps) {
                             <span className="text-xs text-slate-500 font-medium">
                                 {param.name}:
                             </span>
-                            <input
-                                type="number"
-                                value={value.params[index] ?? param.default}
-                                onChange={(e) => handleParamChange(index, e.target.value)}
-                                className="w-16 px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
+                            {(value.name === 'ORB_HIGH' || value.name === 'ORB_LOW') ? (
+                                <select
+                                    value={value.params[index] ?? param.default}
+                                    onChange={(e) => handleParamChange(index, e.target.value)}
+                                    className="w-20 px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                >
+                                    <option value={5}>5 min</option>
+                                    <option value={15}>15 min</option>
+                                </select>
+                            ) : (
+                                <input
+                                    type="number"
+                                    value={value.params[index] ?? param.default}
+                                    onChange={(e) => handleParamChange(index, e.target.value)}
+                                    className="w-16 px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                            )}
                         </div>
                     ))}
                 </div>

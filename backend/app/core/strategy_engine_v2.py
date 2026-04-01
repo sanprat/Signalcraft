@@ -333,7 +333,9 @@ class StrategyEngineV2:
         for name, param_list in indicators_to_compute.items():
             for params in param_list:
                 col_key = "_".join(str(p) for p in params) if params else ""
-                col_name = f"indicator_{name}_{col_key}" if col_key else f"indicator_{name}"
+                col_name = (
+                    f"indicator_{name}_{col_key}" if col_key else f"indicator_{name}"
+                )
 
                 normalized_params = list(params)
                 period = None
@@ -345,12 +347,16 @@ class StrategyEngineV2:
                     period = int(normalized_params[0])
 
                 if name == "SMA" and period:
-                    series = df[price_field] if price_field in df.columns else df["close"]
+                    series = (
+                        df[price_field] if price_field in df.columns else df["close"]
+                    )
                     df[col_name] = series.rolling(period).mean()
                     logger.debug(f"[V2] Computed {col_name} with period={period}")
 
                 elif name == "EMA" and period:
-                    series = df[price_field] if price_field in df.columns else df["close"]
+                    series = (
+                        df[price_field] if price_field in df.columns else df["close"]
+                    )
                     df[col_name] = series.ewm(span=period, adjust=False).mean()
                     logger.debug(f"[V2] Computed {col_name} with period={period}")
 
@@ -362,16 +368,31 @@ class StrategyEngineV2:
                     high_low = df["high"] - df["low"]
                     high_close = (df["high"] - df["close"].shift()).abs()
                     low_close = (df["low"] - df["close"].shift()).abs()
-                    true_range = pd.concat([high_low, high_close, low_close], axis=1).max(
-                        axis=1
-                    )
+                    true_range = pd.concat(
+                        [high_low, high_close, low_close], axis=1
+                    ).max(axis=1)
                     df[col_name] = true_range.rolling(period).mean()
 
                 elif name == "VOLUME":
                     df[col_name] = df["volume"]
 
+                elif name in ("ORB_HIGH", "ORB_LOW") and period:
+                    candle_minutes = self._infer_candle_minutes(df)
+                    num_candles = max(1, period // candle_minutes)
+                    dates = df["time"].dt.date
+                    if name == "ORB_HIGH":
+                        df[col_name] = df.groupby(dates)["high"].transform(
+                            lambda x: x.head(num_candles).max()
+                        )
+                    else:
+                        df[col_name] = df.groupby(dates)["low"].transform(
+                            lambda x: x.head(num_candles).min()
+                        )
+
                 else:
-                    logger.warning(f"[V2] Unknown indicator: {name} with params {params}")
+                    logger.warning(
+                        f"[V2] Unknown indicator: {name} with params {params}"
+                    )
 
         # Keep initial indicator NaNs so conditions cannot trigger before enough history exists.
         df = df.ffill()
@@ -385,6 +406,24 @@ class StrategyEngineV2:
         loss = (-delta.clip(upper=0)).rolling(period).mean()
         rs = gain / loss.replace(0, 1e-10)
         return 100 - (100 / (1 + rs))
+
+    @staticmethod
+    def _infer_candle_minutes(df: pd.DataFrame) -> int:
+        """Infer candle timeframe in minutes from the data."""
+        if "time" not in df.columns or len(df) < 2:
+            return 5
+        diff = (df["time"].iloc[1] - df["time"].iloc[0]).total_seconds() / 60
+        if diff <= 1:
+            return 1
+        if diff <= 5:
+            return 5
+        if diff <= 15:
+            return 15
+        if diff <= 30:
+            return 30
+        if diff <= 60:
+            return 60
+        return 5
 
     def _simulate(
         self, df: pd.DataFrame, executable: ExecutableStrategy
@@ -428,6 +467,7 @@ class StrategyEngineV2:
 
         # Get exit evaluators (sorted by priority)
         exit_evaluators = executable.exit_rules
+        exit_logic = executable.exit_logic
 
         for idx, row in df.iterrows():
             bar_date = row["time"].date()
@@ -465,6 +505,7 @@ class StrategyEngineV2:
                     row=row,
                     trade_state=trade_state,
                     exit_rules=exit_evaluators,
+                    exit_logic=exit_logic,
                 )
 
                 if exit_signal:
@@ -548,7 +589,8 @@ class StrategyEngineV2:
                     "pnl_pct": round(pnl_pct, 2),
                     "exit_reason": "END_OF_TEST",
                     "quantity": quantity,
-                    "holding_period": len(equity_curve) - trade_state.get("entry_bar", 0),
+                    "holding_period": len(equity_curve)
+                    - trade_state.get("entry_bar", 0),
                 }
             )
             equity += pnl
@@ -576,7 +618,11 @@ class StrategyEngineV2:
             if operand_type == "indicator":
                 params = getattr(operand, "params", [])
                 key = "_".join(str(p) for p in params) if params else ""
-                col = f"indicator_{operand.name}_{key}" if key else f"indicator_{operand.name}"
+                col = (
+                    f"indicator_{operand.name}_{key}"
+                    if key
+                    else f"indicator_{operand.name}"
+                )
                 return row.get(col, np.nan)
             if operand_type == "price":
                 return row.get(getattr(operand, "field"), np.nan)
@@ -646,15 +692,28 @@ class StrategyEngineV2:
         row: pd.Series,
         trade_state: Dict,
         exit_rules: List[CompiledExitRule],
+        exit_logic: str = "ANY",
     ) -> Optional[Dict[str, Any]]:
-        """Check exit rules in priority order. Returns exit payload or None."""
+        """Evaluate exit rules using the configured strategy exit logic."""
+        matched_signals: List[Tuple[CompiledExitRule, Dict[str, Any]]] = []
+
         for rule in exit_rules:
             try:
                 exit_signal = rule.evaluator(row, trade_state)
                 if exit_signal:
-                    return exit_signal
+                    matched_signals.append((rule, exit_signal))
+                    if exit_logic != "ALL":
+                        return exit_signal
             except Exception as e:
                 logger.debug(f"Exit rule error ({rule.rule_type}): {e}")
+
+        if (
+            exit_logic == "ALL"
+            and matched_signals
+            and len(matched_signals) == len(exit_rules)
+        ):
+            matched_signals.sort(key=lambda item: item[0].priority)
+            return matched_signals[0][1]
 
         return None
 
@@ -724,6 +783,8 @@ class StrategyEngineV2:
         all_trades = []
         all_pnls = []
         total_candles = 0
+        max_drawdown = 0.0
+        max_drawdown_pct = 0.0
 
         for symbol, result in per_symbol.items():
             trades_data = (
@@ -733,8 +794,7 @@ class StrategyEngineV2:
 
             for trade in trades_data:
                 pnl = trade.pnl if hasattr(trade, "pnl") else trade.get("pnl", 0)
-                if pnl:
-                    all_pnls.append(pnl)
+                all_pnls.append(pnl)
 
             equity_data = (
                 result.equity_curve
@@ -743,6 +803,16 @@ class StrategyEngineV2:
             )
             total_candles += len(equity_data)
 
+            metrics = (
+                result.metrics
+                if hasattr(result, "metrics")
+                else result.get("metrics", {})
+            )
+            max_drawdown = max(float(metrics.get("max_drawdown", 0.0)), max_drawdown)
+            max_drawdown_pct = max(
+                float(metrics.get("max_drawdown_pct", 0.0)), max_drawdown_pct
+            )
+
         if not all_trades:
             return {
                 "total_trades": 0,
@@ -750,7 +820,8 @@ class StrategyEngineV2:
                 "losing_trades": 0,
                 "win_rate": 0.0,
                 "total_pnl": 0.0,
-                "max_drawdown": 0.0,
+                "max_drawdown": max_drawdown,
+                "max_drawdown_pct": max_drawdown_pct,
                 "avg_trade_pnl": 0.0,
                 "symbols_traded": list(per_symbol.keys()),
             }
@@ -764,7 +835,8 @@ class StrategyEngineV2:
             "losing_trades": len(losses),
             "win_rate": round(len(wins) / len(all_trades) * 100, 1),
             "total_pnl": round(sum(all_pnls), 2),
-            "max_drawdown": 0.0,  # Would need full equity curve
+            "max_drawdown": round(max_drawdown, 2),
+            "max_drawdown_pct": round(max_drawdown_pct, 2),
             "avg_trade_pnl": round(sum(all_pnls) / len(all_trades), 2),
             "best_trade": round(max(all_pnls), 2) if all_pnls else 0.0,
             "worst_trade": round(min(all_pnls), 2) if all_pnls else 0.0,
