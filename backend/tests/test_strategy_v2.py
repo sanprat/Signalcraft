@@ -569,8 +569,8 @@ class TestStrategyEngine:
                 entry_conditions=[
                     Condition(
                         left=PriceRef(field="close"),
-                        operator=">",
-                        right=ValueRef(value=0),
+                        operator="<=",
+                        right=ValueRef(value=100),
                     )
                 ],
                 exit_rules=[StopLossRule(percent=50.0, priority=1)],
@@ -662,8 +662,8 @@ class TestStrategyEngine:
                 entry_conditions=[
                     Condition(
                         left=PriceRef(field="close"),
-                        operator=">",
-                        right=ValueRef(value=0),
+                        operator="<=",
+                        right=ValueRef(value=100),
                     )
                 ],
                 exit_rules=[StopLossRule(percent=2.0, priority=1)],
@@ -705,6 +705,83 @@ class TestStrategyEngine:
         resolved = strategy_engine_v2._resolve_data_dir()
 
         assert resolved == Path(data_dir)
+
+    def test_exit_logic_all_requires_all_rules_to_match(self):
+        """Test exit_logic=ALL waits until every exit rule is true on the same bar."""
+        import pandas as pd
+
+        engine = StrategyEngineV2()
+        executable = StrategyBuilderV2().build(
+            StrategyV2(
+                name="Exit Logic ALL Test",
+                symbols=["RELIANCE"],
+                timeframe="1d",
+                exit_logic="ALL",
+                entry_conditions=[
+                    Condition(
+                        left=PriceRef(field="close"),
+                        operator="<=",
+                        right=ValueRef(value=100),
+                    )
+                ],
+                exit_rules=[
+                    TargetRule(percent=5.0, priority=1),
+                    TimeExitRule(time="09:15", priority=2),
+                ],
+                risk=RiskConfig(quantity=1),
+            )
+        )
+
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(
+                    ["2025-01-01T09:15:00+05:30", "2025-01-02T09:15:00+05:30"]
+                ),
+                "open": [100.0, 101.0],
+                "high": [101.0, 106.0],
+                "low": [99.0, 100.0],
+                "close": [100.0, 105.0],
+                "volume": [1000, 1200],
+            }
+        )
+
+        df = engine._compute_indicators(df, executable)
+        trades, _ = engine._simulate(df, executable)
+
+        assert len(trades) == 1
+        assert trades[0]["exit_reason"] == "TARGET"
+        assert trades[0]["exit_price"] == 105.0
+
+    def test_aggregate_results_carries_forward_drawdown(self):
+        """Test combined metrics do not lose per-symbol drawdown."""
+        engine = StrategyEngineV2()
+        strategy = StrategyV2(
+            name="Aggregate Drawdown Test",
+            symbols=["RELIANCE"],
+            timeframe="1d",
+            entry_conditions=[
+                Condition(
+                    left=PriceRef(field="close"),
+                    operator=">",
+                    right=ValueRef(value=0),
+                )
+            ],
+            exit_rules=[StopLossRule(percent=2.0)],
+        )
+
+        result = engine._aggregate_results(
+            {
+                "RELIANCE": app_core.strategy_engine_v2.SymbolResultV2(
+                    symbol="RELIANCE",
+                    trades=[],
+                    equity_curve=[],
+                    metrics={"max_drawdown": 2825.0, "max_drawdown_pct": 0.28},
+                )
+            }
+        )
+
+        assert result["max_drawdown"] == 2825.0
+        assert result["max_drawdown_pct"] == 0.28
 
 
 # ============================================================================

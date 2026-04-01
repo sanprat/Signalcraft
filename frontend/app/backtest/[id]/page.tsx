@@ -18,7 +18,7 @@ const T = {
 }
 
 type Summary = {
-    backtest_id: string; strategy_id: string; total_trades: number
+    backtest_id: string; strategy_id?: string; total_trades: number
     winning_trades: number; losing_trades: number; win_rate: number
     total_pnl: number; max_drawdown: number; avg_trade_pnl: number
     best_trade: number; worst_trade: number; candle_count: number; date_range: string

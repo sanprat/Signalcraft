@@ -259,6 +259,7 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
         summary = {
             "backtest_id": backtest_id,
             "strategy_name": results.get("strategy_name", "Unknown"),
+            "timeframe": request.strategy.timeframe,
             "mode": results.get("mode", "quick"),
             "total_trades": trades_count,
             "winning_trades": winning_trades,
@@ -272,7 +273,7 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
             "candle_count": total_candles,
             "date_range": results.get("date_range", ""),
             "execution_time_ms": results.get("execution_time_ms", 0),
-            "symbols": list(results.get("per_symbol", {}).keys()),
+            "symbols": request.strategy.symbols,
         }
         (backtest_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
@@ -386,6 +387,7 @@ async def run_quick_backtest_v2(
         summary = {
             "backtest_id": backtest_id,
             "strategy_name": results.get("strategy_name", "Unknown"),
+            "timeframe": strategy.timeframe,
             "mode": "quick",
             "total_trades": trades_count,
             "winning_trades": winning_trades,
@@ -399,7 +401,7 @@ async def run_quick_backtest_v2(
             "candle_count": total_candles,
             "date_range": results.get("date_range", ""),
             "execution_time_ms": results.get("execution_time_ms", 0),
-            "symbols": list(results.get("per_symbol", {}).keys()),
+            "symbols": strategy.symbols,
         }
         (backtest_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
