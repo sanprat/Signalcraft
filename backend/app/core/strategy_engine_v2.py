@@ -250,6 +250,7 @@ class StrategyEngineV2:
 
         try:
             df = pd.read_parquet(parquet_path)
+            raw_rows = len(df)
 
             # Handle index column if present
             if "__index_level_0__" in df.columns:
@@ -264,12 +265,21 @@ class StrategyEngineV2:
 
             # Convert time
             df["time"] = pd.to_datetime(df["time"], utc=True)
+            invalid_time_rows = int(df["time"].isna().sum())
+            if invalid_time_rows:
+                logger.warning(
+                    f"[V2] {symbol} {timeframe}: dropping {invalid_time_rows} rows with invalid timestamps "
+                    f"from {parquet_path}"
+                )
+                df = df[df["time"].notna()].copy()
             df["time"] = df["time"].dt.tz_convert("Asia/Kolkata")
 
             # Filter by date range
+            before_date_filter = len(df)
             df = df[
                 (df["time"].dt.date >= from_date) & (df["time"].dt.date <= to_date)
             ].sort_values("time")
+            after_date_filter = len(df)
 
             # Ensure required columns
             required_cols = ["time", "open", "high", "low", "close", "volume"]
@@ -279,6 +289,7 @@ class StrategyEngineV2:
 
             # Filter market hours for intraday
             if timeframe != "1d" and timeframe != "1w":
+                before_market_hours_filter = len(df)
                 df = df[
                     (df["time"].dt.hour > 9)
                     | ((df["time"].dt.hour == 9) & (df["time"].dt.minute >= 15))
@@ -287,8 +298,21 @@ class StrategyEngineV2:
                     (df["time"].dt.hour < 15)
                     | ((df["time"].dt.hour == 15) & (df["time"].dt.minute <= 30))
                 ]
+                after_market_hours_filter = len(df)
+            else:
+                before_market_hours_filter = len(df)
+                after_market_hours_filter = len(df)
 
-            logger.info(f"[V2] Loaded {len(df)} candles for {symbol}")
+            time_min = df["time"].min().isoformat() if not df.empty else "N/A"
+            time_max = df["time"].max().isoformat() if not df.empty else "N/A"
+            logger.info(
+                f"[V2] Loaded candles for {symbol} {timeframe}: "
+                f"path={parquet_path}, raw_rows={raw_rows}, "
+                f"after_time_cleanup={before_date_filter}, "
+                f"after_date_filter={after_date_filter}, "
+                f"after_market_hours={after_market_hours_filter}, "
+                f"range={time_min} -> {time_max}"
+            )
             return df.reset_index(drop=True)
 
         except Exception as e:
