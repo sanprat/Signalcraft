@@ -42,6 +42,26 @@ export function ConditionBlock({
         ? condition.left as { type: string; name: string; params: (number | string)[] }
         : null
 
+    const isCrossoverOperator =
+        condition.operator === 'crosses_above' || condition.operator === 'crosses_below'
+
+    const defaultCrossoverRight = (() => {
+        if (leftIndicator?.type === 'indicator') {
+            const leftPeriod = typeof leftIndicator.params?.[0] === 'number' ? Number(leftIndicator.params[0]) : 20
+            const fallbackPeriod = leftPeriod === 20 ? 50 : Math.max(leftPeriod + 30, 2)
+            return {
+                type: 'indicator' as const,
+                name: leftIndicator.name,
+                params: [fallbackPeriod],
+            }
+        }
+        return {
+            type: 'indicator' as const,
+            name: 'SMA',
+            params: [50],
+        }
+    })()
+
     return (
         <div
             ref={setNodeRef}
@@ -125,7 +145,19 @@ export function ConditionBlock({
                     <label className="block text-xs font-medium text-slate-500 mb-1">Operator</label>
                     <OperatorPicker
                         value={condition.operator}
-                        onChange={(operator) => onUpdate({ operator })}
+                        onChange={(operator) => {
+                            if (
+                                (operator === 'crosses_above' || operator === 'crosses_below') &&
+                                (!condition.right || typeof condition.right !== 'object' || !('type' in condition.right) || condition.right.type !== 'indicator')
+                            ) {
+                                onUpdate({
+                                    operator,
+                                    right: defaultCrossoverRight,
+                                })
+                                return
+                            }
+                            onUpdate({ operator })
+                        }}
                     />
                 </div>
 
@@ -136,7 +168,13 @@ export function ConditionBlock({
                         value={condition.right}
                         onChange={(right) => onUpdate({ right })}
                         side="right"
+                        allowValueMode={!isCrossoverOperator}
                     />
+                    {isCrossoverOperator && (
+                        <div className="mt-1 text-[11px] text-slate-400">
+                            Crossover compares two series. Value mode is disabled here.
+                        </div>
+                    )}
                 </div>
             </div>
 

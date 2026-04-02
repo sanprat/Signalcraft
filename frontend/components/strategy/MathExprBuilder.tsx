@@ -8,6 +8,7 @@ interface MathExprBuilderProps {
     value: MathOperand
     onChange: (value: MathOperand) => void
     side: 'left' | 'right'
+    allowValueMode?: boolean
 }
 
 const PRICE_FIELDS: { value: PriceField; label: string }[] = [
@@ -20,7 +21,12 @@ const PRICE_FIELDS: { value: PriceField; label: string }[] = [
     { value: 'hlc3', label: 'HLC3' },
 ]
 
-export function MathExprBuilder({ value, onChange, side }: MathExprBuilderProps) {
+export function MathExprBuilder({
+    value,
+    onChange,
+    side,
+    allowValueMode = true,
+}: MathExprBuilderProps) {
     const getModeFromValue = (operand: MathOperand): 'value' | 'price' | 'indicator' => {
         if (operand && typeof operand === 'object' && 'type' in operand) {
             if (operand.type === 'price') return 'price'
@@ -102,6 +108,10 @@ export function MathExprBuilder({ value, onChange, side }: MathExprBuilderProps)
     }
 
     const handleModeChange = (nextMode: 'value' | 'price' | 'indicator') => {
+        if (nextMode === 'value' && !allowValueMode) {
+            nextMode = 'indicator'
+        }
+
         setMode(nextMode)
 
         if (nextMode === 'value') {
@@ -124,6 +134,7 @@ export function MathExprBuilder({ value, onChange, side }: MathExprBuilderProps)
                 <button
                     type="button"
                     onClick={() => handleModeChange('value')}
+                    disabled={!allowValueMode}
                     className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
                         mode === 'value'
                             ? 'bg-blue-100 text-blue-700'
