@@ -73,6 +73,49 @@ TIMEFRAME_MAP = {
     "1w": "1W",
 }
 
+IST_OFFSET = pd.Timedelta(hours=5, minutes=30)
+
+
+def _normalize_candle_times(
+    df: pd.DataFrame,
+    parquet_path: Path,
+    symbol: str,
+    timeframe: str,
+) -> pd.DataFrame:
+    """Normalize candle timestamps to Asia/Kolkata and repair known shifted intraday data."""
+    if "time" not in df.columns:
+        return df
+
+    df = df.copy()
+    df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+
+    invalid_time_rows = int(df["time"].isna().sum())
+    if invalid_time_rows:
+        logger.warning(
+            f"[V2] {symbol} {timeframe}: dropping {invalid_time_rows} rows with invalid timestamps "
+            f"from {parquet_path}"
+        )
+        df = df[df["time"].notna()].copy()
+
+    if df.empty:
+        return df
+
+    df["time"] = df["time"].dt.tz_convert("Asia/Kolkata")
+
+    # Historical intraday parquet files are stored with timestamps shifted 5h30m early.
+    # Detect the truncated 03:45 -> 10:00 session pattern and repair it in-memory.
+    if timeframe not in ("1d", "1w"):
+        hour_min = int(df["time"].dt.hour.min())
+        hour_max = int(df["time"].dt.hour.max())
+        if hour_min <= 4 and hour_max <= 10:
+            logger.warning(
+                f"[V2] {symbol} {timeframe}: detected shifted intraday timestamps in {parquet_path}; "
+                "applying +05:30 correction"
+            )
+            df["time"] = df["time"] + IST_OFFSET
+
+    return df
+
 
 class StrategyEngineV2:
     """
@@ -263,16 +306,8 @@ class StrategyEngineV2:
                 logger.error(f"[V2] No 'time' column in {parquet_path}")
                 return pd.DataFrame()
 
-            # Convert time
-            df["time"] = pd.to_datetime(df["time"], utc=True)
-            invalid_time_rows = int(df["time"].isna().sum())
-            if invalid_time_rows:
-                logger.warning(
-                    f"[V2] {symbol} {timeframe}: dropping {invalid_time_rows} rows with invalid timestamps "
-                    f"from {parquet_path}"
-                )
-                df = df[df["time"].notna()].copy()
-            df["time"] = df["time"].dt.tz_convert("Asia/Kolkata")
+            # Convert time and repair known shifted intraday parquet timestamps.
+            df = _normalize_candle_times(df, parquet_path, symbol, timeframe)
 
             # Filter by date range
             before_date_filter = len(df)

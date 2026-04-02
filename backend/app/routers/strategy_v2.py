@@ -31,6 +31,7 @@ from app.core.strategy_engine_v2 import (
     validate_strategy_v2,
     DATA_DIR,
     TIMEFRAME_MAP,
+    _normalize_candle_times,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,11 +73,15 @@ def _save_candles_parquet(
             elif df.index.name and "time" not in df.columns:
                 df = df.reset_index().rename(columns={df.index.name: "time"})
 
+            if "time" in df.columns:
+                df = _normalize_candle_times(df, parquet_path, symbol, timeframe)
+
             # Filter by date range if provided
             if from_date and to_date and "time" in df.columns:
-                df["time"] = pd.to_datetime(df["time"], errors="coerce")
-                df = df[df["time"] >= from_date]
-                df = df[df["time"] <= to_date]
+                start = pd.Timestamp(from_date).tz_localize("Asia/Kolkata")
+                end = pd.Timestamp(to_date).tz_localize("Asia/Kolkata")
+                df = df[df["time"] >= start]
+                df = df[df["time"] <= end]
 
             # Keep only needed columns
             keep = [
