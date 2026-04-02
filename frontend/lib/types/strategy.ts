@@ -315,7 +315,7 @@ export const DATE_PRESETS = [
 
 export const DEFAULT_RISK_CONFIG: RiskConfig = {
     max_trades_per_day: 3,
-    max_loss_per_day: 5000,
+    max_loss_per_day: 0,
     quantity: 1,
     reentry_after_sl: false,
     max_concurrent_trades: 1,

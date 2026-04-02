@@ -828,6 +828,51 @@ class TestStrategyEngine:
         assert trades[0]["entry_time"] == df.iloc[0]["time"].isoformat()
         assert trades[0]["exit_time"] == df.iloc[1]["time"].isoformat()
 
+    def test_zero_max_daily_loss_disables_daily_loss_cap(self):
+        """Test max_loss_per_day=0 behaves as unlimited rather than immediate lockout."""
+        import pandas as pd
+
+        engine = StrategyEngineV2()
+        executable = StrategyBuilderV2().build(
+            StrategyV2(
+                name="No Daily Loss Cap",
+                symbols=["RELIANCE"],
+                timeframe="1d",
+                entry_conditions=[
+                    Condition(
+                        left=PriceRef(field="close"),
+                        operator=">",
+                        right=ValueRef(value=0),
+                    )
+                ],
+                exit_rules=[StopLossRule(percent=1.0, priority=1)],
+                risk=RiskConfig(quantity=1, max_trades_per_day=10, max_loss_per_day=0),
+            )
+        )
+
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(
+                    [
+                        "2025-01-01T09:15:00+05:30",
+                        "2025-01-02T09:15:00+05:30",
+                        "2025-01-03T09:15:00+05:30",
+                        "2025-01-04T09:15:00+05:30",
+                    ]
+                ),
+                "open": [100.0, 100.0, 100.0, 100.0],
+                "high": [101.0, 101.0, 101.0, 101.0],
+                "low": [99.0, 98.0, 99.0, 98.0],
+                "close": [100.0, 99.0, 100.0, 99.0],
+                "volume": [1000, 1000, 1000, 1000],
+            }
+        )
+
+        df = engine._compute_indicators(df, executable)
+        trades, _ = engine._simulate(df, executable)
+
+        assert len(trades) >= 2
+
 
 # ============================================================================
 # TEST UTILITIES

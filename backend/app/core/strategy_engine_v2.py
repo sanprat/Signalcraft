@@ -608,7 +608,7 @@ class StrategyEngineV2:
                 # Check daily limits
                 if daily_trades.get(bar_date, 0) >= max_trades_per_day:
                     continue
-                if abs(daily_loss.get(bar_date, 0)) >= max_loss_per_day:
+                if max_loss_per_day and abs(daily_loss.get(bar_date, 0)) >= max_loss_per_day:
                     continue
 
                 # Check entry signal

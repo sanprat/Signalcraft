@@ -319,7 +319,7 @@ class RiskConfig(BaseModel):
 
     max_trades_per_day: int = Field(default=3, ge=1, description="Max trades per day")
     max_loss_per_day: float = Field(
-        default=5000.0, ge=0, description="Max daily loss (Rs)"
+        default=0.0, ge=0, description="Max daily loss (Rs), 0 disables the daily loss cap"
     )
     quantity: int = Field(default=1, gt=0, description="Quantity per trade")
     reentry_after_sl: bool = Field(

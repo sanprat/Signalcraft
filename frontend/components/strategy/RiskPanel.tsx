@@ -55,6 +55,7 @@ export function RiskPanel({ risk, assetType, onUpdate }: RiskPanelProps) {
                         }}
                         className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
                     />
+                    <div className="mt-1 text-[11px] text-slate-400">Set `0` for no daily loss cap.</div>
                 </div>
 
                 {/* Quantity */}
@@ -142,8 +143,10 @@ export function RiskPanel({ risk, assetType, onUpdate }: RiskPanelProps) {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                     <div className="text-xs text-amber-700">
-                        <strong>Risk Summary:</strong> Max {risk.max_trades_per_day} trades/day with up to ₹
-                        {risk.max_loss_per_day.toLocaleString()} daily loss limit.
+                        <strong>Risk Summary:</strong> Max {risk.max_trades_per_day} trades/day
+                        {risk.max_loss_per_day > 0
+                            ? ` with up to ₹${risk.max_loss_per_day.toLocaleString()} daily loss limit.`
+                            : ' with no daily loss cap.'}
                         {risk.reentry_after_sl && ' Re-entry after SL is enabled.'}
                     </div>
                 </div>
