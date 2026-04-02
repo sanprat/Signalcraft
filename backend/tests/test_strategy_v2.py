@@ -783,6 +783,51 @@ class TestStrategyEngine:
         assert result["max_drawdown"] == 2825.0
         assert result["max_drawdown_pct"] == 0.28
 
+    def test_no_same_bar_reentry_after_exit(self):
+        """Test engine does not exit and re-enter on the same candle."""
+        import pandas as pd
+
+        engine = StrategyEngineV2()
+        executable = StrategyBuilderV2().build(
+            StrategyV2(
+                name="No Same Bar Reentry",
+                symbols=["RELIANCE"],
+                timeframe="1d",
+                entry_conditions=[
+                    Condition(
+                        left=PriceRef(field="close"),
+                        operator=">",
+                        right=ValueRef(value=0),
+                    )
+                ],
+                exit_rules=[TargetRule(percent=5.0, priority=1)],
+                risk=RiskConfig(quantity=1, max_trades_per_day=10),
+            )
+        )
+
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(
+                    [
+                        "2025-01-01T09:15:00+05:30",
+                        "2025-01-02T09:15:00+05:30",
+                    ]
+                ),
+                "open": [100.0, 104.0],
+                "high": [101.0, 106.0],
+                "low": [99.0, 103.0],
+                "close": [100.0, 105.0],
+                "volume": [1000, 1000],
+            }
+        )
+
+        df = engine._compute_indicators(df, executable)
+        trades, _ = engine._simulate(df, executable)
+
+        assert len(trades) == 1
+        assert trades[0]["entry_time"] == df.iloc[0]["time"].isoformat()
+        assert trades[0]["exit_time"] == df.iloc[1]["time"].isoformat()
+
 
 # ============================================================================
 # TEST UTILITIES

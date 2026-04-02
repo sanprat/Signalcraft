@@ -531,6 +531,7 @@ class StrategyEngineV2:
         for idx, row in df.iterrows():
             bar_date = row["time"].date()
             bar_time = row["time"].strftime("%H:%M")
+            exited_this_bar = False
 
             # Reset daily counters
             if bar_date not in daily_trades:
@@ -596,13 +597,14 @@ class StrategyEngineV2:
                     daily_loss[bar_date] = daily_loss.get(bar_date, 0) + min(pnl, 0)
                     in_trade = False
                     trade_state["in_trade"] = False
+                    exited_this_bar = True
 
                     # Check re-entry after SL
                     if exit_reason == "SL" and not reentry_after_sl:
                         continue
 
             # Check entry if not in trade
-            if not in_trade:
+            if not in_trade and not exited_this_bar:
                 # Check daily limits
                 if daily_trades.get(bar_date, 0) >= max_trades_per_day:
                     continue
