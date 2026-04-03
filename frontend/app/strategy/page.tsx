@@ -70,7 +70,7 @@ function StrategiesContent() {
         }
         try {
             await deleteStrategy(strategyId)
-            setStrategies(prev => prev.filter(s => s.id !== strategyId))
+            setStrategies(prev => prev.filter(s => s.strategy_id !== strategyId))
         } catch (err: any) {
             alert(`Error deleting strategy: ${err.message || 'Unknown error'}`)
         }
@@ -124,16 +124,16 @@ function StrategiesContent() {
                                         const dateLabel = (s.updated_at || s.created_at)
                                             ? new Date(s.updated_at || s.created_at).toLocaleDateString()
                                             : 'N/A'
-                                        const isProcessing = processingId === s.id
+                                        const isProcessing = processingId === s.strategy_id
 
                                         return (
-                                            <tr key={s.id} style={{ borderBottom: `1px solid ${T.border}`, transition: 'background 0.2s' }}
+                                            <tr key={s.strategy_id} style={{ borderBottom: `1px solid ${T.border}`, transition: 'background 0.2s' }}
                                                 onMouseEnter={e => (e.currentTarget.style.background = T.surfaceHover)}
                                                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                                             >
                                                 <td style={{ padding: '16px 20px' }}>
                                                     <div style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>{s.name}</div>
-                                                    <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4, fontFamily: "'DM Mono', monospace" }}>ID: {s.id}</div>
+                                                    <div style={{ fontSize: 11, color: T.textMuted, marginTop: 4, fontFamily: "'DM Mono', monospace" }}>ID: {s.strategy_id}</div>
                                                 </td>
                                                 <td style={{ padding: '16px 20px' }}>
                                                     <div style={{ fontSize: 11, fontWeight: 700, color: T.blue, background: T.blueLight, padding: '2px 6px', borderRadius: 4, display: 'inline-block', marginBottom: 4 }}>{s.asset_type}</div>
@@ -151,7 +151,7 @@ function StrategiesContent() {
                                                 <td style={{ padding: '16px 20px' }}>
                                                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                                         <button
-                                                            onClick={() => handleRunBacktest(s.id)}
+                                                            onClick={() => handleRunBacktest(s.strategy_id)}
                                                             disabled={processingId !== null}
                                                             style={{
                                                                 padding: '6px 12px', border: `1px solid ${T.greenMid}`, borderRadius: 6,
@@ -165,7 +165,7 @@ function StrategiesContent() {
                                                             {isProcessing ? '⏳ Running...' : '↩ Backtest'}
                                                         </button>
                                                         <button
-                                                            onClick={() => router.push(`/strategy/new?edit=${s.id}`)}
+                                                            onClick={() => router.push(`/strategy/new?edit=${s.strategy_id}`)}
                                                             style={{
                                                                 padding: '6px 12px', border: `1px solid ${T.border}`, borderRadius: 6,
                                                                 background: '#fff', fontSize: 12, fontWeight: 600,
@@ -176,7 +176,7 @@ function StrategiesContent() {
                                                             Edit
                                                         </button>
                                                         <button
-                                                            onClick={() => handleDelete(s.id, s.name)}
+                                                            onClick={() => handleDelete(s.strategy_id, s.name)}
                                                             style={{
                                                                 padding: '6px', border: 'none', background: 'transparent',
                                                                 fontSize: 14, cursor: 'pointer',

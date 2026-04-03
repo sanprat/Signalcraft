@@ -587,7 +587,7 @@ async def list_strategies_v2(
 
                 strategies.append(
                     {
-                        "id": data.get("strategy_id", f.stem),
+                        "strategy_id": data.get("strategy_id", f.stem),
                         "name": data.get("name", "Unnamed"),
                         "asset_type": data.get("asset_type", "EQUITY"),
                         "symbols": data.get("symbols", []),

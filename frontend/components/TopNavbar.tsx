@@ -18,6 +18,7 @@ const T = {
 const navItems = [
     { id: 'dashboard', href: '/dashboard', label: 'Dashboard', icon: '⊞' },
     { id: 'builder', href: '/strategy/new', label: 'Strategy Builder', icon: '⚡' },
+    { id: 'strategies', href: '/strategy', label: 'My Strategies', icon: '⊡' },
     { id: 'backtest', href: '/backtest', label: 'Backtests', icon: '↩' },
     { id: 'settings', href: '/settings', label: 'Settings', icon: '⚙' },
 ]

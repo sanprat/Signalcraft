@@ -132,6 +132,7 @@ export function AppShell({ children, title, showBack = false, defaultBack = '/da
     const navItems = [
         { href: '/dashboard', label: 'Home', icon: '🏠' },
         { href: '/strategy/new', label: 'Build', icon: '⚡' },
+        { href: '/strategy', label: 'Strategies', icon: '📁' },
         { href: '/backtest', label: 'Backtest', icon: '📊' },
         { href: '/settings', label: 'Settings', icon: '⚙' },
     ]

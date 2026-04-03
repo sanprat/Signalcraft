@@ -52,7 +52,7 @@ export interface BacktestResult {
 }
 
 export interface StrategyListItem {
-    id: string
+    strategy_id: string
     name: string
     symbols: string[]
     timeframe: string

@@ -79,6 +79,7 @@ export function MobileNav({ userName }: MobileNavProps) {
     const navItems = [
         { href: '/dashboard', label: 'Home', icon: '🏠' },
         { href: '/strategy/new', label: 'Build', icon: '⚡' },
+        { href: '/strategy', label: 'Strategies', icon: '📁' },
         { href: '/backtest', label: 'Backtest', icon: '📊' },
         { href: '/settings', label: 'Settings', icon: '⚙' },
     ]
