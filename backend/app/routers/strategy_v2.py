@@ -582,12 +582,18 @@ async def list_strategies_v2(
                 if data.get("user_id") and data.get("user_id") != current_user.id:
                     continue
 
+                entry_conditions = data.get("entry_conditions") or data.get("entry_logic_details", [])
+                exit_rules = data.get("exit_rules") or data.get("exit_logic_details", [])
+
                 strategies.append(
                     {
-                        "strategy_id": data.get("strategy_id", f.stem),
+                        "id": data.get("strategy_id", f.stem),
                         "name": data.get("name", "Unnamed"),
+                        "asset_type": data.get("asset_type", "EQUITY"),
                         "symbols": data.get("symbols", []),
                         "timeframe": data.get("timeframe", "1d"),
+                        "entry_conditions_count": len(entry_conditions) if isinstance(entry_conditions, list) else 0,
+                        "exit_rules_count": len(exit_rules) if isinstance(exit_rules, list) else 0,
                         "created_at": data.get("created_at"),
                         "updated_at": data.get("updated_at"),
                     }
