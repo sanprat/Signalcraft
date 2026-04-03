@@ -131,19 +131,25 @@ class StrategyEngineV2:
     def __init__(self):
         self.builder = StrategyBuilderV2()
 
-    def run(self, strategy: StrategyV2, mode: str = "quick") -> Dict[str, Any]:
+    def run(
+        self,
+        strategy: StrategyV2,
+        mode: str = "quick",
+        deterministic_id: str | None = None,
+    ) -> Dict[str, Any]:
         """
         Run backtest on ALL symbols in strategy.
 
         Args:
             strategy: StrategyV2 Pydantic model
             mode: "quick" (last 6 months) or "full" (all data)
+            deterministic_id: Optional stable ID. If None, a UUID is generated.
 
         Returns:
             Dictionary with per_symbol results and combined metrics
         """
         start_time = time.time()
-        backtest_id = str(uuid.uuid4())[:8]
+        backtest_id = deterministic_id or str(uuid.uuid4())[:8]
 
         # Determine date range
         from_date, to_date = self._get_date_range(strategy, mode)
