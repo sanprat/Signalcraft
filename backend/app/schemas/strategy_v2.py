@@ -317,7 +317,9 @@ ExitRule = Union[
 class RiskConfig(BaseModel):
     """Risk management configuration."""
 
-    max_trades_per_day: int = Field(default=3, ge=1, description="Max trades per day")
+    max_trades_per_day: int = Field(
+        default=0, ge=0, description="Max trades per day, 0 disables the daily trade cap"
+    )
     max_loss_per_day: float = Field(
         default=0.0, ge=0, description="Max daily loss (Rs), 0 disables the daily loss cap"
     )

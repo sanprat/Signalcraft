@@ -18,13 +18,16 @@ import {
     createDefaultStrategy,
     createDefaultCondition,
     createDefaultExitRule,
-    DEFAULT_RISK_CONFIG,
 } from '@/lib/types/strategy'
 import {
     validateStrategy,
     saveStrategy,
     backtestStrategy,
 } from '@/lib/api/strategy'
+
+function getBacktestMode(strategy: StrategyV2): 'quick' | 'full' {
+    return strategy.backtest_from || strategy.backtest_to ? 'full' : 'quick'
+}
 
 export interface UseStrategyReturn {
     // State
@@ -262,7 +265,7 @@ export function useStrategy(): UseStrategyReturn {
     const backtest = useCallback(async (): Promise<any | null> => {
         setIsBacktesting(true)
         try {
-            const result = await backtestStrategy(strategy, 'quick')
+            const result = await backtestStrategy(strategy, getBacktestMode(strategy))
             return result
         } catch (error) {
             console.error('Backtest error:', error)

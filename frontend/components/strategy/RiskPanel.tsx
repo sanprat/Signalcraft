@@ -9,6 +9,9 @@ interface RiskPanelProps {
 }
 
 export function RiskPanel({ risk, assetType, onUpdate }: RiskPanelProps) {
+    const hasTradeLimit = risk.max_trades_per_day > 0
+    const hasDailyLossCap = risk.max_loss_per_day > 0
+
     return (
         <div className="space-y-4">
             {/* Header */}
@@ -26,14 +29,48 @@ export function RiskPanel({ risk, assetType, onUpdate }: RiskPanelProps) {
                     <label className="block text-xs font-medium text-slate-500 mb-1">
                         Max Trades Per Day
                     </label>
-                    <input
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={risk.max_trades_per_day}
-                        onChange={(e) => onUpdate({ max_trades_per_day: parseInt(e.target.value) || 1 })}
-                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                    <div className="space-y-2">
+                        <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                            <button
+                                type="button"
+                                onClick={() => onUpdate({ max_trades_per_day: 0 })}
+                                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    !hasTradeLimit
+                                        ? "bg-white text-slate-900 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700"
+                                }`}
+                            >
+                                No Limit
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onUpdate({ max_trades_per_day: hasTradeLimit ? risk.max_trades_per_day : 1 })}
+                                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    hasTradeLimit
+                                        ? "bg-white text-slate-900 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700"
+                                }`}
+                            >
+                                Set Limit
+                            </button>
+                        </div>
+                        {hasTradeLimit ? (
+                            <input
+                                type="number"
+                                min="1"
+                                max="50"
+                                value={risk.max_trades_per_day}
+                                onChange={(e) =>
+                                    onUpdate({ max_trades_per_day: Math.min(Math.max(parseInt(e.target.value) || 1, 1), 50) })
+                                }
+                                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                        ) : (
+                            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                                No daily trade cap
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Max Daily Loss */}
@@ -41,21 +78,51 @@ export function RiskPanel({ risk, assetType, onUpdate }: RiskPanelProps) {
                     <label className="block text-xs font-medium text-slate-500 mb-1">
                         Max Daily Loss (₹)
                     </label>
-                    <input
-                        type="number"
-                        min="0"
-                        max="1000000"
-                        step="100"
-                        value={risk.max_loss_per_day}
-                        onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0
-                            // Clamp value to bounds
-                            const clampedVal = Math.min(Math.max(val, 0), 1000000)
-                            onUpdate({ max_loss_per_day: clampedVal })
-                        }}
-                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                    />
-                    <div className="mt-1 text-[11px] text-slate-400">Set `0` for no daily loss cap.</div>
+                    <div className="space-y-2">
+                        <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                            <button
+                                type="button"
+                                onClick={() => onUpdate({ max_loss_per_day: 0 })}
+                                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    !hasDailyLossCap
+                                        ? "bg-white text-slate-900 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700"
+                                }`}
+                            >
+                                No Cap
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onUpdate({ max_loss_per_day: hasDailyLossCap ? risk.max_loss_per_day : 1000 })}
+                                className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    hasDailyLossCap
+                                        ? "bg-white text-slate-900 shadow-sm"
+                                        : "text-slate-500 hover:text-slate-700"
+                                }`}
+                            >
+                                Set Cap
+                            </button>
+                        </div>
+                        {hasDailyLossCap ? (
+                            <input
+                                type="number"
+                                min="0"
+                                max="1000000"
+                                step="100"
+                                value={risk.max_loss_per_day}
+                                onChange={(e) => {
+                                    const val = parseFloat(e.target.value) || 0
+                                    const clampedVal = Math.min(Math.max(val, 0), 1000000)
+                                    onUpdate({ max_loss_per_day: clampedVal })
+                                }}
+                                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                            />
+                        ) : (
+                            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                                No daily loss cap
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Quantity */}
@@ -143,8 +210,11 @@ export function RiskPanel({ risk, assetType, onUpdate }: RiskPanelProps) {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                     <div className="text-xs text-amber-700">
-                        <strong>Risk Summary:</strong> Max {risk.max_trades_per_day} trades/day
-                        {risk.max_loss_per_day > 0
+                        <strong>Risk Summary:</strong>{" "}
+                        {hasTradeLimit
+                            ? `Max ${risk.max_trades_per_day} trades/day`
+                            : "No daily trade cap"}
+                        {hasDailyLossCap
                             ? ` with up to ₹${risk.max_loss_per_day.toLocaleString()} daily loss limit.`
                             : ' with no daily loss cap.'}
                         {risk.reentry_after_sl && ' Re-entry after SL is enabled.'}

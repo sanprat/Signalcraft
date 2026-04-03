@@ -34,6 +34,10 @@ type LiveStatus = {
     broker: string
 }
 
+function getBacktestMode(strategy: { backtest_from?: string; backtest_to?: string }): 'quick' | 'full' {
+    return strategy.backtest_from || strategy.backtest_to ? 'full' : 'quick'
+}
+
 function Card({ children, style = {} }: { children: React.ReactNode; style?: React.CSSProperties }) {
     return (
         <div style={{
@@ -97,7 +101,7 @@ function StrategiesContent() {
             // 1. Fetch the complete strategy object
             const { strategy } = await loadStrategy(strategyId)
             // 2. Trigger the backtest API
-            const result = await backtestStrategy(strategy, 'quick')
+            const result = await backtestStrategy(strategy, getBacktestMode(strategy))
             // 3. Redirect to the results page
             router.push(`/backtest/${result.backtest_id}`)
         } catch (err: any) {

@@ -516,8 +516,8 @@ class StrategyEngineV2:
         }
 
         risk = executable.risk_config
-        max_trades_per_day = risk.get("max_trades_per_day", 3)
-        max_loss_per_day = risk.get("max_loss_per_day", 5000)
+        max_trades_per_day = risk.get("max_trades_per_day", 0)
+        max_loss_per_day = risk.get("max_loss_per_day", 0)
         quantity = risk.get("quantity", 1)
         reentry_after_sl = risk.get("reentry_after_sl", False)
 
@@ -606,7 +606,7 @@ class StrategyEngineV2:
             # Check entry if not in trade
             if not in_trade and not exited_this_bar:
                 # Check daily limits
-                if daily_trades.get(bar_date, 0) >= max_trades_per_day:
+                if max_trades_per_day and daily_trades.get(bar_date, 0) >= max_trades_per_day:
                     continue
                 if max_loss_per_day and abs(daily_loss.get(bar_date, 0)) >= max_loss_per_day:
                     continue

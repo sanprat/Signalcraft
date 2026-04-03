@@ -141,8 +141,20 @@ function generateZenScript(strategy: StrategyV2): string {
     // Risk configuration
     lines.push('')
     lines.push(`${indent}RISK {`)
-    lines.push(`${indent}${indent}MAX_TRADES_DAY: ${strategy.risk.max_trades_per_day}`)
-    lines.push(`${indent}${indent}MAX_DAILY_LOSS: ₹${strategy.risk.max_loss_per_day.toLocaleString()}`)
+    lines.push(
+        `${indent}${indent}MAX_TRADES_DAY: ${
+            strategy.risk.max_trades_per_day > 0
+                ? strategy.risk.max_trades_per_day
+                : 'NO_LIMIT'
+        }`
+    )
+    lines.push(
+        `${indent}${indent}MAX_DAILY_LOSS: ${
+            strategy.risk.max_loss_per_day > 0
+                ? `₹${strategy.risk.max_loss_per_day.toLocaleString()}`
+                : 'NO_CAP'
+        }`
+    )
     lines.push(`${indent}${indent}QUANTITY: ${strategy.risk.quantity}`)
     if (strategy.risk.max_concurrent_trades > 1) {
         lines.push(`${indent}${indent}MAX_POSITIONS: ${strategy.risk.max_concurrent_trades}`)

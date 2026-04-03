@@ -873,6 +873,51 @@ class TestStrategyEngine:
 
         assert len(trades) >= 2
 
+    def test_zero_max_trades_per_day_disables_daily_trade_cap(self):
+        """Test max_trades_per_day=0 behaves as unlimited rather than blocking all entries."""
+        import pandas as pd
+
+        engine = StrategyEngineV2()
+        executable = StrategyBuilderV2().build(
+            StrategyV2(
+                name="No Daily Trade Cap",
+                symbols=["RELIANCE"],
+                timeframe="1d",
+                entry_conditions=[
+                    Condition(
+                        left=PriceRef(field="close"),
+                        operator=">",
+                        right=ValueRef(value=0),
+                    )
+                ],
+                exit_rules=[TargetRule(percent=0.5, priority=1)],
+                risk=RiskConfig(quantity=1, max_trades_per_day=0, max_loss_per_day=0),
+            )
+        )
+
+        df = pd.DataFrame(
+            {
+                "time": pd.to_datetime(
+                    [
+                        "2025-01-01T09:15:00+05:30",
+                        "2025-01-01T09:20:00+05:30",
+                        "2025-01-01T09:25:00+05:30",
+                        "2025-01-01T09:30:00+05:30",
+                    ]
+                ),
+                "open": [100.0, 100.6, 100.0, 100.6],
+                "high": [100.6, 101.2, 100.6, 101.2],
+                "low": [99.8, 100.4, 99.8, 100.4],
+                "close": [100.0, 100.6, 100.0, 100.6],
+                "volume": [1000, 1000, 1000, 1000],
+            }
+        )
+
+        df = engine._compute_indicators(df, executable)
+        trades, _ = engine._simulate(df, executable)
+
+        assert len(trades) >= 2
+
 
 # ============================================================================
 # TEST UTILITIES
