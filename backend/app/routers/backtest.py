@@ -2,12 +2,15 @@
 
 import uuid
 import json
+import logging
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
 from app.models import BacktestRequest, BacktestSummary
 from app.core.backtest_engine import run_backtest
 from app.routers.auth import get_current_user, UserResponse
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 STRATEGY_STORE = Path("strategies")
@@ -149,3 +152,61 @@ def list_backtests(current_user: UserResponse = Depends(get_current_user)):
                 except Exception:
                     continue
     return results
+
+
+# -- Safe cross-module imports from strategy_v2 -------------------------------
+try:
+    from app.routers.strategy_v2 import (
+        _build_chart_payload,
+        _ensure_chart_json,
+    )
+except ImportError:
+    _build_chart_payload = None  # type: ignore
+    _ensure_chart_json = None  # type: ignore
+
+
+@router.get("/{backtest_id}/chart")
+def get_chart(backtest_id: str, full: int = Query(0, ge=0, le=1)):
+    """Return prebuilt chart.json for a backtest.
+
+    Query params:
+        full: 1 for full-range chart, 0 for smart-range (default).
+    """
+    bt_dir = BACKTEST_STORE / backtest_id
+    if not bt_dir.exists():
+        raise HTTPException(404, detail="Backtest not found")
+
+    if not (bt_dir / "candles.parquet").exists():
+        raise HTTPException(404, detail="Candle data not found")
+
+    chart_path = bt_dir / "chart.json"
+
+    if full == 1:
+        chart_path = bt_dir / "chart.full.json"
+        if not chart_path.exists():
+            if _build_chart_payload is None:
+                logger.warning("_build_chart_payload unavailable; cannot build full chart")
+                raise HTTPException(404, detail="Chart data not found")
+            _build_chart_payload(bt_dir, full=True)
+
+    if not chart_path.exists():
+        if _ensure_chart_json is not None:
+            _ensure_chart_json(bt_dir)
+        if not chart_path.exists():
+            raise HTTPException(404, detail="Chart data not found")
+
+    # Staleness check -- rebuild if trades or candles newer than chart
+    chart_mtime = chart_path.stat().st_mtime
+    trades_path = bt_dir / "trades.json"
+    trades_mtime = trades_path.stat().st_mtime if trades_path.exists() else 0
+    candles_mtime = (bt_dir / "candles.parquet").stat().st_mtime
+    if max(trades_mtime, candles_mtime) > chart_mtime:
+        if _build_chart_payload is not None:
+            _build_chart_payload(bt_dir, full=(chart_path.name == "chart.full.json"))
+        elif _ensure_chart_json is not None:
+            _ensure_chart_json(bt_dir)
+
+    if not chart_path.exists():
+        raise HTTPException(404, detail="Chart data not found")
+
+    return json.loads(chart_path.read_text())

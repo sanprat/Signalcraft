@@ -83,19 +83,71 @@ function getChartSymbol(summary: Summary | null, strategy: StrategyMeta | null, 
     return symbols.length ? symbols.join(', ') : 'Backtest'
 }
 
+type ColumnarCandles = {
+    time: string[]
+    open: number[]
+    high: number[]
+    low: number[]
+    close: number[]
+    volume?: number[]
+}
+
+type ChartPayload = {
+    candles: ColumnarCandles
+    annotations: ChartAnnotation[]
+    symbol: string
+    timeframe: string
+    display_from: string
+    display_to: string
+    full_from: string
+    full_to: string
+    is_partial: boolean
+    has_more_left: boolean
+    has_more_right: boolean
+}
+
+function normalizeColumnarCandles(columnar: ColumnarCandles): Array<{
+    time: string
+    open: number
+    high: number
+    low: number
+    close: number
+    volume: number
+}> {
+    return columnar.time.map((t, i) => ({
+        time: t,
+        open: columnar.open[i],
+        high: columnar.high[i],
+        low: columnar.low[i],
+        close: columnar.close[i],
+        volume: columnar.volume?.[i] || 0,
+    }))
+}
+
+function isValidChartPayload(data: unknown): data is ChartPayload {
+    if (!data || typeof data !== 'object') return false
+    const obj = data as Record<string, unknown>
+    return (
+        Array.isArray((obj as any).candles?.time) &&
+        Array.isArray((obj as any).candles?.open) &&
+        Array.isArray((obj as any).annotations) &&
+        typeof (obj as any).is_partial === 'boolean'
+    )
+}
+
 function BacktestChart({
     backtestId,
     chartTitle,
     chartSymbol,
     interval,
-    trades,
 }: {
     backtestId: string
     chartTitle: string
     chartSymbol: string
     interval: string
-    trades: Trade[]
 }) {
+    const CACHE_KEY = `chart_${backtestId}`
+
     const [candles, setCandles] = useState<Array<{
         time: string
         open: number
@@ -104,111 +156,114 @@ function BacktestChart({
         close: number
         volume: number
     }>>([])
+    const [annotations, setAnnotations] = useState<ChartAnnotation[]>([])
     const [chartError, setChartError] = useState<string | null>(null)
+    const [loadingFull, setLoadingFull] = useState(false)
+    const [showFullButton, setShowFullButton] = useState(false)
 
-    useEffect(() => {
-        let cancelled = false
-
-        const loadCandles = async () => {
+    const loadChart = async (full = false) => {
+        // Check sessionStorage cache first (only for smart-range, not full)
+        if (!full) {
             try {
-                let page = 0
-                const allCandles: Array<{
-                    time: string
-                    open: number
-                    high: number
-                    low: number
-                    close: number
-                    volume: number
-                }> = []
-
-                while (true) {
-                    const response = await fetch(`${API}/api/backtest/${backtestId}/candles?page=${page}&page_size=500`)
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            throw new Error('Chart data is not available for this backtest.')
+                const cached = sessionStorage.getItem(CACHE_KEY)
+                if (cached) {
+                    const parsed = JSON.parse(cached)
+                    if (isValidChartPayload(parsed)) {
+                        setCandles(normalizeColumnarCandles(parsed.candles))
+                        setAnnotations(parsed.annotations)
+                        if (parsed.is_partial && (parsed.has_more_left || parsed.has_more_right)) {
+                            setShowFullButton(true)
                         }
-                        throw new Error('Failed to load chart data.')
+                        setChartError(null)
+                        return
                     }
-
-                    const json = await response.json()
-                    const candleBatch = json?.candles
-
-                    if (!candleBatch || !Array.isArray(candleBatch.time)) {
-                        break
-                    }
-
-                    const batch = candleBatch.time.map((time: string, index: number) => ({
-                        time,
-                        open: candleBatch.open[index],
-                        high: candleBatch.high[index],
-                        low: candleBatch.low[index],
-                        close: candleBatch.close[index],
-                        volume: candleBatch.volume?.[index] || 0,
-                    }))
-
-                    allCandles.push(...batch)
-
-                    if (allCandles.length >= (json.total || 0) || batch.length === 0) {
-                        break
-                    }
-
-                    page += 1
                 }
-
-                if (!cancelled) {
-                    setCandles(allCandles)
-                    setChartError(allCandles.length === 0 ? 'Chart data is empty for this backtest.' : null)
-                }
-            } catch (error: any) {
-                if (!cancelled) {
-                    setCandles([])
-                    setChartError(error?.message || 'Failed to load chart data.')
-                }
+            } catch {
+                // Malformed cache, fall through to fetch
             }
         }
 
+        try {
+            const endpoint = full
+                ? `${API}/api/backtest/${backtestId}/chart?full=1`
+                : `${API}/api/backtest/${backtestId}/chart`
+
+            const response = await fetch(endpoint)
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error('Chart data is not available for this backtest.')
+                }
+                throw new Error('Failed to load chart data.')
+            }
+
+            const chartData: ChartPayload = await response.json()
+            if (!isValidChartPayload(chartData)) {
+                throw new Error('Chart data is malformed.')
+            }
+
+            // Cache in sessionStorage (only for smart-range)
+            if (!full) {
+                try {
+                    sessionStorage.setItem(CACHE_KEY, JSON.stringify(chartData))
+                } catch { /* quota exceeded — harmless */ }
+            }
+
+            const normalized = normalizeColumnarCandles(chartData.candles)
+            setCandles(normalized)
+            setAnnotations(chartData.annotations)
+            setChartError(normalized.length === 0 ? 'Chart data is empty for this backtest.' : null)
+
+            if (chartData.is_partial && (chartData.has_more_left || chartData.has_more_right)) {
+                setShowFullButton(true)
+            } else {
+                setShowFullButton(false)
+            }
+        } catch (error: any) {
+            setCandles([])
+            setAnnotations([])
+            setChartError(error?.message || 'Failed to load chart data.')
+        } finally {
+            if (full) {
+                setLoadingFull(false)
+            }
+        }
+    }
+
+    useEffect(() => {
         if (backtestId) {
-            loadCandles()
+            loadChart()
         }
-
-        return () => {
-            cancelled = true
-        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [backtestId])
-
-    const annotations = useMemo<ChartAnnotation[]>(() => {
-        return trades.flatMap((trade) => {
-            const entryTime = new Date(trade.entry_time).getTime()
-            const exitTime = new Date(trade.exit_time).getTime()
-
-            return [
-                {
-                    time: entryTime,
-                    value: trade.entry_price,
-                    text: `BUY ${trade.trade_no}`,
-                    color: T.green,
-                    backgroundColor: T.greenLight,
-                    side: 'below',
-                },
-                {
-                    time: exitTime,
-                    value: trade.exit_price,
-                    text: `SELL ${trade.trade_no}`,
-                    color: T.red,
-                    backgroundColor: T.redLight,
-                    side: 'above',
-                },
-            ]
-        })
-    }, [trades])
 
     return (
         <Card>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: T.navy }}>{chartTitle}</span>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <span style={{ fontSize: 11, color: T.green }}>▲ Entry</span>
                     <span style={{ fontSize: 11, color: T.red }}>▼ Exit</span>
+                    {showFullButton && !loadingFull && (
+                        <button
+                            onClick={() => { setLoadingFull(true); loadChart(true) }}
+                            style={{
+                                marginLeft: 8,
+                                padding: '2px 10px',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                border: `1px solid ${T.border}`,
+                                borderRadius: 6,
+                                background: T.surface,
+                                color: T.textMid,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Load Full Range
+                        </button>
+                    )}
+                    {loadingFull && (
+                        <span style={{ marginLeft: 8, fontSize: 11, color: T.textMuted }}>Loading full range...</span>
+                    )}
                 </div>
             </div>
             <div style={{ height: 400, borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#fff', border: `1px solid ${T.border}` }}>
@@ -300,7 +355,7 @@ export default function BacktestResultsPage() {
             </div>
 
             <div style={{ marginBottom: 20, position: 'relative' }}>
-                <BacktestChart backtestId={id} chartTitle={chartTitle} chartSymbol={chartSymbol} interval={chartInterval} trades={trades} />
+                <BacktestChart backtestId={id} chartTitle={chartTitle} chartSymbol={chartSymbol} interval={chartInterval} />
             </div>
 
             <Card>

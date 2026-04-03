@@ -9,6 +9,7 @@ This router provides endpoints for:
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -145,9 +146,276 @@ def _save_candles_parquet(
         logger.warning(f"[V2] No candle data to save for backtest in {backtest_dir}")
 
 
+def _is_intraday(timeframe: str) -> bool:
+    """A timeframe is intraday if it's NOT 1D/1W (case-insensitive)."""
+    return timeframe.upper() not in ("1D", "1W")
+
+
+def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
+    """
+    Build a chart.json artifact for instant chart rendering.
+
+    Reads trades.json and candles.parquet from backtest_dir, computes a
+    smart display range around trades (or 90-day fallback), builds
+    annotations from trades, and writes chart.json atomically.
+
+    Returns the path to chart.json, or None if candles.parquet is missing.
+    """
+    import duckdb
+
+    candles_path = backtest_dir / "candles.parquet"
+    trades_path = backtest_dir / "trades.json"
+
+    if not candles_path.exists():
+        return None
+
+    # Load trades
+    trades: list = []
+    if trades_path.exists():
+        trades = json.loads(trades_path.read_text())
+
+    # Load summary for symbol, timeframe
+    summary_path = backtest_dir / "summary.json"
+    summary: dict = {}
+    if summary_path.exists():
+        summary = json.loads(summary_path.read_text())
+
+    symbols = summary.get("symbols", [])
+    symbol = symbols[0] if symbols else ""
+    # summary.json stores "timeframe"; fallback from directory contents
+    timeframe = summary.get("timeframe", "1d")
+    backtest_id = backtest_dir.name
+
+    # Determine time range
+    if trades:
+        sorted_trades = sorted(
+            trades, key=lambda t: t.get("entry_time", "") or ""
+        )
+        first_entry = sorted_trades[0].get("entry_time")
+        last_exit = sorted_trades[-1].get("exit_time")
+
+        first_ts = pd.Timestamp(first_entry, utc=True)
+        last_ts = pd.Timestamp(last_exit, utc=True)
+
+        intraday = _is_intraday(timeframe)
+        if intraday:
+            # ±5 trading days (~1 week calendar)
+            buffer = pd.Timedelta(days=9)
+        else:
+            # ±20 candles (daily/weekly)
+            buffer = pd.Timedelta(days=20)
+
+        display_from = first_ts - buffer
+        display_to = last_ts + buffer
+    else:
+        # No trades: fallback to last 90 days from latest candle
+        latest_ts = duckdb.query(f"""
+            SELECT MAX(time) FROM read_parquet('{candles_path}')
+        """).fetchone()[0]
+        latest_ts = pd.Timestamp(latest_ts, utc=True)
+        display_from = latest_ts - pd.Timedelta(days=90)
+        display_to = latest_ts
+
+    # Check if we need to cap at 5000 candles
+    candle_count_in_range = duckdb.query(f"""
+        SELECT COUNT(*) FROM read_parquet('{candles_path}')
+        WHERE time >= '{display_from.isoformat()}'::timestamp
+          AND time <= '{display_to.isoformat()}'::timestamp
+    """).fetchone()[0]
+
+    # Get full range stats always
+    full_row = duckdb.query(f"""
+        SELECT MIN(time) as min_t, MAX(time) as max_t
+        FROM read_parquet('{candles_path}')
+    """).fetchone()
+    full_from = pd.Timestamp(full_row[0], utc=True)
+    full_to = pd.Timestamp(full_row[1], utc=True)
+
+    df = None
+    is_partial = False
+
+    if candle_count_in_range <= 5000 or full:
+        # Fetch everything in range
+        df = duckdb.query(f"""
+            SELECT time, open, high, low, close, volume
+            FROM read_parquet('{candles_path}')
+            WHERE time BETWEEN '{display_from.isoformat()}'::timestamp
+                        AND '{display_to.isoformat()}'::timestamp
+            ORDER BY time
+        """).df()
+        is_partial = candle_count_in_range > 5000
+    else:
+        # Smart-capped: ensure full trade window, split remaining budget
+        if trades:
+            first_entry = pd.Timestamp(
+                sorted_trades[0]["entry_time"], utc=True
+            )
+            last_exit = pd.Timestamp(
+                sorted_trades[-1]["exit_time"], utc=True
+            )
+
+            window_count = duckdb.query(f"""
+                SELECT COUNT(*) FROM read_parquet('{candles_path}')
+                WHERE time >= '{first_entry.isoformat()}'::timestamp
+                  AND time <= '{last_exit.isoformat()}'::timestamp
+            """).fetchone()[0]
+
+            remaining = max(0, 5000 - window_count)
+            half = remaining // 2
+
+            left_df = duckdb.query(f"""
+                SELECT time, open, high, low, close, volume
+                FROM read_parquet('{candles_path}')
+                WHERE time < '{first_entry.isoformat()}'::timestamp
+                ORDER BY time DESC
+                LIMIT {half}
+            """).df()
+
+            right_remaining = remaining - len(left_df)
+            center_df = duckdb.query(f"""
+                SELECT time, open, high, low, close, volume
+                FROM read_parquet('{candles_path}')
+                WHERE time >= '{first_entry.isoformat()}'::timestamp
+                  AND time <= '{last_exit.isoformat()}'::timestamp
+                ORDER BY time
+            """).df()
+
+            right_df = duckdb.query(f"""
+                SELECT time, open, high, low, close, volume
+                FROM read_parquet('{candles_path}')
+                WHERE time > '{last_exit.isoformat()}'::timestamp
+                ORDER BY time ASC
+                LIMIT {max(0, right_remaining)}
+            """).df()
+
+            df = pd.concat([left_df[::-1], center_df, right_df], ignore_index=True)
+        else:
+            # No trades: cap to 5000 evenly via LIMIT
+            df = duckdb.query(f"""
+                SELECT time, open, high, low, close, volume
+                FROM read_parquet('{candles_path}')
+                ORDER BY time
+                LIMIT 5000
+            """).df()
+
+    if df is None or df.empty:
+        return None
+
+    # Convert times to Asia/Kolkata ISO strings
+    tz_mumbai = "Asia/Kolkata"
+    parsed_times = pd.to_datetime(df["time"], utc=True).dt.tz_convert(tz_mumbai)
+    df["time_iso"] = parsed_times.apply(lambda v: v.isoformat())
+
+    # Convert display_from and display_to to Kolkata time
+    def _to_kolkata(ts):
+        return pd.Timestamp(ts, tz="UTC").tz_convert(tz_mumbai)
+
+    display_from_str = df["time_iso"].iloc[0]
+    display_to_str = df["time_iso"].iloc[-1]
+    full_from_str = _to_kolkata(full_from).isoformat()
+    full_to_str = _to_kolkata(full_to).isoformat()
+
+    # Build annotations
+    annotations: list = []
+    for trade in trades:
+        entry_time_iso = trade.get("entry_time", "")
+        annotations.append({
+            "time": int(pd.Timestamp(entry_time_iso).timestamp() * 1000),
+            "value": trade.get("entry_price", 0),
+            "text": f"BUY {trade.get('trade_no', '')}",
+            "color": "#059669",
+            "backgroundColor": "#ECFDF5",
+            "side": "below",
+        })
+        exit_time_iso = trade.get("exit_time", "")
+        annotations.append({
+            "time": int(pd.Timestamp(exit_time_iso).timestamp() * 1000),
+            "value": trade.get("exit_price", 0),
+            "text": f"SELL {trade.get('trade_no', '')}",
+            "color": "#DC2626",
+            "backgroundColor": "#FEF2F2",
+            "side": "above",
+        })
+
+    # Check if more data exists on either side
+    has_more_left = False
+    has_more_right = False
+    df_times = pd.to_datetime(df["time"], utc=True)
+    if len(df_times) > 0:
+        min_display = df_times.min()
+        max_display = df_times.max()
+        if min_display > full_from:
+            has_more_left = True
+        if max_display < full_to:
+            has_more_right = True
+
+    payload = {
+        "backtest_id": backtest_id,
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "trade_count": len(trades),
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "display_from": display_from_str,
+        "display_to": display_to_str,
+        "full_from": full_from_str,
+        "full_to": full_to_str,
+        "is_partial": is_partial,
+        "has_more_left": has_more_left,
+        "has_more_right": has_more_right,
+        "candles": {
+            "time": df["time_iso"].tolist(),
+            "open": df["open"].tolist(),
+            "high": df["high"].tolist(),
+            "low": df["low"].tolist(),
+            "close": df["close"].tolist(),
+            "volume": df["volume"].tolist(),
+        },
+        "annotations": annotations,
+    }
+
+    # Atomic write
+    tmp_path = candles_path.with_name("chart.json.tmp")
+    target = candles_path.with_name("chart.json")
+    with open(tmp_path, "w") as f:
+        json.dump(payload, f)
+    os.replace(str(tmp_path), str(target))
+
+    return target
+
+
+def _ensure_chart_json(backtest_dir: Path) -> Path:
+    """
+    Staleness-aware builder. Builds chart.json if missing, or if
+    trades.json or candles.parquet have been modified since last build.
+    """
+    chart_path = backtest_dir / "chart.json"
+    trades_path = backtest_dir / "trades.json"
+    candles_path = backtest_dir / "candles.parquet"
+
+    if candles_path.exists():
+        candles_mtime = candles_path.stat().st_mtime
+
+        trades_mtime = trades_path.stat().st_mtime if trades_path.exists() else 0
+
+        rebuild = False
+        if chart_path.exists():
+            chart_mtime = chart_path.stat().st_mtime
+            if candles_mtime > chart_mtime or trades_mtime > chart_mtime:
+                rebuild = True
+        else:
+            rebuild = True
+
+        if rebuild:
+            return _build_chart_payload(backtest_dir)
+        return chart_path
+
+    return chart_path if chart_path.exists() else None
+
+
 # ============================================================================
 # REQUEST/RESPONSE MODELS
 # ============================================================================
+
 
 
 class SaveStrategyRequest(BaseModel):
@@ -319,6 +587,9 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
                         to_date=request.strategy.backtest_to or "",
                     )
 
+                # Ensure chart.json exists and is fresh
+                _ensure_chart_json(backtest_dir)
+
                 logger.info(
                     f"[V2] Backtest cache HIT: {deterministic_id}, "
                     f"{summary.get('total_trades', 0)} trades",
@@ -420,6 +691,9 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
             )
             has_candles = (backtest_dir / "candles.parquet").exists()
 
+        # Build chart.json artifact
+        _build_chart_payload(backtest_dir)
+
         # ── Store in Redis ───────────────────────────────────────────────
         if _cache_available and cache_key:
             payload = assemble_cache_payload(
@@ -514,6 +788,9 @@ async def run_quick_backtest_v2(
                         from_date=strategy.backtest_from or "",
                         to_date=strategy.backtest_to or "",
                     )
+                # Ensure chart.json exists and is fresh
+                _ensure_chart_json(backtest_dir)
+
                 logger.info(
                     f"[V2] Quick backtest cache HIT: {deterministic_id}",
                 )
@@ -593,6 +870,9 @@ async def run_quick_backtest_v2(
                 to_date=strategy.backtest_to or "",
             )
             has_candles = (backtest_dir / "candles.parquet").exists()
+
+        # Build chart.json artifact
+        _build_chart_payload(backtest_dir)
 
         if _cache_available and cache_key:
             payload = assemble_cache_payload(
