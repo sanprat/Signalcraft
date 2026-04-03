@@ -97,6 +97,23 @@ function StrategyBuilderContent() {
         setTimeout(() => setNotification(null), 4000)
     }
 
+    const checkDuplicateStrategyName = async (): Promise<boolean> => {
+        if (editMode && strategyId) return false
+        try {
+            const { listStrategies } = await import('@/lib/api/strategy')
+            const existing = await listStrategies()
+            const duplicate = existing.find(s => s.name.toLowerCase() === strategy.name.toLowerCase())
+            if (duplicate) {
+                showNotification('error', `A strategy with the name '${strategy.name}' already exists.`)
+                setActiveSection('config')
+                return true
+            }
+        } catch (err) {
+            console.warn('Could not check for duplicate strategy names:', err)
+        }
+        return false
+    }
+
     const handleValidate = async () => {
         setShowValidation(true)
         try {
@@ -134,22 +151,8 @@ function StrategyBuilderContent() {
             return
         }
 
-        // Frontend duplicate name check against existing strategies
-        if (!editMode || !strategyId) {
-            try {
-                const { listStrategies } = await import('@/lib/api/strategy')
-                const existing = await listStrategies()
-                const duplicate = existing.find(s => s.name.toLowerCase() === strategy.name.toLowerCase())
-                if (duplicate) {
-                    showNotification('error', `A strategy with the name '${strategy.name}' already exists.`)
-                    setActiveSection('config')
-                    return
-                }
-            } catch (err) {
-                // If we can't fetch existing, let backend handle the error
-                console.warn('Could not check for duplicate strategy names:', err)
-            }
-        }
+        const isDuplicate = await checkDuplicateStrategyName()
+        if (isDuplicate) return
 
         try {
             const id = await save()
@@ -165,21 +168,8 @@ function StrategyBuilderContent() {
             return
         }
 
-        // Frontend duplicate name check if creating a new strategy
-        if (!editMode || !strategyId) {
-            try {
-                const { listStrategies } = await import('@/lib/api/strategy')
-                const existing = await listStrategies()
-                const duplicate = existing.find(s => s.name.toLowerCase() === strategy.name.toLowerCase())
-                if (duplicate) {
-                    showNotification('error', `A strategy with the name '${strategy.name}' already exists.`)
-                    setActiveSection('config')
-                    return
-                }
-            } catch (err) {
-                console.warn('Could not check for duplicate strategy names:', err)
-            }
-        }
+        const isDuplicate = await checkDuplicateStrategyName()
+        if (isDuplicate) return
 
         try {
             // First validate

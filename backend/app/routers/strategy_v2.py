@@ -496,14 +496,38 @@ async def save_strategy_v2(
                 raise HTTPException(400, "Cannot update v1 strategy with v2 endpoint")
             payload["created_at"] = existing.get("created_at")
             payload["updated_at"] = datetime.utcnow().isoformat()
+
+            # Check for rename collision with another user strategy
+            if existing.get("name", "").lower() != request.strategy.name.lower():
+                for f in STORE.glob("*.json"):
+                    try:
+                        data = json.loads(f.read_text())
+                        if (
+                            data.get("user_id") == current_user.id
+                            and data.get("version") == "2.0"
+                            and data.get("name", "").lower()
+                            == request.strategy.name.lower()
+                        ):
+                            raise HTTPException(
+                                400,
+                                f"A strategy with the name '{request.strategy.name}' already exists.",
+                            )
+                    except HTTPException:
+                        raise
+                    except Exception:
+                        logger.warning(f"Failed to read strategy file {f}: skipping")
+                        continue
         else:
             # New strategy – check for duplicate name among current user's strategies
             for f in STORE.glob("*.json"):
                 try:
                     data = json.loads(f.read_text())
-                    if data.get("user_id") == current_user.id and \
-                       data.get("version") == "2.0" and \
-                       data.get("name", "").lower() == request.strategy.name.lower():
+                    if (
+                        data.get("user_id") == current_user.id
+                        and data.get("version") == "2.0"
+                        and data.get("name", "").lower()
+                        == request.strategy.name.lower()
+                    ):
                         raise HTTPException(
                             400,
                             f"A strategy with the name '{request.strategy.name}' already exists.",
@@ -511,6 +535,7 @@ async def save_strategy_v2(
                 except HTTPException:
                     raise
                 except Exception:
+                    logger.warning(f"Failed to read strategy file {f}: skipping")
                     continue
 
         # Save to file
@@ -598,8 +623,12 @@ async def list_strategies_v2(
                 if data.get("user_id") and data.get("user_id") != current_user.id:
                     continue
 
-                entry_conditions = data.get("entry_conditions") or data.get("entry_logic_details", [])
-                exit_rules = data.get("exit_rules") or data.get("exit_logic_details", [])
+                entry_conditions = data.get("entry_conditions") or data.get(
+                    "entry_logic_details", []
+                )
+                exit_rules = data.get("exit_rules") or data.get(
+                    "exit_logic_details", []
+                )
 
                 strategies.append(
                     {
@@ -608,8 +637,12 @@ async def list_strategies_v2(
                         "asset_type": data.get("asset_type", "EQUITY"),
                         "symbols": data.get("symbols", []),
                         "timeframe": data.get("timeframe", "1d"),
-                        "entry_conditions_count": len(entry_conditions) if isinstance(entry_conditions, list) else 0,
-                        "exit_rules_count": len(exit_rules) if isinstance(exit_rules, list) else 0,
+                        "entry_conditions_count": len(entry_conditions)
+                        if isinstance(entry_conditions, list)
+                        else 0,
+                        "exit_rules_count": len(exit_rules)
+                        if isinstance(exit_rules, list)
+                        else 0,
                         "created_at": data.get("created_at"),
                         "updated_at": data.get("updated_at"),
                     }
