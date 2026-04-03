@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { config, getAuthHeaders } from '@/lib/config'
-import KLineChart, { ChartAnnotation } from '@/components/KLineChart'
+import KLineChart, { ChartAnnotation, normalizeChartInterval } from '@/components/KLineChart'
 
 const API = config.apiBaseUrl
 
@@ -62,13 +62,12 @@ function fmtPercent(value: number) {
 
 function formatTimeframe(timeframe?: string) {
     if (!timeframe) return 'Unknown TF'
-    const map: Record<string, string> = {
-        '1min': '1m',
-        '5min': '5m',
-        '15min': '15m',
-        '1D': '1D',
-    }
-    return map[timeframe] || timeframe
+    // Let the shared normalizer handle canonical short form
+    return normalizeChartInterval(timeframe)
+}
+
+function isIntraday(interval: string): boolean {
+    return !/^1[dw]$/i.test(interval)
 }
 
 function getChartSymbol(summary: Summary | null, strategy: StrategyMeta | null, trades: Trade[]) {
@@ -216,7 +215,7 @@ function BacktestChart({
                 {candles.length > 0 ? (
                     <KLineChart
                         data={candles}
-                        isIntraday={interval !== '1D'}
+                        isIntraday={isIntraday(interval)}
                         interval={interval}
                         symbol={chartSymbol}
                         annotations={annotations}
@@ -270,8 +269,9 @@ export default function BacktestResultsPage() {
     }, [id])
 
     const chartSymbol = useMemo(() => getChartSymbol(summary, strategy, trades), [summary, strategy, trades])
-    const chartInterval = summary?.timeframe || strategy?.timeframe || '5min'
-    const chartTitle = `${chartSymbol} · ${formatTimeframe(summary?.timeframe || strategy?.timeframe)}`
+    const rawInterval = summary?.timeframe || strategy?.timeframe || '5min'
+    const chartInterval = normalizeChartInterval(rawInterval)
+    const chartTitle = `${chartSymbol} · ${formatTimeframe(rawInterval)}`
 
     if (!summary) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: T.textMuted, fontSize: 13 }}>⏳ Loading backtest results...</div>
 

@@ -176,21 +176,60 @@ function formatHoverTime(timestampMs: number, isIntraday: boolean): string {
   return new Intl.DateTimeFormat('en-IN', options as Intl.DateTimeFormatOptions).format(date);
 }
 
+/**
+ * Normalize a strategy timeframe string to a canonical short form used
+ * both for chart period selection and for display labels.
+ *
+ * Canonical outputs: '1m', '5m', '15m', '30m', '1h', '1D', '1W'
+ */
+export function normalizeChartInterval(interval?: string): string {
+  if (!interval) return '1D'
+
+  const lower = interval.toLowerCase()
+
+  // Minutes
+  if (lower === '1m' || lower === '1min') return '1m'
+  if (lower === '5m' || lower === '5min') return '5m'
+  if (lower === '15m' || lower === '15min') return '15m'
+  if (lower === '30m' || lower === '30min') return '30m'
+  // Hourly
+  if (lower === '1h') return '1h'
+  // Daily
+  if (lower === '1d') return '1D'
+  // Weekly
+  if (lower === '1w') return '1W'
+
+  console.warn(`[KLineChart] Unknown interval "${interval}", falling back to 1D`)
+  return '1D'
+}
+
+/**
+ * Map a canonical or raw timeframe string to a klinecharts period descriptor.
+ * Logs a warning for unsupported values instead of silently falling back.
+ */
 function getPeriod(interval?: string) {
-  switch (interval) {
-    case '1s':
-      return { type: 'second' as const, span: 1 };
-    case '5s':
-      return { type: 'second' as const, span: 5 };
-    case '1min':
-      return { type: 'minute' as const, span: 1 };
-    case '5min':
-      return { type: 'minute' as const, span: 5 };
-    case '15min':
-      return { type: 'minute' as const, span: 15 };
+  const canon = normalizeChartInterval(interval)
+
+  switch (canon) {
+    case '1m':
+      return { type: 'minute' as const, span: 1 }
+    case '5m':
+      return { type: 'minute' as const, span: 5 }
+    case '15m':
+      return { type: 'minute' as const, span: 15 }
+    case '30m':
+      return { type: 'minute' as const, span: 30 }
+    case '1h':
+      // klinecharts does not have a native 'hour' type; use minute span 60
+      return { type: 'minute' as const, span: 60 }
     case '1D':
+      return { type: 'day' as const, span: 1 }
+    case '1W':
+      // klinecharts does not have a native 'week' type; use day span 7
+      return { type: 'day' as const, span: 7 }
     default:
-      return { type: 'day' as const, span: 1 };
+      console.warn(`[KLineChart] getPeriod: unsupported interval "${interval}", using 1D`)
+      return { type: 'day' as const, span: 1 }
   }
 }
 

@@ -496,6 +496,22 @@ async def save_strategy_v2(
                 raise HTTPException(400, "Cannot update v1 strategy with v2 endpoint")
             payload["created_at"] = existing.get("created_at")
             payload["updated_at"] = datetime.utcnow().isoformat()
+        else:
+            # New strategy – check for duplicate name among current user's strategies
+            for f in STORE.glob("*.json"):
+                try:
+                    data = json.loads(f.read_text())
+                    if data.get("user_id") == current_user.id and \
+                       data.get("version") == "2.0" and \
+                       data.get("name", "").lower() == request.strategy.name.lower():
+                        raise HTTPException(
+                            400,
+                            f"A strategy with the name '{request.strategy.name}' already exists.",
+                        )
+                except HTTPException:
+                    raise
+                except Exception:
+                    continue
 
         # Save to file
         existing_path.parent.mkdir(parents=True, exist_ok=True)

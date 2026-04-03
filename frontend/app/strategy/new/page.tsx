@@ -134,6 +134,23 @@ function StrategyBuilderContent() {
             return
         }
 
+        // Frontend duplicate name check against existing strategies
+        if (!editMode || !strategyId) {
+            try {
+                const { listStrategies } = await import('@/lib/api/strategy')
+                const existing = await listStrategies()
+                const duplicate = existing.find(s => s.name.toLowerCase() === strategy.name.toLowerCase())
+                if (duplicate) {
+                    showNotification('error', `A strategy with the name '${strategy.name}' already exists.`)
+                    setActiveSection('config')
+                    return
+                }
+            } catch (err) {
+                // If we can't fetch existing, let backend handle the error
+                console.warn('Could not check for duplicate strategy names:', err)
+            }
+        }
+
         try {
             const id = await save()
             showNotification('success', `Strategy saved! ID: ${id}`)
@@ -146,6 +163,22 @@ function StrategyBuilderContent() {
         if (!strategy.name.trim()) {
             showNotification('error', 'Please enter a strategy name')
             return
+        }
+
+        // Frontend duplicate name check if creating a new strategy
+        if (!editMode || !strategyId) {
+            try {
+                const { listStrategies } = await import('@/lib/api/strategy')
+                const existing = await listStrategies()
+                const duplicate = existing.find(s => s.name.toLowerCase() === strategy.name.toLowerCase())
+                if (duplicate) {
+                    showNotification('error', `A strategy with the name '${strategy.name}' already exists.`)
+                    setActiveSection('config')
+                    return
+                }
+            } catch (err) {
+                console.warn('Could not check for duplicate strategy names:', err)
+            }
         }
 
         try {
