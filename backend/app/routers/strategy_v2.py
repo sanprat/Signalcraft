@@ -49,6 +49,7 @@ try:
         register_cache_key_for_strategy,
         BACKTEST_CACHE_TTL_SECONDS,
     )
+
     _cache_available = True
 except ImportError:
     _cache_available = False
@@ -63,6 +64,23 @@ STORE.mkdir(exist_ok=True)
 # Backtest results directory
 BACKTESTS = Path("backtests")
 BACKTESTS.mkdir(exist_ok=True)
+
+
+def _aggregate_equity_curve(per_symbol: dict) -> list[dict]:
+    """Combine per-symbol equity curves into a single cumulative list."""
+    all_equity_points = []
+    current_equity = 0.0
+    for symbol, symbol_result in per_symbol.items():
+        for point in symbol_result.get("equity_curve", []):
+            all_equity_points.append(
+                {
+                    "time": point.get("time", ""),
+                    "equity": point.get("equity", 0) + current_equity,
+                    "symbol": symbol,
+                }
+            )
+            current_equity = point.get("equity", 0)
+    return all_equity_points
 
 
 def _save_candles_parquet(
@@ -237,22 +255,30 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
     try:
         # Build deterministic cache key and backtest_id
         strategy_dict = request.strategy.model_dump()
-        strategy_id = request.strategy.strategy_id if hasattr(
-            request.strategy, "strategy_id"
-        ) else None
-        cache_key = build_cache_key(
-            strategy_dict=strategy_dict,
-            strategy_id=strategy_id,
-            mode=request.mode,
-            symbols=request.strategy.symbols,
-            timeframe=request.strategy.timeframe,
-            backtest_from=request.strategy.backtest_from or "",
-            backtest_to=request.strategy.backtest_to or "",
-        ) if _cache_available else None
+        strategy_id = (
+            request.strategy.strategy_id
+            if hasattr(request.strategy, "strategy_id")
+            else None
+        )
+        cache_key = (
+            build_cache_key(
+                strategy_dict=strategy_dict,
+                strategy_id=strategy_id,
+                mode=request.mode,
+                symbols=request.strategy.symbols,
+                timeframe=request.strategy.timeframe,
+                backtest_from=request.strategy.backtest_from or "",
+                backtest_to=request.strategy.backtest_to or "",
+            )
+            if _cache_available
+            else None
+        )
 
-        deterministic_id = build_deterministic_backtest_id(
-            cache_key
-        ) if cache_key else str(uuid.uuid4())[:10]
+        deterministic_id = (
+            build_deterministic_backtest_id(cache_key)
+            if cache_key
+            else str(uuid.uuid4())[:10]
+        )
         backtest_dir = BACKTESTS / deterministic_id
 
         # ── Cache hit ────────────────────────────────────────────────────
@@ -273,6 +299,24 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
                         backtest_id=deterministic_id,
                         backtests_dir=BACKTESTS,
                         cached_payload=cached,
+                    )
+
+                # Restore candles.parquet if it was in the original payload but
+                # is now missing on disk (rebuild_artifacts_from_cache skips it)
+                if (
+                    cached.get("had_candles_parquet")
+                    and not (backtest_dir / "candles.parquet").exists()
+                ):
+                    logger.info(
+                        "[V2] Cache hit: restoring candles.parquet for %s",
+                        deterministic_id,
+                    )
+                    _save_candles_parquet(
+                        backtest_dir=backtest_dir,
+                        symbols=request.strategy.symbols,
+                        timeframe=request.strategy.timeframe,
+                        from_date=request.strategy.backtest_from or "",
+                        to_date=request.strategy.backtest_to or "",
                     )
 
                 logger.info(
@@ -333,18 +377,7 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
         )
 
         # Collect equity curve points
-        all_equity_points = []
-        current_equity = 0.0
-        for symbol, symbol_result in results.get("per_symbol", {}).items():
-            for point in symbol_result.get("equity_curve", []):
-                all_equity_points.append(
-                    {
-                        "time": point.get("time", ""),
-                        "equity": point.get("equity", 0) + current_equity,
-                        "symbol": symbol,
-                    }
-                )
-                current_equity = point.get("equity", 0)
+        all_equity_points = _aggregate_equity_curve(results.get("per_symbol", {}))
 
         # ── Save to disk ─────────────────────────────────────────────────
         summary = {
@@ -436,20 +469,26 @@ async def run_quick_backtest_v2(
 
         # Build cache key
         strategy_dict = strategy.model_dump()
-        sid = strategy.strategy_id if hasattr(strategy, "strategy_id") else None
-        cache_key = build_cache_key(
-            strategy_dict=strategy_dict,
-            strategy_id=sid,
-            mode=mode,
-            symbols=strategy.symbols,
-            timeframe=strategy.timeframe,
-            backtest_from=strategy.backtest_from or "",
-            backtest_to=strategy.backtest_to or "",
-        ) if _cache_available else None
+        strategy_id = strategy.strategy_id if hasattr(strategy, "strategy_id") else None
+        cache_key = (
+            build_cache_key(
+                strategy_dict=strategy_dict,
+                strategy_id=strategy_id,
+                mode=mode,
+                symbols=strategy.symbols,
+                timeframe=strategy.timeframe,
+                backtest_from=strategy.backtest_from or "",
+                backtest_to=strategy.backtest_to or "",
+            )
+            if _cache_available
+            else None
+        )
 
-        deterministic_id = build_deterministic_backtest_id(
-            cache_key
-        ) if cache_key else str(uuid.uuid4())[:10]
+        deterministic_id = (
+            build_deterministic_backtest_id(cache_key)
+            if cache_key
+            else str(uuid.uuid4())[:10]
+        )
         backtest_dir = BACKTESTS / deterministic_id
 
         # Cache hit
@@ -463,6 +502,17 @@ async def run_quick_backtest_v2(
                         backtest_id=deterministic_id,
                         backtests_dir=BACKTESTS,
                         cached_payload=cached,
+                    )
+                if (
+                    cached.get("had_candles_parquet")
+                    and not (backtest_dir / "candles.parquet").exists()
+                ):
+                    _save_candles_parquet(
+                        backtest_dir=backtest_dir,
+                        symbols=strategy.symbols,
+                        timeframe=strategy.timeframe,
+                        from_date=strategy.backtest_from or "",
+                        to_date=strategy.backtest_to or "",
                     )
                 logger.info(
                     f"[V2] Quick backtest cache HIT: {deterministic_id}",
@@ -503,18 +553,7 @@ async def run_quick_backtest_v2(
             for symbol_result in results.get("per_symbol", {}).values()
         )
 
-        all_equity_points = []
-        current_equity = 0.0
-        for symbol, symbol_result in results.get("per_symbol", {}).items():
-            for point in symbol_result.get("equity_curve", []):
-                all_equity_points.append(
-                    {
-                        "time": point.get("time", ""),
-                        "equity": point.get("equity", 0) + current_equity,
-                        "symbol": symbol,
-                    }
-                )
-                current_equity = point.get("equity", 0)
+        all_equity_points = _aggregate_equity_curve(results.get("per_symbol", {}))
 
         summary = {
             "backtest_id": deterministic_id,

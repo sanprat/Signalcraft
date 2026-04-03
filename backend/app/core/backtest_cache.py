@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -27,21 +28,38 @@ logger = logging.getLogger(__name__)
 BACKTEST_ENGINE_VERSION = "v2.1"
 BACKTEST_CACHE_TTL_SECONDS = 24 * 3600  # 24 hours
 
-# ── Redis client ─────────────────────────────────────────────────────────────
+# ── Redis client (lazy init with timeouts) ───────────────────────────────────
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/2")  # dedicated DB 2
 
-try:
-    _redis_client: Optional[redis.Redis] = redis.Redis.from_url(
-        REDIS_URL, decode_responses=True
-    )
-    _redis_client.ping()
-    logger.info("Redis connected for backtest caching")
-except Exception:
-    _redis_client = None
-    logger.warning("Redis unavailable for backtest caching; cache will be a no-op")
+_redis_client: Optional[redis.Redis] = None
+_redis_init_attempted = False
+
+
+def _get_redis_client() -> Optional[redis.Redis]:
+    """Lazily initialize Redis with explicit timeouts to avoid import blocking."""
+    global _redis_client, _redis_init_attempted
+    if _redis_init_attempted:
+        return _redis_client
+    _redis_init_attempted = True
+    try:
+        client = redis.Redis.from_url(
+            REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=3,
+            retry_on_timeout=True,
+        )
+        client.ping()
+        _redis_client = client
+        logger.info("Redis connected for backtest caching")
+    except Exception:
+        _redis_client = None
+        logger.warning("Redis unavailable for backtest caching; cache will be a no-op")
+    return _redis_client
 
 
 # ── Cache key builder ────────────────────────────────────────────────────────
+
 
 def _parquet_mtimes(symbols: list[str], timeframe: str) -> list[str]:
     """
@@ -68,6 +86,30 @@ def _normalize_strategy_payload(strategy_dict: dict) -> bytes:
     return json.dumps(stripped, sort_keys=True, default=str).encode()
 
 
+def _resolve_effective_dates(backtest_from: str, backtest_to: str, mode: str) -> Tuple[str, str]:
+    """
+    Mirror the engine's date resolution so the cache key matches the actual
+    data range used. The engine always defaults to date.today() and uses
+    mode-based offsets when explicit dates are absent.
+    """
+    to_date = date.today()
+    from_date = None
+
+    try:
+        to_date = date.fromisoformat(backtest_to) if backtest_to else date.today()
+    except ValueError:
+        to_date = date.today()
+
+    try:
+        from_date = date.fromisoformat(backtest_from) if backtest_from else None
+    except ValueError:
+        from_date = None
+
+    if from_date is None:
+        from_date = to_date - timedelta(days=180 if mode == "quick" else 365 * 3)
+
+    return from_date.isoformat(), to_date.isoformat()
+
 def build_cache_key(
     strategy_dict: dict,
     strategy_id: Optional[str],
@@ -91,14 +133,23 @@ def build_cache_key(
     mtimes = _parquet_mtimes(symbols, timeframe)
     mtimes_tag = ",".join(mtimes) if mtimes else "no_data"
 
-    id_tag = strategy_id or hashlib.sha256(
-        json.dumps(strategy_dict, sort_keys=True).encode()
-    ).hexdigest()[:8]
+    id_tag = (
+        strategy_id
+        or hashlib.sha256(
+            json.dumps(strategy_dict, sort_keys=True).encode()
+        ).hexdigest()[:8]
+    )
+
+    # Resolve the effective date range exactly as the engine does.
+    # Critical: without it, two runs with empty dates key identically
+    # despite the engine sliding their windows forward by one day each time.
+    effective_from, effective_to = _resolve_effective_dates(
+        backtest_from or "", backtest_to or "", mode
+    )
 
     raw_key = (
         f"backtest:v2:{BACKTEST_ENGINE_VERSION}:{id_tag}:"
-        f"{payload_hash}:{mode}:{backtest_from or ''}:"
-        f"{backtest_to or ''}:{timeframe}:{mtimes_tag}"
+        f"{payload_hash}:{mode}:{effective_from}:{effective_to}:{timeframe}:{mtimes_tag}"
     )
     # Hash the full key so Redis doesn't blow up on long keys
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()[:24]
@@ -112,12 +163,14 @@ def build_deterministic_backtest_id(cache_key: str) -> str:
 
 # ── Redis accessors ──────────────────────────────────────────────────────────
 
+
 def get_cached_backtest(cache_key: str) -> Optional[Dict[str, Any]]:
     """Return cached backtest payload or None."""
-    if not _redis_client:
+    client = _get_redis_client()
+    if not client:
         return None
     try:
-        raw = _redis_client.get(cache_key)
+        raw = client.get(cache_key)
         if raw is None:
             return None
         data = json.loads(raw)
@@ -132,10 +185,11 @@ def set_cached_backtest(
     cache_key: str, payload: Dict[str, Any], ttl: int = BACKTEST_CACHE_TTL_SECONDS
 ) -> bool:
     """Store backtest payload in Redis. Returns False on failure."""
-    if not _redis_client:
+    client = _get_redis_client()
+    if not client:
         return False
     try:
-        _redis_client.setex(cache_key, ttl, json.dumps(payload, default=str))
+        client.setex(cache_key, ttl, json.dumps(payload, default=str))
         logger.info(
             "[Cache] SET  key=%s ttl=%ss size=%d",
             cache_key[:32],
@@ -148,23 +202,22 @@ def set_cached_backtest(
         return False
 
 
-
-
 def purge_backtest_cache(strategy_id: str) -> int:
     """
     Remove cached backtest entries when a strategy is modified.
     Uses a Redis SET index keyed by strategy_id for efficient
     purge without scanning all keys.
     """
-    if not _redis_client:
+    client = _get_redis_client()
+    if not client:
         return 0
     set_key = f"bt:strategies:{strategy_id}"
-    members = _redis_client.smembers(set_key)
+    members = client.smembers(set_key)
     count = 0
     for cache_key in members:
-        _redis_client.delete(cache_key)
+        client.delete(cache_key)
         count += 1
-    _redis_client.delete(set_key)
+    client.delete(set_key)
     if count:
         logger.info("[Cache] PURGED %d entries for strategy %s", count, strategy_id)
     return count
@@ -172,15 +225,19 @@ def purge_backtest_cache(strategy_id: str) -> int:
 
 def register_cache_key_for_strategy(strategy_id: str, cache_key: str) -> None:
     """Register a cache key under a strategy_id set for later purge."""
-    if not _redis_client or not strategy_id:
+    if not strategy_id:
+        return
+    client = _get_redis_client()
+    if not client:
         return
     try:
-        _redis_client.sadd(f"bt:strategies:{strategy_id}", cache_key)
+        client.sadd(f"bt:strategies:{strategy_id}", cache_key)
     except Exception as e:
         logger.warning("[Cache] Could not register cache key: %s", e)
 
 
 # ── Artifact rebuild ────────────────────────────────────────────────────────
+
 
 def rebuild_artifacts_from_cache(
     backtest_id: str,
@@ -222,9 +279,7 @@ def rebuild_artifacts_from_cache(
             "rebuilding requires candle data reload from parquet files."
         )
 
-    logger.info(
-        "[Cache] Rebuilt artifacts for %s in %s", backtest_id, backtest_dir
-    )
+    logger.info("[Cache] Rebuilt artifacts for %s in %s", backtest_id, backtest_dir)
     return backtest_dir
 
 
