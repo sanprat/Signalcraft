@@ -219,8 +219,8 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
     # Check if we need to cap at 5000 candles
     candle_count_in_range = duckdb.query(f"""
         SELECT COUNT(*) FROM read_parquet('{candles_path}')
-        WHERE time >= '{display_from.isoformat()}'::timestamp
-          AND time <= '{display_to.isoformat()}'::timestamp
+        WHERE time >= '{display_from.isoformat()}'
+          AND time <= '{display_to.isoformat()}'
     """).fetchone()[0]
 
     # Get full range stats always
@@ -239,8 +239,8 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
         df = duckdb.query(f"""
             SELECT time, open, high, low, close, volume
             FROM read_parquet('{candles_path}')
-            WHERE time BETWEEN '{display_from.isoformat()}'::timestamp
-                        AND '{display_to.isoformat()}'::timestamp
+            WHERE time BETWEEN '{display_from.isoformat()}'
+                        AND '{display_to.isoformat()}'
             ORDER BY time
         """).df()
         is_partial = candle_count_in_range > 5000
@@ -252,8 +252,8 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
 
             window_count = duckdb.query(f"""
                 SELECT COUNT(*) FROM read_parquet('{candles_path}')
-                WHERE time >= '{first_entry.isoformat()}'::timestamp
-                  AND time <= '{last_exit.isoformat()}'::timestamp
+                WHERE time >= '{first_entry.isoformat()}'
+                  AND time <= '{last_exit.isoformat()}'
             """).fetchone()[0]
 
             remaining = max(0, 5000 - window_count)
@@ -262,7 +262,7 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
             left_df = duckdb.query(f"""
                 SELECT time, open, high, low, close, volume
                 FROM read_parquet('{candles_path}')
-                WHERE time < '{first_entry.isoformat()}'::timestamp
+                WHERE time < '{first_entry.isoformat()}'
                 ORDER BY time DESC
                 LIMIT {half}
             """).df()
@@ -271,15 +271,15 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
             center_df = duckdb.query(f"""
                 SELECT time, open, high, low, close, volume
                 FROM read_parquet('{candles_path}')
-                WHERE time >= '{first_entry.isoformat()}'::timestamp
-                  AND time <= '{last_exit.isoformat()}'::timestamp
+                WHERE time >= '{first_entry.isoformat()}'
+                  AND time <= '{last_exit.isoformat()}'
                 ORDER BY time
             """).df()
 
             right_df = duckdb.query(f"""
                 SELECT time, open, high, low, close, volume
                 FROM read_parquet('{candles_path}')
-                WHERE time > '{last_exit.isoformat()}'::timestamp
+                WHERE time > '{last_exit.isoformat()}'
                 ORDER BY time ASC
                 LIMIT {max(0, right_remaining)}
             """).df()
@@ -929,7 +929,7 @@ async def save_strategy_v2(
         payload["strategy_id"] = strategy_id
         payload["user_id"] = current_user.id
         payload["version"] = "2.0"
-        payload["created_at"] = datetime.utcnow().isoformat()
+        payload["created_at"] = datetime.now(datetime.timezone.utc).isoformat()
 
         # Check if updating existing
         existing_path = STORE / f"{strategy_id}.json"
@@ -940,7 +940,7 @@ async def save_strategy_v2(
             if existing.get("version") != "2.0":
                 raise HTTPException(400, "Cannot update v1 strategy with v2 endpoint")
             payload["created_at"] = existing.get("created_at")
-            payload["updated_at"] = datetime.utcnow().isoformat()
+            payload["updated_at"] = datetime.now(datetime.timezone.utc).isoformat()
 
             # Check for rename collision with another user strategy
             if existing.get("name", "").lower() != request.strategy.name.lower():
