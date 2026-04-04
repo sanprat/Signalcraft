@@ -151,13 +151,15 @@ def _is_intraday(timeframe: str) -> bool:
     return timeframe.upper() not in ("1D", "1W")
 
 
-def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
+def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Path]:
     """
     Build a chart.json artifact for instant chart rendering.
 
     Reads trades.json and candles.parquet from backtest_dir, computes a
     smart display range around trades (or 90-day fallback), builds
     annotations from trades, and writes chart.json atomically.
+
+    When full=True, writes to chart.full.json instead of chart.json.
 
     Returns the path to chart.json, or None if candles.parquet is missing.
     """
@@ -188,14 +190,12 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
 
     # Determine time range
     if trades:
-        sorted_trades = sorted(
-            trades, key=lambda t: t.get("entry_time", "") or ""
-        )
+        sorted_trades = sorted(trades, key=lambda t: t.get("entry_time", "") or "")
         first_entry = sorted_trades[0].get("entry_time")
         last_exit = sorted_trades[-1].get("exit_time")
 
-        first_ts = pd.Timestamp(first_entry, utc=True)
-        last_ts = pd.Timestamp(last_exit, utc=True)
+        first_ts = pd.Timestamp(first_entry, tz="UTC")
+        last_ts = pd.Timestamp(last_exit, tz="UTC")
 
         intraday = _is_intraday(timeframe)
         if intraday:
@@ -212,7 +212,7 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
         latest_ts = duckdb.query(f"""
             SELECT MAX(time) FROM read_parquet('{candles_path}')
         """).fetchone()[0]
-        latest_ts = pd.Timestamp(latest_ts, utc=True)
+        latest_ts = pd.Timestamp(latest_ts, tz="UTC")
         display_from = latest_ts - pd.Timedelta(days=90)
         display_to = latest_ts
 
@@ -228,8 +228,8 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
         SELECT MIN(time) as min_t, MAX(time) as max_t
         FROM read_parquet('{candles_path}')
     """).fetchone()
-    full_from = pd.Timestamp(full_row[0], utc=True)
-    full_to = pd.Timestamp(full_row[1], utc=True)
+    full_from = pd.Timestamp(full_row[0], tz="UTC")
+    full_to = pd.Timestamp(full_row[1], tz="UTC")
 
     df = None
     is_partial = False
@@ -247,12 +247,8 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
     else:
         # Smart-capped: ensure full trade window, split remaining budget
         if trades:
-            first_entry = pd.Timestamp(
-                sorted_trades[0]["entry_time"], utc=True
-            )
-            last_exit = pd.Timestamp(
-                sorted_trades[-1]["exit_time"], utc=True
-            )
+            first_entry = pd.Timestamp(sorted_trades[0]["entry_time"], tz="UTC")
+            last_exit = pd.Timestamp(sorted_trades[-1]["exit_time"], tz="UTC")
 
             window_count = duckdb.query(f"""
                 SELECT COUNT(*) FROM read_parquet('{candles_path}')
@@ -319,23 +315,27 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
     annotations: list = []
     for trade in trades:
         entry_time_iso = trade.get("entry_time", "")
-        annotations.append({
-            "time": int(pd.Timestamp(entry_time_iso).timestamp() * 1000),
-            "value": trade.get("entry_price", 0),
-            "text": f"BUY {trade.get('trade_no', '')}",
-            "color": "#059669",
-            "backgroundColor": "#ECFDF5",
-            "side": "below",
-        })
+        annotations.append(
+            {
+                "time": int(pd.Timestamp(entry_time_iso).timestamp() * 1000),
+                "value": trade.get("entry_price", 0),
+                "text": f"BUY {trade.get('trade_no', '')}",
+                "color": "#059669",
+                "backgroundColor": "#ECFDF5",
+                "side": "below",
+            }
+        )
         exit_time_iso = trade.get("exit_time", "")
-        annotations.append({
-            "time": int(pd.Timestamp(exit_time_iso).timestamp() * 1000),
-            "value": trade.get("exit_price", 0),
-            "text": f"SELL {trade.get('trade_no', '')}",
-            "color": "#DC2626",
-            "backgroundColor": "#FEF2F2",
-            "side": "above",
-        })
+        annotations.append(
+            {
+                "time": int(pd.Timestamp(exit_time_iso).timestamp() * 1000),
+                "value": trade.get("exit_price", 0),
+                "text": f"SELL {trade.get('trade_no', '')}",
+                "color": "#DC2626",
+                "backgroundColor": "#FEF2F2",
+                "side": "above",
+            }
+        )
 
     # Check if more data exists on either side
     has_more_left = False
@@ -351,7 +351,9 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
 
     payload = {
         "backtest_id": backtest_id,
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.now(datetime.timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "trade_count": len(trades),
         "symbol": symbol,
         "timeframe": timeframe,
@@ -374,8 +376,9 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
     }
 
     # Atomic write
-    tmp_path = candles_path.with_name("chart.json.tmp")
-    target = candles_path.with_name("chart.json")
+    filename = "chart.full.json" if full else "chart.json"
+    tmp_path = candles_path.with_name(filename + ".tmp")
+    target = candles_path.with_name(filename)
     with open(tmp_path, "w") as f:
         json.dump(payload, f)
     os.replace(str(tmp_path), str(target))
@@ -383,7 +386,7 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Path:
     return target
 
 
-def _ensure_chart_json(backtest_dir: Path) -> Path:
+def _ensure_chart_json(backtest_dir: Path) -> Optional[Path]:
     """
     Staleness-aware builder. Builds chart.json if missing, or if
     trades.json or candles.parquet have been modified since last build.
@@ -415,7 +418,6 @@ def _ensure_chart_json(backtest_dir: Path) -> Path:
 # ============================================================================
 # REQUEST/RESPONSE MODELS
 # ============================================================================
-
 
 
 class SaveStrategyRequest(BaseModel):
