@@ -1,4 +1,10 @@
-"""Date validation helpers shared across backend routes."""
+"""Date validation helpers shared across backend routes.
+
+This is intentionally a second line of defense behind schema/UI validation.
+If stale frontend code or legacy payloads bypass normal request validation,
+these helpers ensure malformed backtest dates still fail as a client error
+instead of bubbling up later as runtime parsing failures.
+"""
 
 from __future__ import annotations
 

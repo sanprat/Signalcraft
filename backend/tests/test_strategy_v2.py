@@ -6,6 +6,7 @@ import pytest
 from datetime import date, timedelta
 from typing import List, Dict, Any
 from pathlib import Path
+from fastapi import HTTPException
 
 # Test imports
 import sys
@@ -181,10 +182,13 @@ class TestExitRules:
 @pytest.mark.parametrize(
     "from_date,to_date,should_pass",
     [
+        (None, None, True),
         ("2026-01-01", "2026-12-31", True),
         ("2026-12-31", "2026-01-01", False),
         ("2026-04-05", "2026-04-05", True),
         (None, "2026-04-05", True),
+        ("2026/01/01", "2026-12-31", False),
+        ("not-a-date", "2026-12-31", False),
     ],
 )
 def test_backtest_date_range_validation(from_date, to_date, should_pass):
@@ -192,10 +196,14 @@ def test_backtest_date_range_validation(from_date, to_date, should_pass):
         validate_backtest_date_range(from_date, to_date)
         return
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         validate_backtest_date_range(from_date, to_date)
 
-    assert "backtest_to must be on or after backtest_from" in str(exc_info.value)
+    assert exc_info.value.status_code == 422
+    assert (
+        "Expected YYYY-MM-DD" in str(exc_info.value.detail)
+        or "backtest_to must be on or after backtest_from" in str(exc_info.value.detail)
+    )
 
 
 class TestStrategyV2:
