@@ -27,7 +27,10 @@ def run(body: BacktestRequest, current_user: UserResponse = Depends(get_current_
     strategy = json.loads(strat_path.read_text())
     backtest_id = str(uuid.uuid4())[:8]
 
-    result = run_backtest(strategy, backtest_id)
+    try:
+        result = run_backtest(strategy, backtest_id)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     # Check if backtest failed due to missing options data
     if result.get("summary", {}).get("error") == "MISSING_OPTIONS_DATA":
@@ -185,7 +188,9 @@ def get_chart(backtest_id: str, full: int = Query(0, ge=0, le=1)):
         chart_path = bt_dir / "chart.full.json"
         if not chart_path.exists():
             if _build_chart_payload is None:
-                logger.warning("_build_chart_payload unavailable; cannot build full chart")
+                logger.warning(
+                    "_build_chart_payload unavailable; cannot build full chart"
+                )
                 raise HTTPException(404, detail="Chart data not found")
             _build_chart_payload(bt_dir, full=True)
 

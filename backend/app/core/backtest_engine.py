@@ -784,18 +784,31 @@ def compute_summary(
     }
 
 
+def _validate_date_string(value: str, field_name: str) -> date:
+    """Validate and parse a date string, rejecting partial formats like '2025-04-'."""
+    if not isinstance(value, str) or len(value) != 10 or value.count("-") != 2:
+        raise ValueError(
+            f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD (e.g. 2025-04-01)"
+        )
+    try:
+        return date.fromisoformat(value)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD (e.g. 2025-04-01)"
+        ) from e
+
+
 def run_backtest(strategy: dict, backtest_id: str) -> dict:
     """Main entry point — run backtest for single or multiple stocks."""
+    raw_from = strategy.get("backtest_from")
+    raw_to = strategy.get("backtest_to")
+
     from_date = (
-        date.fromisoformat(strategy.get("backtest_from"))
-        if strategy.get("backtest_from")
+        _validate_date_string(raw_from, "backtest_from")
+        if raw_from
         else (date.today() - timedelta(days=180))
     )
-    to_date = (
-        date.fromisoformat(strategy.get("backtest_to"))
-        if strategy.get("backtest_to")
-        else date.today()
-    )
+    to_date = _validate_date_string(raw_to, "backtest_to") if raw_to else date.today()
 
     asset_type = strategy.get("asset_type", "EQUITY")
 
