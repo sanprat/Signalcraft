@@ -34,6 +34,7 @@ from app.core.strategy_builder_v2 import (
     ExpressionEvaluator,
 )
 from app.core.strategy_engine_v2 import StrategyEngineV2
+from app.core.date_validation import validate_backtest_date_range
 from app import core as app_core
 
 
@@ -175,6 +176,26 @@ class TestExitRules:
         assert sorted_rules[0].priority == 1  # SL first
         assert sorted_rules[1].priority == 2  # Trailing second
         assert sorted_rules[2].priority == 3  # Target third
+
+
+@pytest.mark.parametrize(
+    "from_date,to_date,should_pass",
+    [
+        ("2026-01-01", "2026-12-31", True),
+        ("2026-12-31", "2026-01-01", False),
+        ("2026-04-05", "2026-04-05", True),
+        (None, "2026-04-05", True),
+    ],
+)
+def test_backtest_date_range_validation(from_date, to_date, should_pass):
+    if should_pass:
+        validate_backtest_date_range(from_date, to_date)
+        return
+
+    with pytest.raises(Exception) as exc_info:
+        validate_backtest_date_range(from_date, to_date)
+
+    assert "backtest_to must be on or after backtest_from" in str(exc_info.value)
 
 
 class TestStrategyV2:

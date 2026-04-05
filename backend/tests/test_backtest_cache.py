@@ -8,6 +8,8 @@ an actual Redis server or candle data.
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.core.backtest_cache import (
     BACKTEST_ENGINE_VERSION,
     assemble_cache_payload,

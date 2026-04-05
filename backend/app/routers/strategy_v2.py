@@ -34,6 +34,7 @@ from app.core.strategy_engine_v2 import (
     TIMEFRAME_MAP,
     _normalize_candle_times,
 )
+from app.core.date_validation import validate_backtest_date_range
 
 logger = logging.getLogger(__name__)
 
@@ -67,47 +68,6 @@ BACKTESTS = Path("backtests")
 BACKTESTS.mkdir(exist_ok=True)
 
 
-def _validate_backtest_date_range(
-    backtest_from: Optional[str], backtest_to: Optional[str]
-) -> None:
-    """Defensively validate backtest dates before runtime date parsing.
-
-    The Pydantic schema already validates these fields, but this guard ensures
-    malformed values still fail as a client error instead of bubbling up as a
-    500 if stale frontend code or legacy payloads bypass validation.
-    """
-    parsed_dates: dict[str, date] = {}
-
-    for field_name, value in (
-        ("backtest_from", backtest_from),
-        ("backtest_to", backtest_to),
-    ):
-        if not value:
-            continue
-        if len(value) != 10 or value.count("-") != 2:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD.",
-            )
-        try:
-            parsed_dates[field_name] = date.fromisoformat(value)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD.",
-            ) from exc
-
-    if (
-        "backtest_from" in parsed_dates
-        and "backtest_to" in parsed_dates
-        and parsed_dates["backtest_to"] < parsed_dates["backtest_from"]
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="Invalid backtest date range: backtest_to must be on or after backtest_from.",
-        )
-
-
 def _aggregate_equity_curve(per_symbol: dict) -> list[dict]:
     """Combine per-symbol equity curves into a single cumulative list."""
     all_equity_points = []
@@ -133,7 +93,7 @@ def _save_candles_parquet(
     to_date: Optional[str] = None,
 ):
     """Load candles from data dir and save as parquet for chart display."""
-    _validate_backtest_date_range(from_date, to_date)
+    validate_backtest_date_range(from_date, to_date)
 
     tf_file = TIMEFRAME_MAP.get(timeframe, timeframe)
     all_candles = []
@@ -571,7 +531,7 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
     Same exact backtest returns the cached result on second run.
     """
     try:
-        _validate_backtest_date_range(
+        validate_backtest_date_range(
             request.strategy.backtest_from,
             request.strategy.backtest_to,
         )
@@ -796,7 +756,7 @@ async def run_quick_backtest_v2(
         strategy.backtest_from = (date.today() - timedelta(days=days)).isoformat()
         mode = "quick"
 
-        _validate_backtest_date_range(strategy.backtest_from, strategy.backtest_to)
+        validate_backtest_date_range(strategy.backtest_from, strategy.backtest_to)
 
         # Build cache key
         strategy_dict = strategy.model_dump()
