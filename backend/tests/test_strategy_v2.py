@@ -35,7 +35,7 @@ from app.core.strategy_builder_v2 import (
     ExpressionEvaluator,
 )
 from app.core.strategy_engine_v2 import StrategyEngineV2
-from app.core.date_validation import validate_backtest_date_range
+from app.core.date_validation import coerce_backtest_date, validate_backtest_date_range
 from app import core as app_core
 
 
@@ -204,6 +204,21 @@ def test_backtest_date_range_validation(from_date, to_date, should_pass):
         "Expected YYYY-MM-DD" in str(exc_info.value.detail)
         or "backtest_to must be on or after backtest_from" in str(exc_info.value.detail)
     )
+
+
+@pytest.mark.parametrize(
+    "raw_value,expected",
+    [
+        (None, None),
+        ("", None),
+        ("2026-04-05", "2026-04-05"),
+        ("2026-04-", None),
+        ("2026/04/05", None),
+        (123, None),
+    ],
+)
+def test_coerce_backtest_date(raw_value, expected):
+    assert coerce_backtest_date(raw_value) == expected
 
 
 class TestStrategyV2:

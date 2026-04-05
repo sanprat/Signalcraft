@@ -4,6 +4,7 @@
  */
 
 import { config, getAuthHeaders } from '@/lib/config'
+import { assertValidBacktestDates } from '@/lib/date'
 import type {
     StrategyV2,
     ValidationResult,
@@ -70,6 +71,8 @@ const API_BASE = config.apiBaseUrl
  */
 export async function validateStrategy(strategy: StrategyV2): Promise<ValidationResult> {
     try {
+        assertValidBacktestDates(strategy.backtest_from, strategy.backtest_to)
+
         const response = await fetch(`${API_BASE}/api/strategy/v2/validate`, {
             method: 'POST',
             headers: {
@@ -124,6 +127,8 @@ export async function backtestStrategy(
     mode: 'quick' | 'full' = 'quick'
 ): Promise<BacktestResult> {
     try {
+        assertValidBacktestDates(strategy.backtest_from, strategy.backtest_to)
+
         const response = await fetch(`${API_BASE}/api/strategy/v2/backtest`, {
             method: 'POST',
             headers: {
@@ -161,6 +166,8 @@ export async function quickBacktest(
     days: number = 90
 ): Promise<BacktestResult> {
     try {
+        assertValidBacktestDates(strategy.backtest_from, strategy.backtest_to)
+
         const response = await fetch(`${API_BASE}/api/strategy/v2/backtest/quick?days=${days}`, {
             method: 'POST',
             headers: {
@@ -190,6 +197,8 @@ export async function saveStrategy(
     strategyId?: string
 ): Promise<SaveStrategyResponse> {
     try {
+        assertValidBacktestDates(strategy.backtest_from, strategy.backtest_to)
+
         const request: SaveStrategyRequest = {
             strategy,
             strategy_id: strategyId,

@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import redis
 
+from app.core.date_validation import coerce_backtest_date
 from app.core.strategy_engine_v2 import DATA_DIR, TIMEFRAME_MAP
 
 logger = logging.getLogger(__name__)
@@ -95,15 +96,11 @@ def _resolve_effective_dates(backtest_from: str, backtest_to: str, mode: str) ->
     to_date = date.today()
     from_date = None
 
-    try:
-        to_date = date.fromisoformat(backtest_to) if backtest_to else date.today()
-    except ValueError:
-        to_date = date.today()
+    normalized_to = coerce_backtest_date(backtest_to)
+    normalized_from = coerce_backtest_date(backtest_from)
 
-    try:
-        from_date = date.fromisoformat(backtest_from) if backtest_from else None
-    except ValueError:
-        from_date = None
+    to_date = date.fromisoformat(normalized_to) if normalized_to else date.today()
+    from_date = date.fromisoformat(normalized_from) if normalized_from else None
 
     if from_date is None:
         from_date = to_date - timedelta(days=180 if mode == "quick" else 365 * 3)

@@ -34,7 +34,7 @@ from app.core.strategy_engine_v2 import (
     TIMEFRAME_MAP,
     _normalize_candle_times,
 )
-from app.core.date_validation import validate_backtest_date_range
+from app.core.date_validation import coerce_backtest_date, validate_backtest_date_range
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,32 @@ STORE.mkdir(exist_ok=True)
 # Backtest results directory
 BACKTESTS = Path("backtests")
 BACKTESTS.mkdir(exist_ok=True)
+
+
+def _sanitize_legacy_strategy_dates(payload: dict, strategy_path: Optional[Path] = None) -> dict:
+    """Drop malformed legacy date strings so load/backtest flows stay usable."""
+    sanitized = dict(payload)
+    changed_fields: list[str] = []
+
+    for field_name in ("backtest_from", "backtest_to"):
+        original = sanitized.get(field_name)
+        normalized = coerce_backtest_date(original)
+        if original and normalized is None:
+            sanitized[field_name] = None
+            changed_fields.append(field_name)
+        elif normalized is not None:
+            sanitized[field_name] = normalized
+
+    if changed_fields:
+        logger.warning(
+            "[V2] Sanitized malformed legacy backtest dates in %s: %s",
+            strategy_path or "<memory>",
+            ", ".join(changed_fields),
+        )
+        if strategy_path is not None:
+            strategy_path.write_text(json.dumps(sanitized, indent=2))
+
+    return sanitized
 
 
 def _aggregate_equity_curve(per_symbol: dict) -> list[dict]:
@@ -161,6 +187,31 @@ def _is_intraday(timeframe: str) -> bool:
     return timeframe.upper() not in ("1D", "1W")
 
 
+def _load_chart_candles(candles_path: Path) -> pd.DataFrame:
+    """Load chart candles and drop malformed timestamps before chart generation."""
+    df = pd.read_parquet(candles_path)
+    if df.empty or "time" not in df.columns:
+        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
+
+    df = df.copy()
+    df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+
+    invalid_rows = int(df["time"].isna().sum())
+    if invalid_rows:
+        logger.warning(
+            "[V2] Dropping %s malformed candle timestamps while building chart from %s",
+            invalid_rows,
+            candles_path,
+        )
+        df = df[df["time"].notna()].copy()
+
+    if df.empty:
+        return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
+
+    keep = [c for c in ["time", "open", "high", "low", "close", "volume"] if c in df.columns]
+    return df[keep].sort_values("time").reset_index(drop=True)
+
+
 def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Path]:
     """
     Build a chart.json artifact for instant chart rendering.
@@ -173,8 +224,6 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
 
     Returns the path to chart.json, or None if candles.parquet is missing.
     """
-    import duckdb
-
     candles_path = backtest_dir / "candles.parquet"
     trades_path = backtest_dir / "trades.json"
 
@@ -197,6 +246,11 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
     # summary.json stores "timeframe"; fallback from directory contents
     timeframe = summary.get("timeframe", "1d")
     backtest_id = backtest_dir.name
+    candles_df = _load_chart_candles(candles_path)
+
+    if candles_df.empty:
+        logger.warning("[V2] No valid candles available for chart build in %s", candles_path)
+        return None
 
     # Determine time range
     if trades:
@@ -219,40 +273,23 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
         display_to = last_ts + buffer
     else:
         # No trades: fallback to last 90 days from latest candle
-        latest_ts = duckdb.query(f"""
-            SELECT MAX(time) FROM read_parquet('{candles_path}')
-        """).fetchone()[0]
-        latest_ts = pd.Timestamp(latest_ts, tz="UTC")
+        latest_ts = candles_df["time"].max()
         display_from = latest_ts - pd.Timedelta(days=90)
         display_to = latest_ts
 
-    # Check if we need to cap at 5000 candles
-    candle_count_in_range = duckdb.query(f"""
-        SELECT COUNT(*) FROM read_parquet('{candles_path}')
-        WHERE time >= '{display_from.isoformat()}'
-          AND time <= '{display_to.isoformat()}'
-    """).fetchone()[0]
-
-    # Get full range stats always
-    full_row = duckdb.query(f"""
-        SELECT MIN(time) as min_t, MAX(time) as max_t
-        FROM read_parquet('{candles_path}')
-    """).fetchone()
-    full_from = pd.Timestamp(full_row[0], tz="UTC")
-    full_to = pd.Timestamp(full_row[1], tz="UTC")
+    in_range = candles_df[
+        (candles_df["time"] >= display_from) & (candles_df["time"] <= display_to)
+    ]
+    candle_count_in_range = len(in_range)
+    full_from = candles_df["time"].min()
+    full_to = candles_df["time"].max()
 
     df = None
     is_partial = False
 
     if candle_count_in_range <= 5000 or full:
         # Fetch everything in range
-        df = duckdb.query(f"""
-            SELECT time, open, high, low, close, volume
-            FROM read_parquet('{candles_path}')
-            WHERE time BETWEEN '{display_from.isoformat()}'
-                        AND '{display_to.isoformat()}'
-            ORDER BY time
-        """).df()
+        df = in_range.copy()
         is_partial = candle_count_in_range > 5000
     else:
         # Smart-capped: ensure full trade window, split remaining budget
@@ -260,49 +297,25 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
             first_entry = pd.Timestamp(sorted_trades[0]["entry_time"], tz="UTC")
             last_exit = pd.Timestamp(sorted_trades[-1]["exit_time"], tz="UTC")
 
-            window_count = duckdb.query(f"""
-                SELECT COUNT(*) FROM read_parquet('{candles_path}')
-                WHERE time >= '{first_entry.isoformat()}'
-                  AND time <= '{last_exit.isoformat()}'
-            """).fetchone()[0]
+            center_df = candles_df[
+                (candles_df["time"] >= first_entry) & (candles_df["time"] <= last_exit)
+            ].copy()
+            window_count = len(center_df)
 
             remaining = max(0, 5000 - window_count)
             half = remaining // 2
 
-            left_df = duckdb.query(f"""
-                SELECT time, open, high, low, close, volume
-                FROM read_parquet('{candles_path}')
-                WHERE time < '{first_entry.isoformat()}'
-                ORDER BY time DESC
-                LIMIT {half}
-            """).df()
+            left_df = candles_df[candles_df["time"] < first_entry].tail(half).copy()
 
             right_remaining = remaining - len(left_df)
-            center_df = duckdb.query(f"""
-                SELECT time, open, high, low, close, volume
-                FROM read_parquet('{candles_path}')
-                WHERE time >= '{first_entry.isoformat()}'
-                  AND time <= '{last_exit.isoformat()}'
-                ORDER BY time
-            """).df()
+            right_df = candles_df[candles_df["time"] > last_exit].head(
+                max(0, right_remaining)
+            ).copy()
 
-            right_df = duckdb.query(f"""
-                SELECT time, open, high, low, close, volume
-                FROM read_parquet('{candles_path}')
-                WHERE time > '{last_exit.isoformat()}'
-                ORDER BY time ASC
-                LIMIT {max(0, right_remaining)}
-            """).df()
-
-            df = pd.concat([left_df[::-1], center_df, right_df], ignore_index=True)
+            df = pd.concat([left_df, center_df, right_df], ignore_index=True)
         else:
             # No trades: cap to 5000 evenly via LIMIT
-            df = duckdb.query(f"""
-                SELECT time, open, high, low, close, volume
-                FROM read_parquet('{candles_path}')
-                ORDER BY time
-                LIMIT 5000
-            """).df()
+            df = candles_df.head(5000).copy()
 
     if df is None or df.empty:
         return None
@@ -1043,7 +1056,7 @@ async def load_strategy_v2(
         if not path.exists():
             raise HTTPException(404, "Strategy not found")
 
-        data = json.loads(path.read_text())
+        data = _sanitize_legacy_strategy_dates(json.loads(path.read_text()), path)
 
         # Check version
         if data.get("version") != "2.0":

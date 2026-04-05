@@ -14,6 +14,20 @@ from typing import Optional
 from fastapi import HTTPException
 
 
+def coerce_backtest_date(value: object) -> Optional[str]:
+    """Return a validated YYYY-MM-DD string or None for malformed legacy values."""
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        return None
+    if len(value) != 10 or value.count("-") != 2:
+        return None
+    try:
+        return date.fromisoformat(value).isoformat()
+    except ValueError:
+        return None
+
+
 def validate_backtest_date_range(
     backtest_from: Optional[str], backtest_to: Optional[str]
 ) -> None:
@@ -30,18 +44,13 @@ def validate_backtest_date_range(
     ):
         if not value:
             continue
-        if len(value) != 10 or value.count("-") != 2:
+        normalized = coerce_backtest_date(value)
+        if normalized is None:
             raise HTTPException(
                 status_code=422,
                 detail=f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD.",
             )
-        try:
-            parsed_dates[field_name] = date.fromisoformat(value)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD.",
-            ) from exc
+        parsed_dates[field_name] = date.fromisoformat(normalized)
 
     if (
         "backtest_from" in parsed_dates

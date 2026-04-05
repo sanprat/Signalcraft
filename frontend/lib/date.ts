@@ -20,3 +20,13 @@ export function isValidDateRange(from?: string, to?: string): boolean {
 
     return from <= to
 }
+
+export function assertValidBacktestDates(from?: string, to?: string): void {
+    if ((from && !isValidDateString(from)) || (to && !isValidDateString(to))) {
+        throw new Error('Please enter a complete backtest date range in YYYY-MM-DD format')
+    }
+
+    if (from && to && !isValidDateRange(from, to)) {
+        throw new Error('Backtest start date must be on or before the end date')
+    }
+}
