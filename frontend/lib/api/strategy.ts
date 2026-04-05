@@ -134,8 +134,16 @@ export async function backtestStrategy(
         })
 
         if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Backtest failed' }))
-            throw new Error(error.detail || 'Backtest failed')
+            const errorData = await response.json().catch(() => ({}))
+            let errorMessage = 'Backtest failed'
+            if (errorData.detail) {
+                if (Array.isArray(errorData.detail)) {
+                    errorMessage = errorData.detail.map((err: any) => err.msg).join(', ')
+                } else if (typeof errorData.detail === 'string') {
+                    errorMessage = errorData.detail
+                }
+            }
+            throw new Error(errorMessage)
         }
 
         return await response.json()

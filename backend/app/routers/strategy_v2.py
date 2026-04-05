@@ -733,8 +733,10 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
             "message": "Backtest completed successfully",
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Backtest error: {e}")
+        logger.error(f"Backtest error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Backtest failed: {str(e)}")
 
 
