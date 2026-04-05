@@ -67,14 +67,21 @@ BACKTESTS = Path("backtests")
 BACKTESTS.mkdir(exist_ok=True)
 
 
-def _validate_backtest_date_range(backtest_from: Optional[str], backtest_to: Optional[str]) -> None:
+def _validate_backtest_date_range(
+    backtest_from: Optional[str], backtest_to: Optional[str]
+) -> None:
     """Defensively validate backtest dates before runtime date parsing.
 
     The Pydantic schema already validates these fields, but this guard ensures
     malformed values still fail as a client error instead of bubbling up as a
     500 if stale frontend code or legacy payloads bypass validation.
     """
-    for field_name, value in (("backtest_from", backtest_from), ("backtest_to", backtest_to)):
+    parsed_dates: dict[str, date] = {}
+
+    for field_name, value in (
+        ("backtest_from", backtest_from),
+        ("backtest_to", backtest_to),
+    ):
         if not value:
             continue
         if len(value) != 10 or value.count("-") != 2:
@@ -83,12 +90,22 @@ def _validate_backtest_date_range(backtest_from: Optional[str], backtest_to: Opt
                 detail=f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD.",
             )
         try:
-            date.fromisoformat(value)
+            parsed_dates[field_name] = date.fromisoformat(value)
         except ValueError as exc:
             raise HTTPException(
                 status_code=422,
                 detail=f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD.",
             ) from exc
+
+    if (
+        "backtest_from" in parsed_dates
+        and "backtest_to" in parsed_dates
+        and parsed_dates["backtest_to"] < parsed_dates["backtest_from"]
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid backtest date range: backtest_to must be on or after backtest_from.",
+        )
 
 
 def _aggregate_equity_curve(per_symbol: dict) -> list[dict]:
@@ -112,11 +129,11 @@ def _save_candles_parquet(
     backtest_dir: Path,
     symbols: list,
     timeframe: str,
-    from_date: str,
-    to_date: str,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
 ):
     """Load candles from data dir and save as parquet for chart display."""
-    _validate_backtest_date_range(from_date or None, to_date or None)
+    _validate_backtest_date_range(from_date, to_date)
 
     tf_file = TIMEFRAME_MAP.get(timeframe, timeframe)
     all_candles = []
@@ -621,8 +638,8 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
                         backtest_dir=backtest_dir,
                         symbols=request.strategy.symbols,
                         timeframe=request.strategy.timeframe,
-                        from_date=request.strategy.backtest_from or "",
-                        to_date=request.strategy.backtest_to or "",
+                        from_date=request.strategy.backtest_from,
+                        to_date=request.strategy.backtest_to,
                     )
 
                 # Ensure chart.json exists and is fresh
@@ -724,8 +741,8 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
                 backtest_dir=backtest_dir,
                 symbols=request.strategy.symbols,
                 timeframe=request.strategy.timeframe,
-                from_date=request.strategy.backtest_from or "",
-                to_date=request.strategy.backtest_to or "",
+                from_date=request.strategy.backtest_from,
+                to_date=request.strategy.backtest_to,
             )
             has_candles = (backtest_dir / "candles.parquet").exists()
 
@@ -825,8 +842,8 @@ async def run_quick_backtest_v2(
                         backtest_dir=backtest_dir,
                         symbols=strategy.symbols,
                         timeframe=strategy.timeframe,
-                        from_date=strategy.backtest_from or "",
-                        to_date=strategy.backtest_to or "",
+                        from_date=strategy.backtest_from,
+                        to_date=strategy.backtest_to,
                     )
                 # Ensure chart.json exists and is fresh
                 _ensure_chart_json(backtest_dir)
@@ -906,8 +923,8 @@ async def run_quick_backtest_v2(
                 backtest_dir=backtest_dir,
                 symbols=strategy.symbols,
                 timeframe=strategy.timeframe,
-                from_date=strategy.backtest_from or "",
-                to_date=strategy.backtest_to or "",
+                from_date=strategy.backtest_from,
+                to_date=strategy.backtest_to,
             )
             has_candles = (backtest_dir / "candles.parquet").exists()
 
