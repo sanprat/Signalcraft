@@ -19,4 +19,6 @@ class AdminLog(Base):
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     details = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )

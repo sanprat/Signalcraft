@@ -16,4 +16,6 @@ class User(Base):
     full_name = Column(String(255), nullable=True)
     role = Column(String(50), default="user")
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )

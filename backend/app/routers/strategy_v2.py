@@ -92,45 +92,8 @@ def _save_candles_parquet(
     to_date: str,
 ):
     """Load candles from data dir and save as parquet for chart display."""
-    from datetime import date as date_type
-
     tf_file = TIMEFRAME_MAP.get(timeframe, timeframe)
     all_candles = []
-
-    # Validate date strings before processing
-    valid_from_date = None
-    valid_to_date = None
-
-    if from_date and to_date:
-        try:
-            # Validate date format (YYYY-MM-DD)
-            if len(from_date) == 10 and from_date.count("-") == 2:
-                date_type.fromisoformat(from_date)
-                valid_from_date = from_date
-            else:
-                logger.warning(
-                    f"[V2] Invalid from_date format: '{from_date}'. "
-                    f"Expected YYYY-MM-DD. Skipping date filter."
-                )
-        except ValueError as e:
-            logger.warning(
-                f"[V2] Invalid from_date: '{from_date}'. Error: {e}. "
-                f"Skipping date filter."
-            )
-
-        try:
-            if len(to_date) == 10 and to_date.count("-") == 2:
-                date_type.fromisoformat(to_date)
-                valid_to_date = to_date
-            else:
-                logger.warning(
-                    f"[V2] Invalid to_date format: '{to_date}'. "
-                    f"Expected YYYY-MM-DD. Skipping date filter."
-                )
-        except ValueError as e:
-            logger.warning(
-                f"[V2] Invalid to_date: '{to_date}'. Error: {e}. Skipping date filter."
-            )
 
     for symbol in symbols:
         parquet_path = DATA_DIR / "NIFTY500" / symbol / f"{tf_file}.parquet"
@@ -150,17 +113,17 @@ def _save_candles_parquet(
             if "time" in df.columns:
                 df = _normalize_candle_times(df, parquet_path, symbol, timeframe)
 
-            # Filter by date range if provided
-            if valid_from_date and valid_to_date and "time" in df.columns:
+            # Filter by date range if provided (dates validated by Pydantic schema)
+            if from_date and to_date and "time" in df.columns:
                 try:
-                    start = pd.Timestamp(valid_from_date).tz_localize("Asia/Kolkata")
-                    end = pd.Timestamp(valid_to_date).tz_localize("Asia/Kolkata")
+                    start = pd.Timestamp(from_date).tz_localize("Asia/Kolkata")
+                    end = pd.Timestamp(to_date).tz_localize("Asia/Kolkata")
                     df = df[df["time"] >= start]
                     df = df[df["time"] <= end]
-                except ValueError as e:
+                except Exception as e:
                     logger.warning(
-                        f"[V2] Failed to parse validated dates: "
-                        f"from_date='{valid_from_date}', to_date='{valid_to_date}'. "
+                        f"[V2] Failed to filter by date range: "
+                        f"from_date='{from_date}', to_date='{to_date}'. "
                         f"Error: {e}. Skipping date filter."
                     )
 
@@ -395,9 +358,7 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
 
     payload = {
         "backtest_id": backtest_id,
-        "generated_at": datetime.now(datetime.timezone.utc)
-        .isoformat()
-        .replace("+00:00", "Z"),
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "trade_count": len(trades),
         "symbol": symbol,
         "timeframe": timeframe,
