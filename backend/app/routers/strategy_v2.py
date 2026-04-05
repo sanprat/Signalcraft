@@ -327,7 +327,12 @@ def _build_chart_payload(backtest_dir: Path, full: bool = False) -> Optional[Pat
 
     # Convert display_from and display_to to Kolkata time
     def _to_kolkata(ts):
-        return pd.Timestamp(ts, tz="UTC").tz_convert(tz_mumbai)
+        timestamp = pd.Timestamp(ts)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.tz_localize("UTC")
+        else:
+            timestamp = timestamp.tz_convert("UTC")
+        return timestamp.tz_convert(tz_mumbai)
 
     display_from_str = df["time_iso"].iloc[0]
     display_to_str = df["time_iso"].iloc[-1]
