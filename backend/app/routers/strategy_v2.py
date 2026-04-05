@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -67,6 +67,30 @@ BACKTESTS = Path("backtests")
 BACKTESTS.mkdir(exist_ok=True)
 
 
+def _validate_backtest_date_range(backtest_from: Optional[str], backtest_to: Optional[str]) -> None:
+    """Defensively validate backtest dates before runtime date parsing.
+
+    The Pydantic schema already validates these fields, but this guard ensures
+    malformed values still fail as a client error instead of bubbling up as a
+    500 if stale frontend code or legacy payloads bypass validation.
+    """
+    for field_name, value in (("backtest_from", backtest_from), ("backtest_to", backtest_to)):
+        if not value:
+            continue
+        if len(value) != 10 or value.count("-") != 2:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD.",
+            )
+        try:
+            date.fromisoformat(value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid {field_name}: '{value}'. Expected YYYY-MM-DD.",
+            ) from exc
+
+
 def _aggregate_equity_curve(per_symbol: dict) -> list[dict]:
     """Combine per-symbol equity curves into a single cumulative list."""
     all_equity_points = []
@@ -92,6 +116,8 @@ def _save_candles_parquet(
     to_date: str,
 ):
     """Load candles from data dir and save as parquet for chart display."""
+    _validate_backtest_date_range(from_date or None, to_date or None)
+
     tf_file = TIMEFRAME_MAP.get(timeframe, timeframe)
     all_candles = []
 
@@ -528,6 +554,11 @@ async def run_backtest_v2(request: StrategyBacktestRequestV2):
     Same exact backtest returns the cached result on second run.
     """
     try:
+        _validate_backtest_date_range(
+            request.strategy.backtest_from,
+            request.strategy.backtest_to,
+        )
+
         # Build deterministic cache key and backtest_id
         strategy_dict = request.strategy.model_dump()
         strategy_id = (
@@ -741,12 +772,14 @@ async def run_quick_backtest_v2(
     Shorthand for /backtest with mode='quick'. Shares the same cache.
     """
     try:
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         # Override date range
         strategy.backtest_to = date.today().isoformat()
         strategy.backtest_from = (date.today() - timedelta(days=days)).isoformat()
         mode = "quick"
+
+        _validate_backtest_date_range(strategy.backtest_from, strategy.backtest_to)
 
         # Build cache key
         strategy_dict = strategy.model_dump()
