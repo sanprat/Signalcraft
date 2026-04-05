@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { DATE_PRESETS } from '@/lib/types/strategy'
+import { isValidDateString } from '@/lib/date'
 
 interface DateRangePickerProps {
     startDate: string
@@ -11,6 +12,16 @@ interface DateRangePickerProps {
 
 export function DateRangePicker({ startDate, endDate, onChange }: DateRangePickerProps) {
     const [activePreset, setActivePreset] = useState<string | null>(null)
+    const [draftStartDate, setDraftStartDate] = useState(startDate)
+    const [draftEndDate, setDraftEndDate] = useState(endDate)
+
+    useEffect(() => {
+        setDraftStartDate(startDate)
+    }, [startDate])
+
+    useEffect(() => {
+        setDraftEndDate(endDate)
+    }, [endDate])
 
     const applyPreset = (preset: typeof DATE_PRESETS[0]) => {
         const today = new Date()
@@ -28,17 +39,41 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
         }
 
         onChange(start.toISOString().split('T')[0], end)
+        setDraftStartDate(start.toISOString().split('T')[0])
+        setDraftEndDate(end)
         setActivePreset(preset.label)
     }
 
     const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onChange(e.target.value, endDate)
+        const nextValue = e.target.value
+        setDraftStartDate(nextValue)
+        if (isValidDateString(nextValue) && isValidDateString(draftEndDate)) {
+            onChange(nextValue, draftEndDate)
+        }
         setActivePreset(null)
     }
 
     const handleEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        onChange(startDate, e.target.value)
+        const nextValue = e.target.value
+        setDraftEndDate(nextValue)
+        if (isValidDateString(draftStartDate) && isValidDateString(nextValue)) {
+            onChange(draftStartDate, nextValue)
+        }
         setActivePreset(null)
+    }
+
+    const handleStartBlur = () => {
+        if (!draftStartDate || isValidDateString(draftStartDate)) {
+            return
+        }
+        setDraftStartDate(startDate)
+    }
+
+    const handleEndBlur = () => {
+        if (!draftEndDate || isValidDateString(draftEndDate)) {
+            return
+        }
+        setDraftEndDate(endDate)
     }
 
     return (
@@ -69,8 +104,9 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
                     </label>
                     <input
                         type="date"
-                        value={startDate}
+                        value={draftStartDate}
                         onChange={handleStartChange}
+                        onBlur={handleStartBlur}
                         max={endDate}
                         className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
@@ -82,8 +118,9 @@ export function DateRangePicker({ startDate, endDate, onChange }: DateRangePicke
                     </label>
                     <input
                         type="date"
-                        value={endDate}
+                        value={draftEndDate}
                         onChange={handleEndChange}
+                        onBlur={handleEndBlur}
                         min={startDate}
                         max={new Date().toISOString().split('T')[0]}
                         className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"

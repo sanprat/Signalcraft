@@ -11,6 +11,7 @@ import { ExitBuilder } from '@/components/strategy/ExitBuilder'
 import { RiskPanel } from '@/components/strategy/RiskPanel'
 import { ZenScriptPreview } from '@/components/strategy/ZenScriptPreview'
 import { ValidationResults } from '@/components/strategy/ValidationResults'
+import { isValidDateRange, isValidDateString } from '@/lib/date'
 import type { AssetType, IndexType, OptionType, StrikeType, TimeframeType } from '@/lib/types/strategy'
 
 type Section = 'config' | 'entry' | 'exit' | 'risk'
@@ -97,6 +98,22 @@ function StrategyBuilderContent() {
         setTimeout(() => setNotification(null), 4000)
     }
 
+    const ensureValidBacktestDates = (): boolean => {
+        if (!isValidDateString(strategy.backtest_from) || !isValidDateString(strategy.backtest_to)) {
+            showNotification('error', 'Please enter a complete backtest date range in YYYY-MM-DD format')
+            setActiveSection('config')
+            return false
+        }
+
+        if (!isValidDateRange(strategy.backtest_from, strategy.backtest_to)) {
+            showNotification('error', 'Backtest start date must be on or before the end date')
+            setActiveSection('config')
+            return false
+        }
+
+        return true
+    }
+
     const checkDuplicateStrategyName = async (): Promise<boolean> => {
         if (editMode && strategyId) return false
         try {
@@ -150,6 +167,9 @@ function StrategyBuilderContent() {
             setActiveSection('exit')
             return
         }
+        if (!ensureValidBacktestDates()) {
+            return
+        }
 
         const isDuplicate = await checkDuplicateStrategyName()
         if (isDuplicate) return
@@ -165,6 +185,9 @@ function StrategyBuilderContent() {
     const handleBacktest = async () => {
         if (!strategy.name.trim()) {
             showNotification('error', 'Please enter a strategy name')
+            return
+        }
+        if (!ensureValidBacktestDates()) {
             return
         }
 
