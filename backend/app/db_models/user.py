@@ -1,8 +1,9 @@
 """SQLAlchemy User model."""
 
-from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
+
 from app.db_models.base import Base
+from app.db_models.timestamps import utc_now_naive
 
 
 class User(Base):
@@ -16,6 +17,4 @@ class User(Base):
     full_name = Column(String(255), nullable=True)
     role = Column(String(50), default="user")
     is_active = Column(Boolean, default=True)
-    created_at = Column(
-        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
-    )
+    created_at = Column(DateTime(timezone=False), default=utc_now_naive)

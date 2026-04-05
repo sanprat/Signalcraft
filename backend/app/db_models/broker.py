@@ -1,8 +1,9 @@
 """SQLAlchemy BrokerCredential model."""
 
-from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON
+
 from app.db_models.base import Base
+from app.db_models.timestamps import utc_now_naive
 
 
 class BrokerCredential(Base):
@@ -18,7 +19,7 @@ class BrokerCredential(Base):
     credentials = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True)
     updated_at = Column(
-        DateTime,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        DateTime(timezone=False),
+        default=utc_now_naive,
+        onupdate=utc_now_naive,
     )
