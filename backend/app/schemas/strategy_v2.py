@@ -402,6 +402,26 @@ class StrategyV2(BaseModel):
         default=None, description="Backtest end date (YYYY-MM-DD)"
     )
 
+    @field_validator("backtest_from", "backtest_to", mode="before")
+    @classmethod
+    def validate_backtest_dates(cls, v: Any) -> Any:
+        from datetime import date
+
+        if v is None:
+            return v
+        if not isinstance(v, str):
+            raise ValueError("Backtest dates must be strings in YYYY-MM-DD format")
+        # Reject partial dates like "2025-04-" or "2025-04"
+        if len(v) != 10 or v.count("-") != 2:
+            raise ValueError(
+                f"Invalid date format: '{v}'. Expected YYYY-MM-DD (e.g. 2025-04-01)"
+            )
+        try:
+            date.fromisoformat(v)
+        except ValueError as e:
+            raise ValueError(f"Invalid date: '{v}'. {e}") from e
+        return v
+
     @model_validator(mode="after")
     def validate_strategy(self) -> "StrategyV2":
         """Validate complete strategy."""

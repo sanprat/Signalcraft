@@ -1,6 +1,6 @@
 """SQLAlchemy AdminLog model."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from app.db_models.base import Base
 
@@ -19,4 +19,4 @@ class AdminLog(Base):
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     details = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
