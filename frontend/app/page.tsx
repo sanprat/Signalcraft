@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useQuotes } from '@/hooks/useQuotes'
 
 // ── Color tokens (Avoiding blue & purple) ───────────────────────────────────
 const T = {
@@ -25,12 +24,6 @@ const T = {
 
 // ── Components ──────────────────────────────────────────────────────────────
 
-function LiveDot() {
-    const [on, setOn] = useState(true)
-    useEffect(() => { const t = setInterval(() => setOn(p => !p), 900); return () => clearInterval(t) }, [])
-    return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.emerald, opacity: on ? 1 : 0.2, transition: 'opacity 0.3s', marginRight: 8, boxShadow: `0 0 8px ${T.emerald}` }} />
-}
-
 // Mobile Menu Component
 function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
     if (!isOpen) return null
@@ -52,7 +45,7 @@ function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
         }} onClick={onClose}>
             <a href="#products" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Products</a>
             <a href="#features" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Features</a>
-            <a href="#infrastructure" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Infrastructure</a>
+            <a href="#how-it-works" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>How It Works</a>
             <Link href="/login" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
             <Link href="/login?signup=1" style={{
                 padding: '14px 32px',
@@ -78,7 +71,6 @@ function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
 }
 
 export default function ZenalysLandingPage() {
-    const { quotes, connected, isLive, marketOpen } = useQuotes()
     const [scrolled, setScrolled] = useState(false)
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [isMobile, setIsMobile] = useState(false)
@@ -139,7 +131,7 @@ export default function ZenalysLandingPage() {
                         <div style={{ display: 'flex', gap: 32, fontSize: 14, fontWeight: 500 }}>
                             <a href="#products" style={{ color: T.textMid, textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = T.textMid}>Products</a>
                             <a href="#features" style={{ color: T.textMid, textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = T.textMid}>Features</a>
-                            <a href="#infrastructure" style={{ color: T.textMid, textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = T.textMid}>Infrastructure</a>
+                            <a href="#how-it-works" style={{ color: T.textMid, textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = T.textMid}>How It Works</a>
                         </div>
                     )}
                 </div>
@@ -177,43 +169,8 @@ export default function ZenalysLandingPage() {
                 </div>
             </nav>
 
-            {/* Live ticker strip (Fixed directly under Nav) */}
-            <div style={{
-                position: 'fixed', top: isMobile ? 64 : 72, width: '100%', zIndex: 40,
-                background: 'rgba(0,0,0,0.8)', borderBottom: `1px solid ${T.border}`,
-                padding: isMobile ? '6px 16px' : '8px 5%',
-                backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-                overflow: 'hidden'
-            }}>
-                <div style={{ display: 'flex', gap: isMobile ? 20 : 40, alignItems: 'center', overflowX: 'auto', whiteSpace: 'nowrap', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="ticker-scroll">
-                    <style jsx>{`
-                        .ticker-scroll::-webkit-scrollbar { display: none; }
-                    `}</style>
-                    <div style={{ display: 'flex', alignItems: 'center', fontSize: isMobile ? 10 : 11, color: T.textMid, letterSpacing: '1px', fontWeight: 600, flexShrink: 0 }}>
-                        <LiveDot />
-                        {connected ? (isLive ? 'LIVE DATA' : 'SIMULATION') : 'DELAYED / OFFLINE'}
-                    </div>
-                    {Object.entries(quotes).slice(0, isMobile ? 3 : 5).map(([sym, q]) => (
-                        <div key={sym} style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
-                            <span style={{ fontSize: isMobile ? 11 : 12, color: T.textMid, fontWeight: 700 }}>{sym}</span>
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 12 : 13, fontWeight: 700, color: '#fff' }}>
-                                {q.ltp.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 11 : 12, fontWeight: 600, color: q.up ? T.emerald : T.red }}>
-                                {q.up ? '+' : ''}{q.chg.toFixed(2)}%
-                            </span>
-                        </div>
-                    ))}
-                    <div style={{ marginLeft: 'auto', fontSize: isMobile ? 10 : 11, fontWeight: 700, letterSpacing: '1px', flexShrink: 0 }}>
-                        <span style={{ color: marketOpen ? T.emerald : T.amber }}>
-                            {marketOpen ? '● NSE OPEN' : '⏰ MARKET CLOSED'}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
             {/* Main Content wrapper */}
-            <div style={{ position: 'relative', zIndex: 10, paddingTop: isMobile ? 120 : 160 }}>
+            <div style={{ position: 'relative', zIndex: 10, paddingTop: isMobile ? 80 : 90 }}>
 
                 {/* Hero Section */}
                 <section style={{ 
@@ -239,7 +196,7 @@ export default function ZenalysLandingPage() {
                         whiteSpace: 'nowrap'
                     }}>
                         <span style={{ display: 'inline-block', width: 6, height: 6, background: T.emerald, borderRadius: '50%' }}></span>
-                        Next-Gen Algorithmic Trading
+                        Next-Gen Strategy Research
                     </div>
 
                     <h1 style={{ 
@@ -250,8 +207,8 @@ export default function ZenalysLandingPage() {
                         letterSpacing: '-0.03em',
                         maxWidth: isMobile ? '100%' : 900 
                     }}>
-                        Institutional Grade Tools for <br />
-                        <span style={{ background: `linear-gradient(to right, ${T.emerald}, #FFFFFF)`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Independent Traders</span>
+                        Build. Backtest. Alert.<br />
+                        <span style={{ background: `linear-gradient(to right, ${T.emerald}, #FFFFFF)`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Trade smarter.</span>
                     </h1>
 
                     <p style={{ 
@@ -262,7 +219,7 @@ export default function ZenalysLandingPage() {
                         maxWidth: isMobile ? '100%' : 680,
                         padding: isMobile ? '0 8px' : 0
                     }}>
-                        Zenalys builds uncompromising automated trading platforms. Backtest flawlessly, execute in milliseconds, and scale your alpha without writing a single line of complex integration code.
+                        Design trading strategies visually, validate them against years of historical data, and get notified when your conditions trigger. No code required.
                     </p>
 
                     <div style={{ 
@@ -284,9 +241,9 @@ export default function ZenalysLandingPage() {
                             boxShadow: '0 8px 25px rgba(255,255,255,0.15)',
                             textAlign: 'center',
                         }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
-                            Explore SignalCraft
+                            Start Building Strategies
                         </Link>
-                        <a href="#infrastructure" style={{ 
+                        <a href="#how-it-works" style={{ 
                             padding: isMobile ? '14px 28px' : '16px 36px', 
                             background: 'transparent', 
                             border: `2px solid ${T.borderStrong}`, 
@@ -298,7 +255,7 @@ export default function ZenalysLandingPage() {
                             transition: 'all 0.3s',
                             textAlign: 'center',
                         }} onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = '#fff'; e.currentTarget.style.transform = 'translateY(-2px)' }} onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = T.borderStrong; e.currentTarget.style.transform = 'translateY(0)' }}>
-                            View Infrastructure
+                            See How It Works
                         </a>
                     </div>
                 </section>
@@ -320,10 +277,10 @@ export default function ZenalysLandingPage() {
                         borderBottom: `1px solid ${T.border}` 
                     }}>
                         {[
-                            { value: '<10ms', label: 'Execution Latency' },
-                            { value: '99.9%', label: 'API Uptime' },
-                            { value: '4', label: 'Native Brokers' },
-                            { value: 'Live', label: 'Tick By Tick Data' }
+                            { value: '16', label: 'Built-in Indicators' },
+                            { value: 'Sub-second', label: 'Backtest Engine' },
+                            { value: '12', label: 'Stock Screeners' },
+                            { value: 'Multi-Symbol', label: 'Strategy Support' }
                         ].map((stat, i) => (
                             <div key={i} style={{ textAlign: 'center' }}>
                                 <div style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', fontWeight: 800, color: '#fff', marginBottom: 4 }}>{stat.value}</div>
@@ -356,14 +313,14 @@ export default function ZenalysLandingPage() {
                             <div style={{ fontSize: isMobile ? 12 : 14, fontWeight: 700, color: T.emerald, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 16 }}>Flagship Product</div>
                             <h2 style={{ fontSize: isMobile ? '2rem' : '3rem', fontWeight: 800, marginBottom: isMobile ? 16 : 24, letterSpacing: '-0.02em' }}>Signal<span style={{ color: T.emerald }}>Craft</span></h2>
                             <p style={{ fontSize: isMobile ? '1rem' : '1.1rem', color: T.textMid, lineHeight: 1.7, marginBottom: isMobile ? 24 : 32 }}>
-                                Our premier visual platform designed for all types of traders. Build complex, multi-leg strategies without writing code. Backtest against years of historical data instantly, and push to live execution with one click.
+                                Our visual platform for building and validating trading strategies. Design entry and exit conditions with drag-and-drop, backtest against years of historical data, and receive alerts when your conditions trigger.
                             </p>
                             <ul style={{ listStyle: 'none', padding: 0, margin: `0 0 ${isMobile ? 24 : 40}px`, display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 16 }}>
                                 {[
                                     'Visual No-Code Strategy Builder',
                                     'TradingView-style interactive chart replay',
                                     'Nifty, BankNifty, & FinNifty Options Support',
-                                    'Direct execution via Dhan, Zerodha, Shoonya'
+                                    'Condition-Based Alert Notifications'
                                 ].map((item, i) => (
                                     <li key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#fff', fontSize: isMobile ? '0.9rem' : '1rem', fontWeight: 500 }}>
                                         <div style={{ width: isMobile ? 20 : 24, height: isMobile ? 20 : 24, borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)', color: T.emerald, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: isMobile ? 10 : 12 }}>✓</div>
@@ -428,10 +385,10 @@ export default function ZenalysLandingPage() {
                 </section>
 
                 {/* Features / Infrastructure */}
-                <section id="infrastructure" style={{ padding: isMobile ? '40px 16px 60px' : '60px 5% 100px' }}>
+                <section id="how-it-works" style={{ padding: isMobile ? '40px 16px 60px' : '60px 5% 100px' }}>
                     <div style={{ textAlign: 'center', marginBottom: isMobile ? 40 : 60 }}>
-                        <h2 style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', fontWeight: 800, marginBottom: isMobile ? 12 : 16 }}>Built for Performance</h2>
-                        <p style={{ fontSize: isMobile ? '1rem' : '1.2rem', color: T.textMid, padding: isMobile ? '0 8px' : 0 }}>The infrastructure you need to deploy edge-seeking algorithms.</p>
+                        <h2 style={{ fontSize: isMobile ? '1.75rem' : '2.5rem', fontWeight: 800, marginBottom: isMobile ? 12 : 16 }}>Built for Research</h2>
+                        <p style={{ fontSize: isMobile ? '1rem' : '1.2rem', color: T.textMid, padding: isMobile ? '0 8px' : 0 }}>Everything you need to build, validate, and monitor trading strategies.</p>
                     </div>
 
                     <div style={{ 
@@ -442,12 +399,12 @@ export default function ZenalysLandingPage() {
                         margin: '0 auto' 
                     }}>
                         {[
-                            { icon: '⚡', title: 'Low Latency Execution', desc: 'Direct REST/WebSocket API connections to brokers bypass intermediaries, saving critical milliseconds on order execution.' },
-                            { icon: '🔒', title: 'Encrypted Credential Vault', desc: 'Your API keys, secrets, and TOTP pins are encrypted and securely stored at the user-level in our PostgreSQL database.' },
-                            { icon: '🔄', title: 'Resilient Order Management', desc: 'Automated state reconciliation and retry logic ensures your positions are accurate even during broker API hiccups.' },
-                            { icon: '📊', title: 'High-Fidelity Data', desc: 'Tick-level data processing and accurate OHLCV candle generation feed into your technical indicators precisely.' },
-                            { icon: '🛡️', title: 'Risk Guardrails', desc: 'Built-in max drawdown limits, position sizing constraints, and automated kill-switches protect your capital.' },
-                            { icon: '🔌', title: 'Multi-Broker Accounts', desc: 'Run strategies across multiple accounts or different brokers simultaneously from a single unified dashboard.' }
+                            { icon: '🧩', title: 'Visual Strategy Builder', desc: 'Drag-and-drop entry and exit conditions with 16 indicators, 8 operators, and ALL/ANY logic. Build complex strategies without writing code.' },
+                            { icon: '📊', title: 'Multi-Indicator Engine', desc: 'RSI, SMA, EMA, MACD, Supertrend, Bollinger Bands, ATR, ADX, and more. Stack and combine indicators with configurable parameters.' },
+                            { icon: '📈', title: 'Historical Replay & Charting', desc: 'Interactive candlestick charts with trade annotations. Replay your strategy decisions on years of NIFTY500 and FnO data.' },
+                            { icon: '🧪', title: 'Backtest Analytics', desc: 'Detailed PnL reports with win rate, max drawdown, equity curves, per-symbol breakdowns, and full trade logs.' },
+                            { icon: '🔔', title: 'Condition-Based Alerts', desc: 'Set up alerts when indicators cross thresholds, price hits levels, or custom conditions trigger. Get notified via Telegram instantly.' },
+                            { icon: '🔍', title: 'Stock Screeners', desc: '12 built-in screeners — Minervini, VCP, IBD CAN SLIM, RSI Momentum, MACD Crossover, and more. Filter NIFTY500 in seconds.' }
                         ].map(f => (
                             <div key={f.title} style={{ 
                                 background: T.surface, 
@@ -491,7 +448,7 @@ export default function ZenalysLandingPage() {
                     textAlign: 'center', 
                     background: `linear-gradient(to bottom, transparent, rgba(16, 185, 129, 0.05))` 
                 }}>
-                    <h2 style={{ fontSize: isMobile ? '1.75rem' : '3rem', fontWeight: 800, marginBottom: isMobile ? 16 : 24, padding: isMobile ? '0 8px' : 0 }}>Ready to trade programmatically?</h2>
+                    <h2 style={{ fontSize: isMobile ? '1.75rem' : '3rem', fontWeight: 800, marginBottom: isMobile ? 16 : 24, padding: isMobile ? '0 8px' : 0 }}>Ready to validate your edge?</h2>
                     <p style={{ 
                         fontSize: isMobile ? '1rem' : '1.2rem',
                         color: T.textMid,
@@ -500,7 +457,7 @@ export default function ZenalysLandingPage() {
                         margin: `0 auto ${isMobile ? 32 : 40}px`,
                         padding: isMobile ? '0 8px' : 0
                     }}>
-                        Join the beta of SignalCraft today. Connect your broker and deploy your first algorithmic strategy in minutes.
+                        Build strategies, backtest against historical data, and get alerts when your conditions trigger. Start for free today.
                     </p>
                     <Link href="/login?signup=1" style={{ 
                         display: 'inline-block', 
@@ -517,7 +474,7 @@ export default function ZenalysLandingPage() {
                         maxWidth: isMobile ? '280px' : 'none',
                         boxSizing: 'border-box',
                     }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}>
-                        Start Deploying
+                        Start Building
                     </Link>
                 </section>
 
