@@ -1,8 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { useQuotes } from '@/hooks/useQuotes'
+
+const MOBILE_BREAKPOINT = 768
 
 // ── Color tokens (Avoiding blue & purple) ───────────────────────────────────
 const T = {
@@ -27,8 +29,18 @@ const T = {
 
 function LiveDot() {
     const [on, setOn] = useState(true)
-    useEffect(() => { const t = setInterval(() => setOn(p => !p), 900); return () => clearInterval(t) }, [])
-    return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.emerald, opacity: on ? 1 : 0.2, transition: 'opacity 0.3s', marginRight: 8, boxShadow: `0 0 8px ${T.emerald}` }} />
+    const ref = useRef<HTMLSpanElement>(null)
+    useEffect(() => {
+        const el = ref.current
+        if (!el) return
+        let t: ReturnType<typeof setInterval> | null = null
+        const start = () => { if (!t) t = setInterval(() => setOn(p => !p), 900) }
+        const stop = () => { if (t) { clearInterval(t); t = null } }
+        const obs = new IntersectionObserver(([entry]) => { entry.isIntersecting ? start() : stop() })
+        obs.observe(el)
+        return () => { stop(); obs.disconnect() }
+    }, [])
+    return <span ref={ref} style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.emerald, opacity: on ? 1 : 0.2, transition: 'opacity 0.3s', marginRight: 8, boxShadow: `0 0 8px ${T.emerald}` }} />
 }
 
 // Mobile Menu Component
@@ -78,7 +90,7 @@ function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
 }
 
 export default function ZenalysLandingPage() {
-    const { quotes, connected, isLive, marketOpen } = useQuotes()
+    const { quotes, connected, isLive, marketOpen, lastUpdate } = useQuotes()
     const [scrolled, setScrolled] = useState(false)
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [isMobile, setIsMobile] = useState(false)
@@ -87,7 +99,7 @@ export default function ZenalysLandingPage() {
         const handleScroll = () => setScrolled(window.scrollY > 20)
         window.addEventListener('scroll', handleScroll)
         
-        const checkMobile = () => setIsMobile(window.innerWidth < 768)
+        const checkMobile = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
         checkMobile()
         window.addEventListener('resize', checkMobile)
         
@@ -185,15 +197,12 @@ export default function ZenalysLandingPage() {
                 backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
                 overflow: 'hidden'
             }}>
-                <div style={{ display: 'flex', gap: isMobile ? 20 : 40, alignItems: 'center', overflowX: 'auto', whiteSpace: 'nowrap', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="ticker-scroll">
-                    <style jsx>{`
-                        .ticker-scroll::-webkit-scrollbar { display: none; }
-                    `}</style>
+                <div className="ticker-scroll" style={{ display: 'flex', gap: isMobile ? 20 : 40, alignItems: 'center', overflowX: 'auto', whiteSpace: 'nowrap', scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                     <div style={{ display: 'flex', alignItems: 'center', fontSize: isMobile ? 10 : 11, color: T.textMid, letterSpacing: '1px', fontWeight: 600, flexShrink: 0 }}>
                         <LiveDot />
                         {connected ? (isLive ? 'LIVE DATA' : 'SIMULATION') : 'DELAYED / OFFLINE'}
                     </div>
-                    {Object.entries(quotes).slice(0, isMobile ? 3 : 5).map(([sym, q]) => (
+                    {(Object.entries(quotes ?? {})).slice(0, isMobile ? 3 : 5).map(([sym, q]) => (
                         <div key={sym} style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
                             <span style={{ fontSize: isMobile ? 11 : 12, color: T.textMid, fontWeight: 700 }}>{sym}</span>
                             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 12 : 13, fontWeight: 700, color: '#fff' }}>
@@ -204,16 +213,21 @@ export default function ZenalysLandingPage() {
                             </span>
                         </div>
                     ))}
-                    <div style={{ marginLeft: 'auto', fontSize: isMobile ? 10 : 11, fontWeight: 700, letterSpacing: '1px', flexShrink: 0 }}>
+                    <div style={{ marginLeft: 'auto', fontSize: isMobile ? 10 : 11, fontWeight: 700, letterSpacing: '1px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {lastUpdate && (
+                            <span style={{ color: T.textMuted, fontWeight: 500, letterSpacing: 0 }}>
+                                {new Date(lastUpdate).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+                        )}
                         <span style={{ color: marketOpen ? T.emerald : T.amber }}>
-                            {marketOpen ? '● NSE OPEN' : '⏰ MARKET CLOSED'}
+                            {marketOpen ? '● NSE OPEN' : '○ MARKET CLOSED'}
                         </span>
                     </div>
                 </div>
             </div>
 
             {/* Main Content wrapper */}
-            <div style={{ position: 'relative', zIndex: 10, paddingTop: isMobile ? 120 : 160 }}>
+            <div style={{ position: 'relative', zIndex: 10, paddingTop: 120 }}>
 
                 {/* Hero Section */}
                 <section style={{ 

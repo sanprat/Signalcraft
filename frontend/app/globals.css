@@ -36,6 +36,11 @@ body {
   background: #94A3B8;
 }
 
+/* Ticker scrollbar hiding */
+.ticker-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 /* Mono numbers */
 .mono {
   font-family: 'DM Mono', monospace;
