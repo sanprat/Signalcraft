@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useQuotes } from '@/hooks/useQuotes'
 
 // ── Color tokens (Avoiding blue & purple) ───────────────────────────────────
 const T = {
@@ -23,6 +24,12 @@ const T = {
 }
 
 // ── Components ──────────────────────────────────────────────────────────────
+
+function LiveDot() {
+    const [on, setOn] = useState(true)
+    useEffect(() => { const t = setInterval(() => setOn(p => !p), 900); return () => clearInterval(t) }, [])
+    return <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.emerald, opacity: on ? 1 : 0.2, transition: 'opacity 0.3s', marginRight: 8, boxShadow: `0 0 8px ${T.emerald}` }} />
+}
 
 // Mobile Menu Component
 function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -71,6 +78,7 @@ function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
 }
 
 export default function ZenalysLandingPage() {
+    const { quotes, connected, isLive, marketOpen } = useQuotes()
     const [scrolled, setScrolled] = useState(false)
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [isMobile, setIsMobile] = useState(false)
@@ -169,8 +177,43 @@ export default function ZenalysLandingPage() {
                 </div>
             </nav>
 
+            {/* Live ticker strip (Fixed directly under Nav) */}
+            <div style={{
+                position: 'fixed', top: isMobile ? 64 : 72, width: '100%', zIndex: 40,
+                background: 'rgba(0,0,0,0.8)', borderBottom: `1px solid ${T.border}`,
+                padding: isMobile ? '6px 16px' : '8px 5%',
+                backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+                overflow: 'hidden'
+            }}>
+                <div style={{ display: 'flex', gap: isMobile ? 20 : 40, alignItems: 'center', overflowX: 'auto', whiteSpace: 'nowrap', scrollbarWidth: 'none', msOverflowStyle: 'none' }} className="ticker-scroll">
+                    <style jsx>{`
+                        .ticker-scroll::-webkit-scrollbar { display: none; }
+                    `}</style>
+                    <div style={{ display: 'flex', alignItems: 'center', fontSize: isMobile ? 10 : 11, color: T.textMid, letterSpacing: '1px', fontWeight: 600, flexShrink: 0 }}>
+                        <LiveDot />
+                        {connected ? (isLive ? 'LIVE DATA' : 'SIMULATION') : 'DELAYED / OFFLINE'}
+                    </div>
+                    {Object.entries(quotes).slice(0, isMobile ? 3 : 5).map(([sym, q]) => (
+                        <div key={sym} style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0 }}>
+                            <span style={{ fontSize: isMobile ? 11 : 12, color: T.textMid, fontWeight: 700 }}>{sym}</span>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 12 : 13, fontWeight: 700, color: '#fff' }}>
+                                {q.ltp.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: isMobile ? 11 : 12, fontWeight: 600, color: q.up ? T.emerald : T.red }}>
+                                {q.up ? '+' : ''}{q.chg.toFixed(2)}%
+                            </span>
+                        </div>
+                    ))}
+                    <div style={{ marginLeft: 'auto', fontSize: isMobile ? 10 : 11, fontWeight: 700, letterSpacing: '1px', flexShrink: 0 }}>
+                        <span style={{ color: marketOpen ? T.emerald : T.amber }}>
+                            {marketOpen ? '● NSE OPEN' : '⏰ MARKET CLOSED'}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
             {/* Main Content wrapper */}
-            <div style={{ position: 'relative', zIndex: 10, paddingTop: isMobile ? 80 : 90 }}>
+            <div style={{ position: 'relative', zIndex: 10, paddingTop: isMobile ? 120 : 160 }}>
 
                 {/* Hero Section */}
                 <section style={{ 
