@@ -108,7 +108,10 @@ def get_last_date(parquet_path: Path) -> date | None:
     if not parquet_path.exists():
         return None
     try:
-        df = pd.read_parquet(parquet_path, columns=["time"])
+        try:
+            df = pd.read_parquet(parquet_path, columns=["time"])
+        except Exception:
+            df = pd.read_parquet(parquet_path, columns=["time"], engine='fastparquet')
         if df.empty:
             return None
         return pd.to_datetime(df["time"]).max().date()
@@ -223,7 +226,10 @@ def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA)
 
     if path.exists():
         try:
-            existing = pd.read_parquet(path)
+            try:
+                existing = pd.read_parquet(path)
+            except Exception:
+                existing = pd.read_parquet(path, engine='fastparquet')
             combined = pd.concat([existing, new_df], ignore_index=True)
         except Exception as e:
             log.error(f"FATAL ERROR: Could not read existing file {path} ({e}). Attempting to overwrite it will cause permanent historical data loss! Skipping.")
