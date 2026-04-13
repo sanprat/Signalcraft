@@ -230,15 +230,19 @@ def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA)
                 existing = pd.read_parquet(path)
             except Exception:
                 existing = pd.read_parquet(path, engine='fastparquet')
+            
+            # CRITICAL: Normalize both to naive UTC *before* concat to prevent Pandas 
+            # from coercing mixed tz-aware and tz-naive arrays into NaTs!
+            existing["time"] = _normalize_time_to_utc_naive(existing["time"])
+            new_df["time"] = _normalize_time_to_utc_naive(new_df["time"])
+            
             combined = pd.concat([existing, new_df], ignore_index=True)
         except Exception as e:
             log.error(f"FATAL ERROR: Could not read existing file {path} ({e}). Attempting to overwrite it will cause permanent historical data loss! Skipping.")
             return 0
     else:
+        new_df["time"] = _normalize_time_to_utc_naive(new_df["time"])
         combined = new_df
-
-    # Normalize time by strictly converting to naive UTC to bypass PyArrow tz bugs
-    combined["time"] = _normalize_time_to_utc_naive(combined["time"])
 
     combined = (
         combined.drop_duplicates("time").sort_values("time").reset_index(drop=True)
