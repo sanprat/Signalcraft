@@ -107,27 +107,36 @@ def generate_new_token():
 
         logger.info(f"Generating TOTP for fallback login...")
 
-        # Use official Dhan auth endpoint with query parameters
-        auth_url = "https://auth.dhan.co/app/generateAccessToken"
+        # Use official Dhan auth endpoint
+        auth_url = "https://api.dhan.co/v2/login"
 
-        params = {"dhanClientId": client_id, "pin": password, "totp": current_totp}
+        payload = {
+            "clientId": client_id,
+            "password": password,
+            "totp": current_totp
+        }
 
-        headers = {"Accept": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
 
         try:
             response = requests.post(
-                auth_url, params=params, headers=headers, timeout=30
+                auth_url, json=payload, headers=headers, timeout=30
             )
 
             if response.status_code == 200:
                 data = response.json()
-                access_token = data.get("accessToken")
+                # Handle different response formats
+                access_token = (
+                    data.get("accessToken") 
+                    or data.get("access_token") 
+                    or data.get("data", {}).get("accessToken")
+                )
 
                 if access_token:
                     logger.info(f"✅ New token generated successfully via TOTP!")
-                    logger.info(
-                        f"Token expires at: {data.get('expiryTime', 'unknown')}"
-                    )
                     return access_token
                 else:
                     logger.error(f"No access token in response: {data}")
