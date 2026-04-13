@@ -255,6 +255,14 @@ async def _dhan_feed():
 
                     sender_task = asyncio.create_task(sub_sender())
 
+                    # Empty the queue because _dynamic_subs already tracks all payloads
+                    while not _sub_queue.empty():
+                        try:
+                            _sub_queue.get_nowait()
+                            _sub_queue.task_done()
+                        except asyncio.QueueEmpty:
+                            break
+
                     # Re-subscribe all previously registered dynamic symbols
                     # (they are lost on WS reconnect since Dhan doesn't persist subscriptions)
                     for payload in _dynamic_subs:
@@ -498,10 +506,11 @@ async def _simulate_feed():
     Outside market hours, prices are frozen.
     """
     import random
-    logger.info("Starting simulation feed (Dhan WS unavailable)")
 
-    # Wait for baseline quotes to be initialized
+    # Wait a bit before announcing simulation (so we don't alarm if WS connects fast)
     await asyncio.sleep(2)
+    if _using_simulation:
+        logger.info("Starting simulation feed (Dhan WS currently unavailable)")
     
     while True:
         # Only simulate when Dhan WS is unavailable
