@@ -258,8 +258,10 @@ class SignalMonitor:
         else:
             # Update current candle
             idx = df.index[-1]
-            df.at[idx, "high"] = max(df.at[idx, "high"], price)
-            df.at[idx, "low"] = min(df.at[idx, "low"], price)
+            high_val = float(df.at[idx, "high"])
+            low_val = float(df.at[idx, "low"])
+            df.at[idx, "high"] = max(high_val, float(price))
+            df.at[idx, "low"] = min(low_val, float(price))
             df.at[idx, "close"] = price
 
     async def on_candle_close(self, symbol: str, interval: str, df: pd.DataFrame):
