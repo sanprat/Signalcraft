@@ -18,8 +18,14 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_PATH = PROJECT_ROOT / ".env"
 
-# Dhan login endpoint — b2b.dhan.co is deprecated and unresolvable in Docker
-DHAN_AUTH_URLS = [os.getenv("DHAN_AUTH_URL", "https://api.dhan.co/v2/login")]
+# Dhan login endpoint — try multiple known endpoints
+DHAN_AUTH_URLS = [
+    os.getenv("DHAN_AUTH_URL", ""),
+    "https://api.dhan.co/v2/login",
+    "https://api.dhan.co/login",
+]
+# Remove empty strings
+DHAN_AUTH_URLS = [url for url in DHAN_AUTH_URLS if url]
 DHAN_VALIDATE_URLS = [
     "https://api.dhan.co/v2/fundlimit",
     "https://api.dhan.co/fundlimit",
