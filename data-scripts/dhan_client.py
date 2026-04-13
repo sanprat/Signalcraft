@@ -188,11 +188,17 @@ class DhanClient:
             return normalized
 
         except requests.exceptions.HTTPError as e:
-            logger.warning(
-                f"Dhan HTTP {e.response.status_code} for "
-                f"{index} {strike_label(strike_offset)} {option_type} "
-                f"expCode={expiry_code}: {e.response.text[:200]}"
-            )
+            if e.response.status_code == 400 and "DH-905" in e.response.text and expiry_code == 0:
+                # Dhan API recently patched their loophole that allowed fetching live (unexpired) 
+                # rolling options by omitting expiryCode. We silently fail here and rely on the 
+                # expired options backfiller.
+                pass
+            else:
+                logger.warning(
+                    f"Dhan HTTP {e.response.status_code} for "
+                    f"{index} {strike_label(strike_offset)} {option_type} "
+                    f"expCode={expiry_code}: {e.response.text[:200]}"
+                )
         except Exception as e:
             logger.warning(f"Dhan request error: {e}")
         return []
