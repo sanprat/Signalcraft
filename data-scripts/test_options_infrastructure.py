@@ -66,6 +66,23 @@ class TestDhanClientExpiryList:
             assert len(result) == 3
             assert "2025-04-24" in result
 
+    def test_get_expiry_list_list_response_shape(self):
+        """expirylist should handle list response shape: {"data": ["2025-04-24"]}"""
+        import requests as req
+
+        with patch.object(req.Session, "post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {"data": ["2025-04-24", "2025-05-01"]}
+            mock_post.return_value = mock_resp
+
+            client = DhanClient("test_client", "test_token")
+            result = client.get_expiry_list("NIFTY")
+
+            assert isinstance(result, list)
+            assert len(result) == 2
+            assert "2025-04-24" in result
+
 
 class TestParquetWriterSchema:
     """Test parquet schema includes oi, iv, spot."""

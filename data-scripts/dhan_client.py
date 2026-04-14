@@ -391,6 +391,10 @@ class DhanClient:
         Endpoint: POST /v2/optionchain/expirylist
 
         Returns list of expiry date strings (YYYY-MM-DD).
+
+        Handles two response shapes:
+        - {"data": ["2025-04-24", "2025-05-01"]}
+        - {"data": {"expiryDates": ["2025-04-24", "2025-05-01"]}}
         """
         self._throttle()
         payload = {"UnderlyingScrip": SECURITY_IDS[index], "UnderlyingSeg": "IDX_I"}
@@ -401,10 +405,16 @@ class DhanClient:
                 timeout=30,
             )
             resp.raise_for_status()
-            data = resp.json()
-            inner = data.get("data", {})
-            expiry_dates = inner.get("expiryDates", [])
-            return expiry_dates
+            resp_json = resp.json()
+            expiry_data = resp_json.get("data", [])
+
+            if isinstance(expiry_data, list):
+                return expiry_data
+
+            if isinstance(expiry_data, dict):
+                return expiry_data.get("expiryDates", [])
+
+            return []
         except requests.exceptions.HTTPError as e:
             logger.warning(
                 f"Dhan expirylist HTTP {e.response.status_code}: {e.response.text[:200]}"
