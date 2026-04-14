@@ -28,20 +28,20 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.dhan.co/v2"
 
 INTERVAL_MAP = {
-    "1min":  "1",
-    "5min":  "5",
+    "1min": "1",
+    "5min": "5",
     "15min": "15",
 }
 
-MAX_CHUNK_DAYS      = 30    # Dhan limit for rollingoption
-MAX_INTRADAY_DAYS   = 88    # Dhan limit for intraday (we use 88 to be safe)
-RATE_LIMIT_SLEEP    = 1.1   # 1 req/sec
+MAX_CHUNK_DAYS = 30  # Dhan limit for rollingoption
+MAX_INTRADAY_DAYS = 88  # Dhan limit for intraday (we use 88 to be safe)
+RATE_LIMIT_SLEEP = 1.1  # 1 req/sec
 
 # Underlying security IDs (from Dhan instrument master — IDX_I segment)
 SECURITY_IDS = {
-    "NIFTY":      13,
-    "BANKNIFTY":  25,
-    "FINNIFTY":   27,
+    "NIFTY": 13,
+    "BANKNIFTY": 25,
+    "FINNIFTY": 27,
     "GIFTNIFTY": 5024,  # GIFT NIFTY (NSE International Exchange - GIFT City)
 }
 
@@ -50,7 +50,7 @@ OPTION_TYPE_MAP = {
     "PE": "PUT",
 }
 
-REQUIRED_DATA = ["open", "high", "low", "close", "volume", "strike"]
+REQUIRED_DATA = ["open", "high", "low", "close", "volume", "oi", "iv", "spot", "strike"]
 IST = ZoneInfo("Asia/Kolkata")
 
 
@@ -68,15 +68,17 @@ class DhanClient:
     """Dhan HQ API client — expired options + active intraday data."""
 
     def __init__(self, client_id: str, access_token: str):
-        self.client_id    = client_id.strip()
+        self.client_id = client_id.strip()
         self.access_token = access_token.strip()
         self.session = requests.Session()
-        self.session.headers.update({
-            "access-token": self.access_token,
-            "client-id":    self.client_id,
-            "Content-Type": "application/json",
-            "Accept":       "application/json",
-        })
+        self.session.headers.update(
+            {
+                "access-token": self.access_token,
+                "client-id": self.client_id,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+        )
         self._last_request_time = 0.0
 
     def _throttle(self):
@@ -95,9 +97,7 @@ class DhanClient:
         incorrectly label them as IST later in the pipeline.
         """
         return (
-            datetime.fromtimestamp(int(ts), tz=timezone.utc)
-            .astimezone(IST)
-            .isoformat()
+            datetime.fromtimestamp(int(ts), tz=timezone.utc).astimezone(IST).isoformat()
         )
 
     def verify_connection(self) -> bool:
@@ -116,10 +116,10 @@ class DhanClient:
     def get_expired_options_candles(
         self,
         index: str,
-        strike_offset: int,     # -10 to +10 relative to ATM
-        option_type: str,        # "CE" or "PUT"
-        expiry_flag: str,        # "WEEK" or "MONTH"
-        expiry_code: int,        # 1=nearest expired, 2=second nearest, etc.
+        strike_offset: int,  # -10 to +10 relative to ATM
+        option_type: str,  # "CE" or "PUT"
+        expiry_flag: str,  # "WEEK" or "MONTH"
+        expiry_code: int,  # 1=nearest expired, 2=second nearest, etc.
         from_date: date,
         to_date: date,
         interval: str,
@@ -133,17 +133,17 @@ class DhanClient:
 
         payload = {
             "exchangeSegment": "NSE_FNO",
-            "instrument":      "OPTIDX",
-            "securityId":      SECURITY_IDS[index],
-            "expiryFlag":      expiry_flag,
-            "strike":          strike_label(strike_offset),
-            "drvOptionType":   OPTION_TYPE_MAP[option_type],
-            "interval":        INTERVAL_MAP[interval],
-            "requiredData":    REQUIRED_DATA,   # MANDATORY per docs
-            "fromDate":        from_date.strftime("%Y-%m-%d"),
-            "toDate":          to_date.strftime("%Y-%m-%d"),
+            "instrument": "OPTIDX",
+            "securityId": SECURITY_IDS[index],
+            "expiryFlag": expiry_flag,
+            "strike": strike_label(strike_offset),
+            "drvOptionType": OPTION_TYPE_MAP[option_type],
+            "interval": INTERVAL_MAP[interval],
+            "requiredData": REQUIRED_DATA,  # MANDATORY per docs
+            "fromDate": from_date.strftime("%Y-%m-%d"),
+            "toDate": to_date.strftime("%Y-%m-%d"),
         }
-        
+
         # Dhan API throws DH-905 if expiryCode is 0. Docs say it's 1-indexed for expired.
         # So we omit it for live options (0) to get current expiry.
         if expiry_code > 0:
@@ -151,9 +151,7 @@ class DhanClient:
 
         try:
             resp = self.session.post(
-                f"{BASE_URL}/charts/rollingoption",
-                json=payload,
-                timeout=30
+                f"{BASE_URL}/charts/rollingoption", json=payload, timeout=30
             )
             resp.raise_for_status()
             data = resp.json()
@@ -167,30 +165,42 @@ class DhanClient:
                 return []
 
             timestamps = side["timestamp"]
-            opens      = side.get("open",   [0] * len(timestamps))
-            highs      = side.get("high",   [0] * len(timestamps))
-            lows       = side.get("low",    [0] * len(timestamps))
-            closes     = side.get("close",  [0] * len(timestamps))
-            volumes    = side.get("volume", [0] * len(timestamps))
-            strikes    = side.get("strike", [0] * len(timestamps))
+            opens = side.get("open", [0] * len(timestamps))
+            highs = side.get("high", [0] * len(timestamps))
+            lows = side.get("low", [0] * len(timestamps))
+            closes = side.get("close", [0] * len(timestamps))
+            volumes = side.get("volume", [0] * len(timestamps))
+            strikes = side.get("strike", [0] * len(timestamps))
+            ois = side.get("oi", [0.0] * len(timestamps))
+            ivs = side.get("iv", [0.0] * len(timestamps))
+            spots = side.get("spot", [0.0] * len(timestamps))
 
             normalized = []
             for i, ts in enumerate(timestamps):
-                normalized.append({
-                    "time":   self._epoch_to_ist_iso(ts),
-                    "open":   float(opens[i]),
-                    "high":   float(highs[i]),
-                    "low":    float(lows[i]),
-                    "close":  float(closes[i]),
-                    "volume": int(float(volumes[i])),
-                    "strike": float(strikes[i]),  # actual absolute strike ✅
-                })
+                normalized.append(
+                    {
+                        "time": self._epoch_to_ist_iso(ts),
+                        "open": float(opens[i]),
+                        "high": float(highs[i]),
+                        "low": float(lows[i]),
+                        "close": float(closes[i]),
+                        "volume": int(float(volumes[i])),
+                        "strike": float(strikes[i]),
+                        "oi": float(ois[i]),
+                        "iv": float(ivs[i]),
+                        "spot": float(spots[i]),
+                    }
+                )
             return normalized
 
         except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 400 and "DH-905" in e.response.text and expiry_code == 0:
-                # Dhan API recently patched their loophole that allowed fetching live (unexpired) 
-                # rolling options by omitting expiryCode. We silently fail here and rely on the 
+            if (
+                e.response.status_code == 400
+                and "DH-905" in e.response.text
+                and expiry_code == 0
+            ):
+                # Dhan API recently patched their loophole that allowed fetching live (unexpired)
+                # rolling options by omitting expiryCode. We silently fail here and rely on the
                 # expired options backfiller.
                 pass
             else:
@@ -220,9 +230,14 @@ class DhanClient:
         while chunk_start <= end:
             chunk_end = min(chunk_start + timedelta(days=MAX_CHUNK_DAYS - 1), end)
             candles = self.get_expired_options_candles(
-                index, strike_offset, option_type,
-                expiry_flag, expiry_code,
-                chunk_start, chunk_end, interval,
+                index,
+                strike_offset,
+                option_type,
+                expiry_flag,
+                expiry_code,
+                chunk_start,
+                chunk_end,
+                interval,
             )
             all_candles.extend(candles)
             chunk_start = chunk_end + timedelta(days=1)
@@ -234,7 +249,7 @@ class DhanClient:
         exchange_segment: str,
         instrument: str,
         interval: str,
-        from_datetime: str,     # "YYYY-MM-DD HH:MM:SS"
+        from_datetime: str,  # "YYYY-MM-DD HH:MM:SS"
         to_datetime: str,
         oi: bool = False,
     ) -> list:
@@ -245,13 +260,13 @@ class DhanClient:
         """
         self._throttle()
         payload = {
-            "securityId":       security_id,
-            "exchangeSegment":  exchange_segment,
-            "instrument":       instrument,
-            "interval":         INTERVAL_MAP.get(interval, interval),
-            "oi":               oi,
-            "fromDate":         from_datetime,
-            "toDate":           to_datetime,
+            "securityId": security_id,
+            "exchangeSegment": exchange_segment,
+            "instrument": instrument,
+            "interval": INTERVAL_MAP.get(interval, interval),
+            "oi": oi,
+            "fromDate": from_datetime,
+            "toDate": to_datetime,
         }
         try:
             resp = self.session.post(
@@ -262,25 +277,29 @@ class DhanClient:
             resp.raise_for_status()
             data = resp.json()
             timestamps = data.get("timestamp", [])
-            opens      = data.get("open",   [])
-            highs      = data.get("high",   [])
-            lows       = data.get("low",    [])
-            closes     = data.get("close",  [])
-            volumes    = data.get("volume", [])
+            opens = data.get("open", [])
+            highs = data.get("high", [])
+            lows = data.get("low", [])
+            closes = data.get("close", [])
+            volumes = data.get("volume", [])
             normalized = []
             for i, ts in enumerate(timestamps):
-                normalized.append({
-                    "time":   self._epoch_to_ist_iso(ts),
-                    "open":   float(opens[i]),
-                    "high":   float(highs[i]),
-                    "low":    float(lows[i]),
-                    "close":  float(closes[i]),
-                    "volume": int(float(volumes[i])),
-                    "strike": 0,
-                })
+                normalized.append(
+                    {
+                        "time": self._epoch_to_ist_iso(ts),
+                        "open": float(opens[i]),
+                        "high": float(highs[i]),
+                        "low": float(lows[i]),
+                        "close": float(closes[i]),
+                        "volume": int(float(volumes[i])),
+                        "strike": 0,
+                    }
+                )
             return normalized
         except requests.exceptions.HTTPError as e:
-            logger.warning(f"Dhan intraday HTTP {e.response.status_code}: {e.response.text[:200]}")
+            logger.warning(
+                f"Dhan intraday HTTP {e.response.status_code}: {e.response.text[:200]}"
+            )
         except Exception as e:
             logger.warning(f"Dhan intraday error: {e}")
         return []
@@ -290,9 +309,9 @@ class DhanClient:
         security_id: str,
         exchange_segment: str,
         instrument: str,
-        from_date: str,         # "YYYY-MM-DD"
-        to_date: str,           # "YYYY-MM-DD"
-        expiry_code: int = 0
+        from_date: str,  # "YYYY-MM-DD"
+        to_date: str,  # "YYYY-MM-DD"
+        expiry_code: int = 0,
     ) -> list:
         """
         Fetch full daily (1D) historical data using the explicit daily endpoint.
@@ -301,12 +320,12 @@ class DhanClient:
         """
         self._throttle()
         payload = {
-            "securityId":       security_id,
-            "exchangeSegment":  exchange_segment,
-            "instrument":       instrument,
-            "expiryCode":       expiry_code,
-            "fromDate":         from_date,
-            "toDate":           to_date,
+            "securityId": security_id,
+            "exchangeSegment": exchange_segment,
+            "instrument": instrument,
+            "expiryCode": expiry_code,
+            "fromDate": from_date,
+            "toDate": to_date,
         }
         try:
             resp = self.session.post(
@@ -319,39 +338,77 @@ class DhanClient:
             # Depending on if data holds array properly or if nested
             # Often data has dict of arrays format: "open": [...], "high": [...] inside "data" key
             inner = data.get("data", data)
-            
+
             timestamps = inner.get("start_Time", inner.get("timestamp", []))
-            opens      = inner.get("open",   [])
-            highs      = inner.get("high",   [])
-            lows       = inner.get("low",    [])
-            closes     = inner.get("close",  [])
-            volumes    = inner.get("volume", [])
+            opens = inner.get("open", [])
+            highs = inner.get("high", [])
+            lows = inner.get("low", [])
+            closes = inner.get("close", [])
+            volumes = inner.get("volume", [])
             normalized = []
-            
+
             for i, ts in enumerate(timestamps):
                 # Need to handle if ts is given as date string or timestamp
-                if isinstance(ts, (int, float)) or (isinstance(ts, str) and ts.isdigit()):
-                    dt_str = datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%dT00:00:00+05:30")
-                else: 
+                if isinstance(ts, (int, float)) or (
+                    isinstance(ts, str) and ts.isdigit()
+                ):
+                    dt_str = datetime.fromtimestamp(int(ts)).strftime(
+                        "%Y-%m-%dT00:00:00+05:30"
+                    )
+                else:
                     # If returned as string like YYYY-MM-DD
                     dt_str = f"{ts}T00:00:00+05:30"
 
-                normalized.append({
-                    "time":   dt_str,
-                    "open":   float(opens[i]),
-                    "high":   float(highs[i]),
-                    "low":    float(lows[i]),
-                    "close":  float(closes[i]),
-                    "volume": int(float(volumes[i])) if volumes and i < len(volumes) else 0,
-                    "strike": 0,
-                })
+                normalized.append(
+                    {
+                        "time": dt_str,
+                        "open": float(opens[i]),
+                        "high": float(highs[i]),
+                        "low": float(lows[i]),
+                        "close": float(closes[i]),
+                        "volume": int(float(volumes[i]))
+                        if volumes and i < len(volumes)
+                        else 0,
+                        "strike": 0,
+                    }
+                )
             return normalized
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 400 and "DH-905" in e.response.text:
                 # Silently fail as this is an expected fallback condition for recent dates
                 pass
             else:
-                logger.warning(f"Dhan historical HTTP {e.response.status_code}: {e.response.text[:200]}")
+                logger.warning(
+                    f"Dhan historical HTTP {e.response.status_code}: {e.response.text[:200]}"
+                )
         except Exception as e:
             logger.warning(f"Dhan historical error: {e}")
+        return []
+
+    def get_expiry_list(self, index: str) -> list:
+        """
+        Fetch list of active expiries for an index.
+        Endpoint: POST /v2/optionchain/expirylist
+
+        Returns list of expiry date strings (YYYY-MM-DD).
+        """
+        self._throttle()
+        payload = {"UnderlyingScrip": SECURITY_IDS[index], "UnderlyingSeg": "IDX_I"}
+        try:
+            resp = self.session.post(
+                f"{BASE_URL}/optionchain/expirylist",
+                json=payload,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            inner = data.get("data", {})
+            expiry_dates = inner.get("expiryDates", [])
+            return expiry_dates
+        except requests.exceptions.HTTPError as e:
+            logger.warning(
+                f"Dhan expirylist HTTP {e.response.status_code}: {e.response.text[:200]}"
+            )
+        except Exception as e:
+            logger.warning(f"Dhan expirylist error: {e}")
         return []

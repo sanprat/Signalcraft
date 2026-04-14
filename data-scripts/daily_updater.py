@@ -52,7 +52,7 @@ MAPPING_FILE = Path(__file__).parent / "nifty50_dhan_mapping.json"
 
 STOCK_INTERVALS = ["1min"]  # 5min/15min/1D derived via resample_nifty500.py
 INDEX_INTERVALS = ["1min", "5min", "15min"]
-FNO_INTERVALS   = ["1min"]  # 5min/15min derived via resample_fno.py
+FNO_INTERVALS = ["1min"]  # 5min/15min derived via resample_fno.py
 FNO_OFFSETS = list(range(-10, 11))  # ATM-10 to ATM+10
 FNO_OPT_TYPES = ["CE", "PE"]
 
@@ -65,13 +65,56 @@ INDICES = {
 
 # NIFTY 50 blue-chip stocks (Deep historical data support)
 NIFTY_50 = [
-    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "INFY", "LICI",
-    "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "HCLTECH", "MARUTI", "SUNPHARMA",
-    "TATAMOTORS", "TATASTEEL", "KOTAKBANK", "TITAN", "NTPC", "ULTRACEMCO", "ONGC",
-    "AXISBANK", "WIPRO", "NESTLEIND", "M&M", "POWERGRID", "GRASIM", "JSWSTEEL",
-    "ASIANPAINT", "HDFCLIFE", "SBILIFE", "BRITANNIA", "EICHERMOT", "APOLLOHOSP",
-    "DIVISLAB", "TATACONSUM", "BAJAJFINSV", "HINDALCO", "TECHM", "DRREDDY", "CIPLA",
-    "INDUSINDBK", "ADANIPORTS", "ADANIENT", "BPCL", "COALINDIA", "HEROMOTOCO", "UPL", "TATAPOWER"
+    "RELIANCE",
+    "TCS",
+    "HDFCBANK",
+    "ICICIBANK",
+    "BHARTIARTL",
+    "SBIN",
+    "INFY",
+    "LICI",
+    "ITC",
+    "HINDUNILVR",
+    "LT",
+    "BAJFINANCE",
+    "HCLTECH",
+    "MARUTI",
+    "SUNPHARMA",
+    "TATAMOTORS",
+    "TATASTEEL",
+    "KOTAKBANK",
+    "TITAN",
+    "NTPC",
+    "ULTRACEMCO",
+    "ONGC",
+    "AXISBANK",
+    "WIPRO",
+    "NESTLEIND",
+    "M&M",
+    "POWERGRID",
+    "GRASIM",
+    "JSWSTEEL",
+    "ASIANPAINT",
+    "HDFCLIFE",
+    "SBILIFE",
+    "BRITANNIA",
+    "EICHERMOT",
+    "APOLLOHOSP",
+    "DIVISLAB",
+    "TATACONSUM",
+    "BAJAJFINSV",
+    "HINDALCO",
+    "TECHM",
+    "DRREDDY",
+    "CIPLA",
+    "INDUSINDBK",
+    "ADANIPORTS",
+    "ADANIENT",
+    "BPCL",
+    "COALINDIA",
+    "HEROMOTOCO",
+    "UPL",
+    "TATAPOWER",
 ]
 
 SCHEMA = pa.schema(
@@ -82,6 +125,20 @@ SCHEMA = pa.schema(
         ("low", pa.float32()),
         ("close", pa.float32()),
         ("volume", pa.int64()),
+    ]
+)
+
+OPTIONS_SCHEMA = pa.schema(
+    [
+        ("time", pa.timestamp("s")),
+        ("open", pa.float32()),
+        ("high", pa.float32()),
+        ("low", pa.float32()),
+        ("close", pa.float32()),
+        ("volume", pa.int64()),
+        ("oi", pa.float64()),
+        ("iv", pa.float32()),
+        ("spot", pa.float32()),
     ]
 )
 
@@ -111,7 +168,7 @@ def get_last_date(parquet_path: Path) -> date | None:
         try:
             df = pd.read_parquet(parquet_path, columns=["time"])
         except Exception:
-            df = pd.read_parquet(parquet_path, columns=["time"], engine='fastparquet')
+            df = pd.read_parquet(parquet_path, columns=["time"], engine="fastparquet")
         if df.empty:
             return None
         return pd.to_datetime(df["time"]).max().date()
@@ -217,7 +274,7 @@ def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA)
         new_df:  New candle data to append.
         path:    Destination parquet file.
         schema:  Arrow schema to enforce on write (default: SCHEMA with volume;
-                 pass FNO_SCHEMA for options which store OHLC only).
+                 pass OPTIONS_SCHEMA for options which include oi, iv, spot).
     """
     if new_df.empty:
         return 0
@@ -229,16 +286,18 @@ def merge_and_save(new_df: pd.DataFrame, path: Path, schema: pa.Schema = SCHEMA)
             try:
                 existing = pd.read_parquet(path)
             except Exception:
-                existing = pd.read_parquet(path, engine='fastparquet')
-            
-            # CRITICAL: Normalize both to naive UTC *before* concat to prevent Pandas 
+                existing = pd.read_parquet(path, engine="fastparquet")
+
+            # CRITICAL: Normalize both to naive UTC *before* concat to prevent Pandas
             # from coercing mixed tz-aware and tz-naive arrays into NaTs!
             existing["time"] = _normalize_time_to_utc_naive(existing["time"])
             new_df["time"] = _normalize_time_to_utc_naive(new_df["time"])
-            
+
             combined = pd.concat([existing, new_df], ignore_index=True)
         except Exception as e:
-            log.error(f"FATAL ERROR: Could not read existing file {path} ({e}). Attempting to overwrite it will cause permanent historical data loss! Skipping.")
+            log.error(
+                f"FATAL ERROR: Could not read existing file {path} ({e}). Attempting to overwrite it will cause permanent historical data loss! Skipping."
+            )
             return 0
     else:
         new_df["time"] = _normalize_time_to_utc_naive(new_df["time"])
@@ -588,8 +647,12 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
                         for strike, rows in by_strike.items():
                             df = pd.DataFrame(rows)
                             df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
+                            # Include oi, iv, spot when available
+                            cols = ["time", "open", "high", "low", "close", "volume"]
+                            if "oi" in df.columns:
+                                cols.extend(["oi", "iv", "spot"])
                             df = (
-                                df[["time", "open", "high", "low", "close", "volume"]]
+                                df[cols]
                                 .drop_duplicates(subset=["time"])
                                 .sort_values("time")
                                 .reset_index(drop=True)
@@ -602,7 +665,8 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
                                 out_dir / f"dhan_ec{expiry_code}_{strike}.parquet"
                             )
 
-                            merge_and_save(df, out_path)
+                            schema = OPTIONS_SCHEMA if "oi" in df.columns else SCHEMA
+                            merge_and_save(df, out_path, schema=schema)
 
                         downloaded += 1
                     else:
@@ -684,8 +748,12 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
                         for strike, rows in by_strike.items():
                             df = pd.DataFrame(rows)
                             df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
+                            # Include oi, iv, spot when available
+                            cols = ["time", "open", "high", "low", "close", "volume"]
+                            if "oi" in df.columns:
+                                cols.extend(["oi", "iv", "spot"])
                             df = (
-                                df[["time", "open", "high", "low", "close", "volume"]]
+                                df[cols]
                                 .drop_duplicates(subset=["time"])
                                 .sort_values("time")
                                 .reset_index(drop=True)
@@ -697,7 +765,8 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
                             # ec0 = live contract (kept separate from ec1 expired files)
                             out_path = out_dir / f"dhan_ec0_{strike}.parquet"
 
-                            merge_and_save(df, out_path)
+                            schema = OPTIONS_SCHEMA if "oi" in df.columns else SCHEMA
+                            merge_and_save(df, out_path, schema=schema)
                         downloaded += 1
                     else:
                         empty += 1

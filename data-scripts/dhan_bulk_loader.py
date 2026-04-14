@@ -19,6 +19,8 @@ from datetime import date, timedelta, datetime
 from pathlib import Path
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 from dotenv import load_dotenv
 from tqdm import tqdm
 
@@ -34,29 +36,56 @@ logging.basicConfig(
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler("data/dhan_errors.log"),
-    ]
+    ],
 )
 logger = logging.getLogger(__name__)
 
-INDICES   = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
+INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
 INTERVALS = ["1min", "5min", "15min"]
-OFFSETS   = list(range(-10, 11))   # ATM-10 to ATM+10 = 21 strikes
+OFFSETS = list(range(-10, 11))  # ATM-10 to ATM+10 = 21 strikes
 OPT_TYPES = ["CE", "PE"]
-BASE_DIR  = Path("data")
+BASE_DIR = Path("data")
+
+OPTIONS_SCHEMA = pa.schema(
+    [
+        ("time", pa.timestamp("s")),
+        ("open", pa.float32()),
+        ("high", pa.float32()),
+        ("low", pa.float32()),
+        ("close", pa.float32()),
+        ("volume", pa.int64()),
+        ("oi", pa.float64()),
+        ("iv", pa.float32()),
+        ("spot", pa.float32()),
+    ]
+)
 
 
 def parse_args():
     p = argparse.ArgumentParser(description="Dhan Expired Options Downloader")
-    p.add_argument("--start-expiry", type=int, default=1,
-                   help="Expiry code to start from (1 = most recent expiry). Use >52 for older years like 2024.")
-    p.add_argument("--expiries", type=int, default=52,
-                   help="Number of past weekly expiries to fetch (default: 52 ≈ 1 year)")
+    p.add_argument(
+        "--start-expiry",
+        type=int,
+        default=1,
+        help="Expiry code to start from (1 = most recent expiry). Use >52 for older years like 2024.",
+    )
+    p.add_argument(
+        "--expiries",
+        type=int,
+        default=52,
+        help="Number of past weekly expiries to fetch (default: 52 ≈ 1 year)",
+    )
     p.add_argument("--dry-run", action="store_true")
-    p.add_argument("--force", action="store_true",
-                   help="Re-download even if checkpoint says done")
-    p.add_argument("--indices", nargs="+", default=["NIFTY", "BANKNIFTY", "FINNIFTY"],
-                   choices=["NIFTY", "BANKNIFTY", "FINNIFTY"],
-                   help="Which indices to download (default: all three)")
+    p.add_argument(
+        "--force", action="store_true", help="Re-download even if checkpoint says done"
+    )
+    p.add_argument(
+        "--indices",
+        nargs="+",
+        default=["NIFTY", "BANKNIFTY", "FINNIFTY"],
+        choices=["NIFTY", "BANKNIFTY", "FINNIFTY"],
+        help="Which indices to download (default: all three)",
+    )
     return p.parse_args()
 
 
@@ -75,13 +104,14 @@ def expiry_window(expiry_code: int, index: str) -> tuple[date, date]:
     days_since = (today.weekday() - target_weekday) % 7
     if days_since == 0:
         days_since = 7
-    last_expiry_day  = today - timedelta(days=days_since)
+    last_expiry_day = today - timedelta(days=days_since)
     estimated_expiry = last_expiry_day - timedelta(weeks=expiry_code - 1)
     return estimated_expiry - timedelta(days=12), estimated_expiry + timedelta(days=1)
 
 
-def save_dhan_candles(candles: list, index: str, option_type: str,
-                      interval: str, expiry_code: int) -> int:
+def save_dhan_candles(
+    candles: list, index: str, option_type: str, interval: str, expiry_code: int
+) -> int:
     """
     Group candles by their actual absolute strike price (from Dhan response)
     and write each strike's data to a separate Parquet file.
@@ -98,10 +128,16 @@ def save_dhan_candles(candles: list, index: str, option_type: str,
     for strike, rows in by_strike.items():
         df = pd.DataFrame(rows)
         df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
-        df = (df[["time", "open", "high", "low", "close", "volume"]]
-              .drop_duplicates(subset=["time"])
-              .sort_values("time")
-              .reset_index(drop=True))
+        # Include oi, iv, spot when available
+        cols = ["time", "open", "high", "low", "close", "volume"]
+        if "oi" in df.columns:
+            cols.extend(["oi", "iv", "spot"])
+        df = (
+            df[cols]
+            .drop_duplicates(subset=["time"])
+            .sort_values("time")
+            .reset_index(drop=True)
+        )
         df["time"] = df["time"].astype("datetime64[s]")
 
         out_dir = BASE_DIR / "candles" / index / option_type / interval
@@ -110,12 +146,29 @@ def save_dhan_candles(candles: list, index: str, option_type: str,
 
         if out_path.exists():
             existing = pd.read_parquet(out_path)
-            df = (pd.concat([existing, df])
-                  .drop_duplicates(subset=["time"])
-                  .sort_values("time")
-                  .reset_index(drop=True))
+            df = (
+                pd.concat([existing, df])
+                .drop_duplicates(subset=["time"])
+                .sort_values("time")
+                .reset_index(drop=True)
+            )
 
-        df.to_parquet(out_path, compression="lz4", index=False)
+        schema = (
+            OPTIONS_SCHEMA
+            if "oi" in df.columns
+            else pa.schema(
+                [
+                    ("time", pa.timestamp("s")),
+                    ("open", pa.float32()),
+                    ("high", pa.float32()),
+                    ("low", pa.float32()),
+                    ("close", pa.float32()),
+                    ("volume", pa.int64()),
+                ]
+            )
+        )
+        table = pa.Table.from_pandas(df, schema=schema, preserve_index=False)
+        pq.write_table(table, out_path, compression="lz4")
         total += len(df)
     return total
 
@@ -126,22 +179,32 @@ def dhan_key(index, ec, offset, opt, interval):
 
 def main():
     args = parse_args()
-    expiry_codes   = list(range(args.start_expiry, args.start_expiry + args.expiries))
+    expiry_codes = list(range(args.start_expiry, args.start_expiry + args.expiries))
     active_indices = args.indices
-    total_jobs     = len(expiry_codes) * len(active_indices) * len(OFFSETS) * len(OPT_TYPES) * len(INTERVALS)
+    total_jobs = (
+        len(expiry_codes)
+        * len(active_indices)
+        * len(OFFSETS)
+        * len(OPT_TYPES)
+        * len(INTERVALS)
+    )
 
     if args.dry_run:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  DHAN DRY RUN")
-        print(f"{'='*60}")
-        print(f"  Expiry codes : {args.start_expiry} to {args.start_expiry + args.expiries - 1} (~{args.expiries} weekly expiries)")
+        print(f"{'=' * 60}")
+        print(
+            f"  Expiry codes : {args.start_expiry} to {args.start_expiry + args.expiries - 1} (~{args.expiries} weekly expiries)"
+        )
         print(f"  Indices      : {', '.join(active_indices)}")
         print(f"  Strikes      : ATM-10 to ATM+10 (21 per expiry)")
         print(f"  Option types : CE + PE")
         print(f"  Intervals    : {', '.join(INTERVALS)}")
         print(f"  TOTAL jobs   : {total_jobs:,}")
-        print(f"  Est. time    : {total_jobs/3600:.1f} hrs @ 1 req/sec (tight windows = 1 call/job)")
-        print(f"{'='*60}\n")
+        print(
+            f"  Est. time    : {total_jobs / 3600:.1f} hrs @ 1 req/sec (tight windows = 1 call/job)"
+        )
+        print(f"{'=' * 60}\n")
         return
 
     client = DhanClient(
@@ -166,7 +229,11 @@ def main():
 
     for job in tqdm(jobs, desc="Dhan download", unit="job"):
         idx, ec, off, opt, iv = (
-            job["index"], job["ec"], job["offset"], job["opt"], job["interval"]
+            job["index"],
+            job["ec"],
+            job["offset"],
+            job["opt"],
+            job["interval"],
         )
         key = dhan_key(idx, ec, off, opt, iv)
 
@@ -198,11 +265,15 @@ def main():
 
         if (downloaded + empty) % 200 == 0:
             _save_progress(done)
-            logger.info(f"Progress: {downloaded} with data | {empty} empty | {skipped} skipped")
+            logger.info(
+                f"Progress: {downloaded} with data | {empty} empty | {skipped} skipped"
+            )
 
     _save_progress(done)
     logger.info("=" * 60)
-    logger.info(f"Dhan download complete! {downloaded:,} data | {empty:,} empty | {skipped:,} skipped")
+    logger.info(
+        f"Dhan download complete! {downloaded:,} data | {empty:,} empty | {skipped:,} skipped"
+    )
     logger.info("Run verify_data.py to check coverage.")
     logger.info("=" * 60)
 

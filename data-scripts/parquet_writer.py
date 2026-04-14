@@ -23,17 +23,26 @@ logger = logging.getLogger(__name__)
 BASE_DIR = Path("data")
 PROGRESS_FILE = BASE_DIR / "download_progress.json"
 
-SCHEMA = pa.schema([
-    ("time",   pa.timestamp("s", tz="Asia/Kolkata")),
-    ("open",   pa.float32()),
-    ("high",   pa.float32()),
-    ("low",    pa.float32()),
-    ("close",  pa.float32()),
-    ("volume", pa.int64()),
-])
+SCHEMA = pa.schema(
+    [
+        ("time", pa.timestamp("s", tz="Asia/Kolkata")),
+        ("open", pa.float32()),
+        ("high", pa.float32()),
+        ("low", pa.float32()),
+        ("close", pa.float32()),
+        ("volume", pa.int64()),
+        ("oi", pa.float64()),
+        ("iv", pa.float32()),
+        ("spot", pa.float32()),
+    ]
+)
+
+OPTIONS_SCHEMA = SCHEMA  # Canonical schema for options with oi, iv, spot
 
 
-def _candles_path(index: str, option_type: str, interval: str, expiry: date, strike: int) -> Path:
+def _candles_path(
+    index: str, option_type: str, interval: str, expiry: date, strike: int
+) -> Path:
     filename = f"{expiry.strftime('%Y%m%d')}_{strike}.parquet"
     return BASE_DIR / "candles" / index / option_type / interval / filename
 
@@ -42,10 +51,10 @@ def _underlying_path(index: str, interval: str) -> Path:
     return BASE_DIR / "underlying" / index / f"{interval}.parquet"
 
 
-def _raw_to_df(raw_candles: list) -> pd.DataFrame:
+def _raw_to_df(raw_candles: list, include_oi_iv_spot: bool = True) -> pd.DataFrame:
     """
-    Convert raw candle list [[timestamp_str, O, H, L, C, V], ...] to DataFrame.
-    Handles both Angel format (list) and already-normalized format.
+    Convert raw candle list to DataFrame.
+    Handles dict format with time, open, high, low, close, volume, oi, iv, spot.
     """
     if not raw_candles:
         return pd.DataFrame(columns=["time", "open", "high", "low", "close", "volume"])
@@ -53,15 +62,24 @@ def _raw_to_df(raw_candles: list) -> pd.DataFrame:
     rows = []
     for c in raw_candles:
         try:
-            ts = pd.Timestamp(c[0]).tz_localize("Asia/Kolkata") if pd.Timestamp(c[0]).tzinfo is None else pd.Timestamp(c[0]).tz_convert("Asia/Kolkata")
-            rows.append({
-                "time":   ts,
-                "open":   float(c[1]),
-                "high":   float(c[2]),
-                "low":    float(c[3]),
-                "close":  float(c[4]),
-                "volume": int(c[5]),
-            })
+            ts = (
+                pd.Timestamp(c["time"]).tz_localize("Asia/Kolkata")
+                if pd.Timestamp(c["time"]).tzinfo is None
+                else pd.Timestamp(c["time"]).tz_convert("Asia/Kolkata")
+            )
+            row = {
+                "time": ts,
+                "open": float(c["open"]),
+                "high": float(c["high"]),
+                "low": float(c["low"]),
+                "close": float(c["close"]),
+                "volume": int(c["volume"]),
+            }
+            if include_oi_iv_spot:
+                row["oi"] = float(c.get("oi", 0))
+                row["iv"] = float(c.get("iv", 0))
+                row["spot"] = float(c.get("spot", 0))
+            rows.append(row)
         except Exception as e:
             logger.debug(f"Skipping bad candle {c}: {e}")
 
@@ -71,14 +89,16 @@ def _raw_to_df(raw_candles: list) -> pd.DataFrame:
 
     # Keep only market hours: 9:15 to 15:30 IST
     df = df[
-        (df["time"].dt.hour > 9) |
-        ((df["time"].dt.hour == 9) & (df["time"].dt.minute >= 15))
+        (df["time"].dt.hour > 9)
+        | ((df["time"].dt.hour == 9) & (df["time"].dt.minute >= 15))
     ]
     df = df[
-        (df["time"].dt.hour < 15) |
-        ((df["time"].dt.hour == 15) & (df["time"].dt.minute <= 30))
+        (df["time"].dt.hour < 15)
+        | ((df["time"].dt.hour == 15) & (df["time"].dt.minute <= 30))
     ]
-    return df.drop_duplicates(subset=["time"]).sort_values("time").reset_index(drop=True)
+    return (
+        df.drop_duplicates(subset=["time"]).sort_values("time").reset_index(drop=True)
+    )
 
 
 def save_candles(
@@ -116,7 +136,11 @@ def _write_parquet(raw_candles: list, path: Path) -> int:
         try:
             existing = pd.read_parquet(path)
             combined = pd.concat([existing, new_df], ignore_index=True)
-            combined = combined.drop_duplicates(subset=["time"]).sort_values("time").reset_index(drop=True)
+            combined = (
+                combined.drop_duplicates(subset=["time"])
+                .sort_values("time")
+                .reset_index(drop=True)
+            )
         except Exception:
             combined = new_df
     else:
@@ -128,6 +152,7 @@ def _write_parquet(raw_candles: list, path: Path) -> int:
 
 
 # ─── Progress / checkpoint tracking ──────────────────────────────────────────
+
 
 def _load_progress() -> set:
     if PROGRESS_FILE.exists():
@@ -142,7 +167,9 @@ def _save_progress(done: set):
         json.dump(sorted(done), f)
 
 
-def job_key(index: str, expiry: date, strike: int, option_type: str, interval: str) -> str:
+def job_key(
+    index: str, expiry: date, strike: int, option_type: str, interval: str
+) -> str:
     return f"{index}_{expiry}_{strike}_{option_type}_{interval}"
 
 
@@ -150,6 +177,8 @@ def load_completed_jobs() -> set:
     return _load_progress()
 
 
-def mark_job_done(done: set, index: str, expiry: date, strike: int, option_type: str, interval: str):
+def mark_job_done(
+    done: set, index: str, expiry: date, strike: int, option_type: str, interval: str
+):
     done.add(job_key(index, expiry, strike, option_type, interval))
     _save_progress(done)
