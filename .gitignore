@@ -85,6 +85,13 @@ POSTGRES_QUICKSTART.md
 QWEN.md
 AGENTS.md
 
+# Add: Agent-only files to ensure they stay ignored
+mem0_mcp_server.py
+seed_memories.py
+CLAUDE.md
+.agent-memory-rules.md
+mem0_qdrant/
+
 # Large Data Exclusions
 data/
 backend/data/
