@@ -113,3 +113,10 @@ backend/scripts/create_test_data.py
 !data-scripts/*.json
 !data-scripts/*.sh
 !data-scripts/*.py
+
+# Agent MCP configs (contain local env keys)
+opencode.json
+mcp_config.json
+.mcp.json
+.qwen/mcp.json
+.kilocode/mcp.json
