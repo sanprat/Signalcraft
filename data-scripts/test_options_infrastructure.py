@@ -33,7 +33,19 @@ class TestDhanClientRequiredData:
 
 
 class TestDhanClientExpiryList:
-    """Test expirylist endpoint."""
+    """Test expirylist endpoint.
+
+    Note: Current test uses mock. Run integration test on VPS with real credentials:
+    python -c "
+    import os, sys
+    sys.path.insert(0, 'data-scripts')
+    from dhan_client import DhanClient
+    c = DhanClient(os.environ['DHAN_CLIENT_ID'], os.environ['DHAN_ACCESS_TOKEN'])
+    r = c.get_expiry_list('NIFTY')
+    print('expirylist response:', r)
+    assert isinstance(r, list) and len(r) > 0
+    "
+    """
 
     def test_get_expiry_list_returns_dates(self):
         """expirylist should return list of expiry date strings."""
