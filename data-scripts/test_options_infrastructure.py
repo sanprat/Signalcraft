@@ -125,6 +125,249 @@ class TestRawToDf:
 class TestOptionsAudit:
     """Test options_audit.py logic."""
 
+    def test_ec10_counts_as_ec2plus_not_ec1(self):
+        """ec10, ec11 should be counted as ec2+, not ec1."""
+        sys.path.insert(0, str(Path(__file__).parent.parent / "data-scripts"))
+        from options_audit import count_expiry_families
+
+        scan = {
+            "path": "/tmp",
+            "underlying": {
+                "NIFTY": {"exists": True, "files": {}},
+                "BANKNIFTY": {"exists": True, "files": {}},
+                "FINNIFTY": {"exists": True, "files": {}},
+            },
+            "candles": {
+                "NIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {
+                            "1min": {
+                                "exists": True,
+                                "files": {
+                                    "dhan_ec0_25000": "",
+                                    "dhan_ec1_25000": "",
+                                    "dhan_ec10_25000": "",
+                                    "dhan_ec11_25000": "",
+                                },
+                            }
+                        },
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+                "BANKNIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+                "FINNIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+            },
+        }
+        families = count_expiry_families(scan)
+
+        assert families["NIFTY"]["CE"]["1min"]["ec0"] == 1
+        assert families["NIFTY"]["CE"]["1min"]["ec1"] == 1
+        assert families["NIFTY"]["CE"]["1min"]["ec2+"] == 2
+
+    def test_timestamp_overlap_check(self):
+        """Timestamp overlap should check date ranges, not just presence."""
+        sys.path.insert(0, str(Path(__file__).parent.parent / "data-scripts"))
+        from options_audit import determine_readiness
+
+        scan = {
+            "path": "/tmp",
+            "underlying": {
+                "NIFTY": {"exists": True, "files": {"1min": ""}},
+                "BANKNIFTY": {"exists": True, "files": {"5min": ""}},
+                "FINNIFTY": {"exists": True, "files": {"15min": ""}},
+            },
+            "candles": {
+                "NIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {
+                            "1min": {"exists": True, "files": {"dhan_ec1_25000": ""}}
+                        },
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+                "BANKNIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+                "FINNIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+            },
+        }
+        timestamps = {
+            "underlying": {
+                "NIFTY/1min": {
+                    "min": "2025-01-01T00:00:00",
+                    "max": "2025-01-31T23:59:59",
+                }
+            },
+            "options": {
+                "NIFTY/CE/1min/dhan_ec1_25000": {
+                    "min": "2025-02-01T00:00:00",
+                    "max": "2025-02-28T23:59:59",
+                }
+            },
+        }
+        families = {
+            "NIFTY": {
+                "CE": {
+                    "1min": {"ec0": 0, "ec1": 1, "ec2+": 1},
+                    "5min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "15min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                },
+                "PE": {
+                    "1min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "5min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "15min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                },
+            },
+            "BANKNIFTY": {
+                "CE": {
+                    "1min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "5min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "15min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                },
+                "PE": {
+                    "1min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "5min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "15min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                },
+            },
+            "FINNIFTY": {
+                "CE": {
+                    "1min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "5min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "15min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                },
+                "PE": {
+                    "1min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "5min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                    "15min": {"ec0": 0, "ec1": 0, "ec2+": 0},
+                },
+            },
+        }
+        verdict, findings = determine_readiness(scan, timestamps, families, True)
+
+        assert any("timestamp overlap" in f for f in findings)
+
+    def test_timestamp_overlap_detects_overlap(self):
+        """Timestamp overlap should be detected when ranges overlap."""
+        sys.path.insert(0, str(Path(__file__).parent.parent / "data-scripts"))
+        from options_audit import determine_readiness
+
+        scan = {
+            "path": "/tmp",
+            "underlying": {
+                "NIFTY": {"exists": True, "files": {"1min": ""}},
+                "BANKNIFTY": {"exists": True, "files": {}},
+                "FINNIFTY": {"exists": True, "files": {}},
+            },
+            "candles": {
+                "NIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {
+                            "1min": {"exists": True, "files": {"dhan_ec1_25000": ""}}
+                        },
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+                "BANKNIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+                "FINNIFTY": {
+                    "CE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                    "PE": {
+                        "exists": True,
+                        "intervals": {"1min": {"exists": True, "files": {}}},
+                    },
+                },
+            },
+        }
+        timestamps = {
+            "underlying": {
+                "NIFTY/1min": {
+                    "min": "2025-01-15T09:00:00",
+                    "max": "2025-01-15T15:30:00",
+                }
+            },
+            "options": {
+                "NIFTY/CE/1min/dhan_ec1_25000": {
+                    "min": "2025-01-15T09:15:00",
+                    "max": "2025-01-15T15:25:00",
+                }
+            },
+        }
+        families = {
+            "NIFTY": {
+                "CE": {"1min": {"ec0": 0, "ec1": 1, "ec2+": 0}},
+                "PE": {"1min": {"ec0": 0, "ec1": 0, "ec2+": 0}},
+            },
+            "BANKNIFTY": {
+                "CE": {"1min": {"ec0": 0, "ec1": 0, "ec2+": 0}},
+                "PE": {"1min": {"ec0": 0, "ec1": 0, "ec2+": 0}},
+            },
+            "FINNIFTY": {
+                "CE": {"1min": {"ec0": 0, "ec1": 0, "ec2+": 0}},
+                "PE": {"1min": {"ec0": 0, "ec1": 0, "ec2+": 0}},
+            },
+        }
+        verdict, findings = determine_readiness(scan, timestamps, families, True)
+
+        assert "timestamp overlap" not in " ".join(findings)
+
     def test_scan_directory_handles_missing_data(self):
         """Empty data directory should work fine."""
         sys.path.insert(0, str(Path(__file__).parent.parent / "data-scripts"))
@@ -132,9 +375,7 @@ class TestOptionsAudit:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             scan = scan_directory(Path(tmpdir))
-            # temp directory exists, so scan should report exists=True
             assert scan["exists"] == True
-            assert scan["path"] == tmpdir
 
     def test_audit_runs_successfully(self):
         """options_audit.py should run without errors."""

@@ -151,11 +151,12 @@ def count_expiry_families(scan: dict) -> dict[str, dict]:
                 )
 
                 for fname in files.keys():
-                    if "ec0" in fname:
+                    if "ec0" in fname and "ec0" == fname.split("_")[1]:
                         ec_counts["ec0"] += 1
-                    elif "ec1" in fname:
+                    elif "ec1" in fname and fname.split("_")[1] in ["ec1"]:
                         ec_counts["ec1"] += 1
                     elif "ec" in fname:
+                        # Match ec2, ec3, ..., ec10, ec11, etc.
                         ec_counts["ec2+"] += 1
 
                 families[idx][opt][iv] = ec_counts
@@ -192,8 +193,10 @@ def determine_readiness(
     for idx in INDICES:
         for opt in OPT_TYPES:
             for iv in INTERVALS:
-                ec1 = families[idx][opt][iv].get("ec1", 0)
-                ec2 = families[idx][opt][iv].get("ec2+", 0)
+                opt_data = families[idx].get(opt, {})
+                iv_data = opt_data.get(iv, {})
+                ec1 = iv_data.get("ec1", 0)
+                ec2 = iv_data.get("ec2+", 0)
                 expired_counts.append(ec1 + ec2)
 
     has_expired_history = sum(expired_counts) >= 2
@@ -201,7 +204,7 @@ def determine_readiness(
         issues.append("No expired weekly options history (need ec1+)")
 
     has_ec0 = any(
-        families[idx][opt][iv].get("ec0", 0) > 0
+        families[idx].get(opt, {}).get(iv, {}).get("ec0", 0) > 0
         for idx in INDICES
         for opt in OPT_TYPES
         for iv in INTERVALS
@@ -213,13 +216,22 @@ def determine_readiness(
 
     has_overlap = False
     if timestamps["underlying"] and timestamps["options"]:
-        sample_ul = next(iter(timestamps["underlying"].values()), None)
-        sample_opt = next(iter(timestamps["options"].values()), None)
-        if sample_ul and sample_opt:
-            has_overlap = True
+        ul_keys = list(timestamps["underlying"].keys())
+        opt_keys = list(timestamps["options"].keys())
+        if ul_keys and opt_keys:
+            ul_key = ul_keys[0]
+            opt_key = opt_keys[0]
+            ul_min = pd.Timestamp(timestamps["underlying"][ul_key]["min"])
+            ul_max = pd.Timestamp(timestamps["underlying"][ul_key]["max"])
+            opt_min = pd.Timestamp(timestamps["options"][opt_key]["min"])
+            opt_max = pd.Timestamp(timestamps["options"][opt_key]["max"])
+            ranges_overlap = (ul_min <= opt_max) and (opt_min <= ul_max)
+            has_overlap = ranges_overlap
 
     if not has_overlap and timestamps["options"]:
-        warnings.append("Could not verify timestamp overlap")
+        warnings.append(
+            "Could not verify timestamp overlap between underlying and options"
+        )
 
     if issues:
         return "not_ready", issues
