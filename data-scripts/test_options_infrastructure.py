@@ -495,5 +495,90 @@ class TestBacktestCompatibility:
             assert "oi" not in read_df.columns
 
 
+class TestDhanBulkLoaderTimestampMerge:
+    """Test save_dhan_candles() handles tz-aware merge correctly."""
+
+    def test_merge_tz_aware_existing_with_tz_naive_new(self):
+        """Merging tz-aware existing parquet with tz-naive new data should not crash."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import dhan_bulk_loader
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            import pyarrow.parquet as pq
+            import pyarrow as pa
+
+            tmpdir_path = Path(tmpdir)
+            candles_dir = tmpdir_path / "candles" / "NIFTY" / "CE" / "1min"
+            candles_dir.mkdir(parents=True, exist_ok=True)
+            out_path = candles_dir / "dhan_ec1_25000.parquet"
+
+            existing_df = pd.DataFrame(
+                {
+                    "time": pd.to_datetime(
+                        ["2025-04-10T09:15:00", "2025-04-10T09:16:00"]
+                    ).tz_localize("Asia/Kolkata"),
+                    "open": [100.0, 101.0],
+                    "high": [105.0, 106.0],
+                    "low": [99.0, 100.0],
+                    "close": [103.0, 104.0],
+                    "volume": [1000, 1100],
+                }
+            )
+            table = pa.Table.from_pandas(existing_df)
+            pq.write_table(table, out_path)
+
+            new_candles = [
+                {
+                    "time": "2025-04-10T09:15:00+05:30",
+                    "strike": 25000,
+                    "open": 100.0,
+                    "high": 105.0,
+                    "low": 99.0,
+                    "close": 103.0,
+                    "volume": 1000,
+                },
+                {
+                    "time": "2025-04-10T09:16:00+05:30",
+                    "strike": 25000,
+                    "open": 101.0,
+                    "high": 106.0,
+                    "low": 100.0,
+                    "close": 104.0,
+                    "volume": 1100,
+                },
+                {
+                    "time": "2025-04-10T09:17:00+05:30",
+                    "strike": 25000,
+                    "open": 102.0,
+                    "high": 107.0,
+                    "low": 101.0,
+                    "close": 105.0,
+                    "volume": 1200,
+                },
+            ]
+
+            orig_base_dir = dhan_bulk_loader.BASE_DIR
+            dhan_bulk_loader.BASE_DIR = tmpdir_path
+
+            try:
+                total = dhan_bulk_loader.save_dhan_candles(
+                    new_candles, "NIFTY", "CE", "1min", 1
+                )
+            finally:
+                dhan_bulk_loader.BASE_DIR = orig_base_dir
+
+            result_df = pd.read_parquet(out_path)
+
+            assert len(result_df) == 5, (
+                f"Expected 5 rows (2 existing + 3 new), got {len(result_df)}"
+            )
+            assert result_df["time"].is_monotonic_increasing, (
+                "Timestamps should be sorted"
+            )
+            assert result_df["time"].dt.tz is None, "Time should be naive"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

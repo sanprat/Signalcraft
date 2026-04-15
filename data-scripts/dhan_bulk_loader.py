@@ -61,6 +61,22 @@ OPTIONS_SCHEMA = pa.schema(
 )
 
 
+def _normalize_time_to_utc_naive(series: pd.Series) -> pd.Series:
+    """Normalize a timestamp series to naive UTC for stable parquet storage."""
+    parsed = pd.to_datetime(series, errors="coerce")
+    if parsed.isna().all():
+        raise ValueError("time column could not be parsed as datetimes")
+
+    if parsed.dt.tz is None:
+        return (
+            parsed.dt.tz_localize("Asia/Kolkata")
+            .dt.tz_convert("UTC")
+            .dt.tz_localize(None)
+        )
+
+    return parsed.dt.tz_convert("UTC").dt.tz_localize(None)
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="Dhan Expired Options Downloader")
     p.add_argument(
@@ -127,8 +143,7 @@ def save_dhan_candles(
     total = 0
     for strike, rows in by_strike.items():
         df = pd.DataFrame(rows)
-        df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
-        # Include oi, iv, spot when available
+        df["time"] = _normalize_time_to_utc_naive(df["time"])
         cols = ["time", "open", "high", "low", "close", "volume"]
         if "oi" in df.columns:
             cols.extend(["oi", "iv", "spot"])
@@ -145,7 +160,12 @@ def save_dhan_candles(
         out_path = out_dir / f"dhan_ec{expiry_code}_{strike}.parquet"
 
         if out_path.exists():
-            existing = pd.read_parquet(out_path)
+            try:
+                existing = pd.read_parquet(out_path)
+            except Exception:
+                existing = pd.read_parquet(out_path, engine="fastparquet")
+            existing["time"] = _normalize_time_to_utc_naive(existing["time"])
+            df["time"] = _normalize_time_to_utc_naive(df["time"])
             df = (
                 pd.concat([existing, df])
                 .drop_duplicates(subset=["time"])
