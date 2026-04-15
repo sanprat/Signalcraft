@@ -679,104 +679,177 @@ def update_fno_options(client: DhanClient, end_date: date, dry_run: bool = False
 
 
 def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = False):
-    """Fetch current-week (unexpired) options using expiry_code=0.
+    """Update current-week (ec0) options using active instrument resolution.
 
-    This captures live data for the contract expiring THIS week — the gap
-    between the last expired contract and today.  Runs independently of
-    update_fno_options() which only covers already-expired contracts.
+    This replaces the old expiry_code=0 approach which now returns DH-905.
+    Flow:
+      1. Discover current active weekly expiry via get_expiry_list()
+      2. Get ATM strike from underlying data
+      3. Generate strike list: ATM-10 to ATM+10
+      4. Resolve active instrument IDs via resolve_active_weekly_options()
+      5. Fetch intraday candles via get_active_option_intraday()
+      6. Write to dhan_ec0_{strike}.parquet
 
     Files saved as: data/candles/{INDEX}/{CE|PE}/{interval}/dhan_ec0_{strike}.parquet
     (separate from expired ec1_* files to avoid mixing live vs settled prices)
     """
     log.info("=" * 60)
-    log.info("  FnO LIVE (CURRENT-WEEK) OPTIONS UPDATE  [expiry_code=0]")
+    log.info("  FnO LIVE (CURRENT-WEEK) OPTIONS UPDATE  [Active Instruments]")
     log.info("=" * 60)
 
     fno_indices = ["NIFTY", "BANKNIFTY", "FINNIFTY"]
-    expiry_code = 0  # 0 = currently active / unexpired weekly contract
-
-    # Date window: start of this expiry week → today
-    EXPIRY_WD = {"NIFTY": 3, "BANKNIFTY": 2, "FINNIFTY": 1}
-    today = date.today()
 
     if dry_run:
+        for idx in fno_indices:
+            expiry_list = client.get_expiry_list(idx)
+            if not expiry_list:
+                log.info(f"  {idx}: would skip (no expiry list)")
+                continue
+
+            today_date = date.today()
+            valid_expiries = [
+                e for e in expiry_list if pd.to_datetime(e).date() >= today_date
+            ]
+            if not valid_expiries:
+                log.info(f"  {idx}: would skip (no valid expiry)")
+                continue
+
+            current_expiry = valid_expiries[0]
+
+            strikes = [25000 + offset * 100 for offset in FNO_OFFSETS]
+            contracts_ce = client.resolve_active_weekly_options(
+                idx, current_expiry, strikes, "CE"
+            )
+            contracts_pe = client.resolve_active_weekly_options(
+                idx, current_expiry, strikes, "PE"
+            )
+
+            log.info(
+                f"  {idx}: would resolve {len(contracts_ce)} CE + {len(contracts_pe)} PE "
+                f"for expiry {current_expiry}"
+            )
+
         total = (
             len(fno_indices)
             * len(FNO_OFFSETS)
             * len(FNO_OPT_TYPES)
             * len(FNO_INTERVALS)
         )
-        log.info(f"  Would download {total} live jobs (expiry_code=0)")
+        log.info(f"  Would download up to {total} live jobs (active instrument path)")
         return
 
     downloaded = 0
     empty = 0
+    unresolved = 0
 
     for idx in fno_indices:
-        # Find the upcoming/current expiry day for this index
-        target_wd = EXPIRY_WD[idx]
-        days_until = (target_wd - today.weekday()) % 7
-        if days_until == 0:
-            days_until = 0  # expiry is today
-        current_expiry = today + timedelta(days=days_until)
-        # Start of this contract's trading week (prev Friday + 1 = Monday, roughly)
-        week_start = current_expiry - timedelta(days=6)
+        expiry_list = client.get_expiry_list(idx)
+        if not expiry_list:
+            log.warning(f"  {idx}: could not get expiry list, skipping")
+            continue
 
+        today_date = date.today()
+        valid_expiries = [
+            e for e in expiry_list if pd.to_datetime(e).date() >= today_date
+        ]
+        if not valid_expiries:
+            log.warning(f"  {idx}: no valid future expiry found, skipping")
+            continue
+
+        current_expiry = valid_expiries[0]
+        log.info(f"  {idx}: current expiry = {current_expiry}")
+
+        underlying_path = UNDERLYING_DIR / idx / "1min.parquet"
+        atm_strike = None
+        if underlying_path.exists():
+            try:
+                df = pd.read_parquet(underlying_path, columns=["time", "close"])
+                if not df.empty:
+                    last_close = df["close"].iloc[-1]
+                    atm_strike = int(round(last_close / 100) * 100)
+            except Exception as e:
+                log.warning(f"  {idx}: could not read ATM from underlying: {e}")
+
+        if not atm_strike:
+            atm_strike = {"NIFTY": 25000, "BANKNIFTY": 52000, "FINNIFTY": 22000}.get(
+                idx, 25000
+            )
+            log.warning(f"  {idx}: using fallback ATM = {atm_strike}")
+
+        strikes = [atm_strike + offset * 100 for offset in FNO_OFFSETS]
         log.info(
-            f"  {idx}: live week {week_start} → {end_date}  (expires {current_expiry})"
+            f"  {idx}: strikes {strikes[0]} → {strikes[-1]} ({len(strikes)} strikes)"
         )
 
+        expiry_dt = pd.to_datetime(current_expiry)
+        week_start = expiry_dt - timedelta(days=expiry_dt.weekday())
+        week_start_date = week_start.date()
+
+        if week_start_date > end_date:
+            log.info(f"  {idx}: week starts {week_start_date} > {end_date}, skipping")
+            continue
+
         for opt in FNO_OPT_TYPES:
+            contracts = client.resolve_active_weekly_options(
+                index=idx,
+                expiry_date=current_expiry,
+                strikes=strikes,
+                option_type=opt,
+            )
+
+            if not contracts:
+                log.warning(
+                    f"  {idx} {opt}: no contracts resolved for {current_expiry}"
+                )
+                unresolved += len(strikes)
+                continue
+
+            log.info(f"  {idx} {opt}: resolved {len(contracts)} contracts")
+
             for interval in FNO_INTERVALS:
-                for offset in FNO_OFFSETS:
-                    candles = client.get_expired_options_full(
-                        index=idx,
-                        strike_offset=offset,
-                        option_type=opt,
-                        expiry_flag="WEEK",
-                        expiry_code=expiry_code,
-                        start=week_start,
-                        end=end_date,
+                for contract in contracts:
+                    candles = client.get_active_option_intraday(
+                        security_id=contract["security_id"],
+                        exchange_segment=contract["exchange_segment"],
+                        instrument=contract["instrument"],
                         interval=interval,
+                        start_dt=f"{week_start_date} 09:15:00",
+                        end_dt=f"{end_date} 15:30:00",
+                        oi=True,
                     )
 
                     if candles:
-                        by_strike = defaultdict(list)
-                        for c in candles:
-                            by_strike[int(c["strike"])].append(c)
+                        df = pd.DataFrame(candles)
+                        df["time"] = _normalize_time_to_utc_naive(df["time"])
 
-                        for strike, rows in by_strike.items():
-                            df = pd.DataFrame(rows)
-                            df["time"] = pd.to_datetime(df["time"]).dt.tz_localize(None)
-                            # Include oi, iv, spot when available
-                            cols = ["time", "open", "high", "low", "close", "volume"]
-                            if "oi" in df.columns:
-                                cols.extend(["oi", "iv", "spot"])
-                            df = (
-                                df[cols]
-                                .drop_duplicates(subset=["time"])
-                                .sort_values("time")
-                                .reset_index(drop=True)
-                            )
-                            df["time"] = df["time"].dt.tz_localize("Asia/Kolkata")
+                        cols = ["time", "open", "high", "low", "close", "volume"]
+                        if "oi" in df.columns:
+                            cols.append("oi")
 
-                            out_dir = FNO_DIR / idx / opt / interval
-                            out_dir.mkdir(parents=True, exist_ok=True)
-                            # ec0 = live contract (kept separate from ec1 expired files)
-                            out_path = out_dir / f"dhan_ec0_{strike}.parquet"
+                        df = (
+                            df[cols]
+                            .drop_duplicates(subset=["time"])
+                            .sort_values("time")
+                            .reset_index(drop=True)
+                        )
 
-                            schema = OPTIONS_SCHEMA if "oi" in df.columns else SCHEMA
-                            merge_and_save(df, out_path, schema=schema)
+                        out_dir = FNO_DIR / idx / opt / interval
+                        out_dir.mkdir(parents=True, exist_ok=True)
+                        out_path = out_dir / f"dhan_ec0_{contract['strike']}.parquet"
+
+                        merge_and_save(df, out_path, schema=SCHEMA)
                         downloaded += 1
                     else:
                         empty += 1
 
-                    if (downloaded + empty) % 100 == 0:
+                    if (downloaded + empty) % 50 == 0:
                         log.info(
-                            f"  Live FnO progress: {downloaded} data | {empty} empty"
+                            f"  Live FnO progress: {downloaded} data | {empty} empty | {unresolved} unresolved"
                         )
 
-    log.info(f"  Live FnO done: {downloaded} with data | {empty} empty")
+    log.info(
+        f"  Live FnO done: {downloaded} with data | {empty} empty | {unresolved} unresolved"
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

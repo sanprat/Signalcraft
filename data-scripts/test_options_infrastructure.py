@@ -601,16 +601,65 @@ class TestDhanClientActiveInstrumentResolution:
         if result:
             assert "security_id" in result[0]
 
-    def test_get_active_option_intraday_method_exists(self):
-        """get_active_option_intraday method should exist."""
+
+def test_get_active_option_intraday_method_exists(self):
+    """get_active_option_intraday method should exist."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from dhan_client import DhanClient
+
+    client = DhanClient("test_client", "test_token")
+    assert hasattr(client, "get_active_option_intraday")
+    assert callable(client.get_active_option_intraday)
+
+
+class TestDailyUpdaterLiveOptions:
+    """Test daily_updater.py --fno-live-only uses active instrument resolution."""
+
+    def test_fno_live_options_uses_active_instrument_resolution(self):
+        """update_fno_live_options should use resolve_active_weekly_options, not get_expired_options_full."""
         import sys
+        from unittest.mock import MagicMock
+        from datetime import date, timedelta
 
         sys.path.insert(0, str(Path(__file__).parent))
-        from dhan_client import DhanClient
+        import daily_updater
 
-        client = DhanClient("test_client", "test_token")
-        assert hasattr(client, "get_active_option_intraday")
-        assert callable(client.get_active_option_intraday)
+        tomorrow = date.today() + timedelta(days=1)
+        future_expiry = tomorrow.strftime("%Y-%m-%d")
+
+        mock_client = MagicMock()
+        mock_client.get_expiry_list.return_value = [future_expiry]
+        mock_client.resolve_active_weekly_options.return_value = [
+            {
+                "security_id": "12345",
+                "exchange_segment": "NSE_FNO",
+                "instrument": "OPTIDX",
+                "strike": 25000,
+                "option_type": "CE",
+                "expiry_date": future_expiry,
+            }
+        ]
+        mock_client.get_active_option_intraday.return_value = [
+            {
+                "time": "2025-04-24T09:15:00+05:30",
+                "open": 100.0,
+                "high": 105.0,
+                "low": 99.0,
+                "close": 103.0,
+                "volume": 1000,
+                "oi": 5000.0,
+            }
+        ]
+        mock_client.get_expired_options_full = MagicMock()
+
+        end_date = date.today()
+        daily_updater.update_fno_live_options(mock_client, end_date, dry_run=False)
+
+        mock_client.resolve_active_weekly_options.assert_called()
+        mock_client.get_active_option_intraday.assert_called()
+        mock_client.get_expired_options_full.assert_not_called()
 
 
 if __name__ == "__main__":
