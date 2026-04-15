@@ -748,15 +748,23 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
             log.warning(f"  {idx}: could not get expiry list, skipping")
             continue
 
-        today_date = date.today()
-        valid_expiries = [
-            e for e in expiry_list if pd.to_datetime(e).date() >= today_date
-        ]
-        if not valid_expiries:
-            log.warning(f"  {idx}: no valid future expiry found, skipping")
+        sorted_expiries = sorted(expiry_list, key=lambda x: pd.to_datetime(x))
+        current_expiry = None
+        for exp in sorted_expiries:
+            exp_dt = pd.to_datetime(exp)
+            week_start = exp_dt - timedelta(days=exp_dt.weekday())
+            week_start_date = week_start.date()
+            if week_start_date <= end_date <= exp_dt.date():
+                current_expiry = exp
+                break
+
+        if not current_expiry:
+            log.warning(
+                f"  {idx}: no current-week expiry found. "
+                f"Available expiries: {sorted_expiries}, end_date={end_date}"
+            )
             continue
 
-        current_expiry = valid_expiries[0]
         log.info(f"  {idx}: current expiry = {current_expiry}")
 
         underlying_path = UNDERLYING_DIR / idx / "1min.parquet"

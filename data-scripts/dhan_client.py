@@ -433,7 +433,44 @@ class DhanClient:
                 "Instrument master not found, run generate_nifty500_mapping.py first"
             )
             return pd.DataFrame()
-        return pd.read_csv(master_path, low_memory=False)
+        df = pd.read_csv(master_path, low_memory=False)
+        return self._normalize_instrument_master_columns(df)
+
+    def _normalize_instrument_master_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize instrument master columns to support multiple CSV formats.
+
+        Dhan's instrument master CSV has changed column names over time.
+        This method handles both spaced names (e.g., "Exchange Segment") and
+        camel-case names (e.g., "ExchangeSegment") by mapping them to
+        consistent internal names.
+        """
+        column_mapping = {}
+
+        for col in df.columns:
+            col_lower = col.lower().strip()
+            if col_lower in ("exchange segment", "exchangesegment"):
+                column_mapping[col] = "exchange_segment"
+            elif col_lower in ("instrument",):
+                column_mapping[col] = "instrument"
+            elif col_lower in ("security id", "securityid", "sem_smst_security_id"):
+                column_mapping[col] = "security_id"
+            elif col_lower in ("strike price", "strikeprice", "sem_strike_price"):
+                column_mapping[col] = "strike_price"
+            elif col_lower in ("option type", "optiontype", "sem_option_type"):
+                column_mapping[col] = "option_type"
+            elif col_lower in ("expiry date", "expirydate", "sem_expiry_date"):
+                column_mapping[col] = "expiry_date"
+            elif col_lower in ("drv underlying scrip code", "drvunderlyingscripcode"):
+                column_mapping[col] = "drv_underlying_scrip_code"
+            elif col_lower in ("symbol",):
+                column_mapping[col] = "symbol"
+            elif col_lower in ("underlying", "underlying symbol"):
+                column_mapping[col] = "underlying"
+
+        if column_mapping:
+            df = df.rename(columns=column_mapping)
+
+        return df
 
     def resolve_active_weekly_options(
         self,
@@ -471,12 +508,12 @@ class DhanClient:
         drv_type = "CALL" if option_type == "CE" else "PUT"
 
         mask = (
-            (master["ExchangeSegment"] == "NSE_FNO")
-            & (master["Instrument"] == "OPTIDX")
-            & (master["DRVUnderlyingScripCode"] == SECURITY_IDS.get(index))
-            & (master["OptionType"] == drv_type)
-            & (master["ExpiryDate"].str.upper() == expiry_str)
-            & (master["StrikePrice"].isin(strikes))
+            (master["exchange_segment"] == "NSE_FNO")
+            & (master["instrument"] == "OPTIDX")
+            & (master["drv_underlying_scrip_code"] == SECURITY_IDS.get(index))
+            & (master["option_type"] == drv_type)
+            & (master["expiry_date"].str.upper() == expiry_str)
+            & (master["strike_price"].isin(strikes))
         )
 
         filtered = master[mask]
@@ -485,10 +522,10 @@ class DhanClient:
         for _, row in filtered.iterrows():
             results.append(
                 {
-                    "security_id": str(row["SecurityId"]),
+                    "security_id": str(row["security_id"]),
                     "exchange_segment": "NSE_FNO",
                     "instrument": "OPTIDX",
-                    "strike": int(row["StrikePrice"]),
+                    "strike": int(row["strike_price"]),
                     "option_type": option_type,
                     "expiry_date": expiry_date,
                 }

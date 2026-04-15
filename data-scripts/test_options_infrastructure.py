@@ -601,17 +601,16 @@ class TestDhanClientActiveInstrumentResolution:
         if result:
             assert "security_id" in result[0]
 
+    def test_get_active_option_intraday_method_exists(self):
+        """get_active_option_intraday method should exist."""
+        import sys
 
-def test_get_active_option_intraday_method_exists(self):
-    """get_active_option_intraday method should exist."""
-    import sys
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dhan_client import DhanClient
 
-    sys.path.insert(0, str(Path(__file__).parent))
-    from dhan_client import DhanClient
-
-    client = DhanClient("test_client", "test_token")
-    assert hasattr(client, "get_active_option_intraday")
-    assert callable(client.get_active_option_intraday)
+        client = DhanClient("test_client", "test_token")
+        assert hasattr(client, "get_active_option_intraday")
+        assert callable(client.get_active_option_intraday)
 
 
 class TestDailyUpdaterLiveOptions:
@@ -726,6 +725,111 @@ class TestOptionsAuditEc0:
             assert len(ec0_warning) == 0, (
                 f"Expected no ec0 warnings, got: {ec0_warning}"
             )
+
+
+class TestDhanClientInstrumentMasterNormalization:
+    """Test dhan_client handles different instrument master column formats."""
+
+    def test_normalize_spaced_column_names(self):
+        """_normalize_instrument_master_columns should map spaced column names."""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dhan_client import DhanClient
+
+        df = pd.DataFrame(
+            {
+                "Exchange Segment": ["NSE_FNO"],
+                "Instrument": ["OPTIDX"],
+                "Security Id": ["12345"],
+                "Strike Price": [25000],
+                "Option Type": ["CALL"],
+                "Expiry Date": ["24-APR-2025"],
+                "DRV Underlying Scrip Code": [13],
+            }
+        )
+
+        client = DhanClient("test", "test")
+        normalized = client._normalize_instrument_master_columns(df)
+
+        assert "exchange_segment" in normalized.columns
+        assert "security_id" in normalized.columns
+        assert "strike_price" in normalized.columns
+        assert "option_type" in normalized.columns
+
+    def test_normalize_camel_case_column_names(self):
+        """_normalize_instrument_master_columns should map camelCase column names."""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dhan_client import DhanClient
+
+        df = pd.DataFrame(
+            {
+                "ExchangeSegment": ["NSE_FNO"],
+                "Instrument": ["OPTIDX"],
+                "SecurityId": ["12345"],
+                "StrikePrice": [25000],
+                "OptionType": ["CALL"],
+                "ExpiryDate": ["24-APR-2025"],
+                "DRVUnderlyingScripCode": [13],
+            }
+        )
+
+        client = DhanClient("test", "test")
+        normalized = client._normalize_instrument_master_columns(df)
+
+        assert "exchange_segment" in normalized.columns
+        assert "security_id" in normalized.columns
+        assert "strike_price" in normalized.columns
+
+
+class TestCurrentWeekExpirySelection:
+    """Test daily_updater.py selects the correct current-week expiry."""
+
+    def test_selects_current_week_not_next_future(self):
+        """Should select expiry where week_start <= end_date <= expiry_date."""
+        import sys
+        from unittest.mock import MagicMock
+        from datetime import date, timedelta
+        import pandas as pd
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import daily_updater
+
+        today = date(2025, 4, 14)
+        monday = date(2025, 4, 14)
+        friday = date(2025, 4, 18)
+        next_monday = date(2025, 4, 21)
+        following_monday = date(2025, 4, 28)
+
+        expiry_list = [
+            friday.strftime("%Y-%m-%d"),
+            next_monday.strftime("%Y-%m-%d"),
+            following_monday.strftime("%Y-%m-%d"),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.get_expiry_list.return_value = expiry_list
+        mock_client.resolve_active_weekly_options.return_value = [
+            {
+                "security_id": "12345",
+                "exchange_segment": "NSE_FNO",
+                "instrument": "OPTIDX",
+                "strike": 25000,
+                "option_type": "CE",
+                "expiry_date": friday.strftime("%Y-%m-%d"),
+            }
+        ]
+        mock_client.get_active_option_intraday.return_value = []
+
+        daily_updater.update_fno_live_options(mock_client, friday, dry_run=False)
+
+        mock_client.resolve_active_weekly_options.assert_called()
+        call_args = mock_client.resolve_active_weekly_options.call_args
+        assert call_args[1]["expiry_date"] == friday.strftime("%Y-%m-%d")
 
 
 if __name__ == "__main__":
