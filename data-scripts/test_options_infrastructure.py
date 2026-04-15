@@ -601,6 +601,17 @@ class TestDhanClientActiveInstrumentResolution:
         if result:
             assert "security_id" in result[0]
 
+    def test_get_active_option_intraday_method_exists(self):
+        """get_active_option_intraday method should exist."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dhan_client import DhanClient
+
+        client = DhanClient("test_client", "test_token")
+        assert hasattr(client, "get_active_option_intraday")
+        assert callable(client.get_active_option_intraday)
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -498,3 +498,92 @@ class DhanClient:
             f"Resolved {len(results)} active {option_type} contracts for {index} {expiry_date}"
         )
         return results
+
+    def get_active_option_intraday(
+        self,
+        security_id: str,
+        exchange_segment: str,
+        instrument: str,
+        interval: str,
+        start_dt: str,
+        end_dt: str,
+        oi: bool = True,
+    ) -> list:
+        """
+        Fetch intraday candles for active (unexpired) option contracts.
+
+        Uses /v2/charts/intraday endpoint which supports active instruments.
+        Unlike rolling-option endpoint (which throws DH-905 for expiry_code=0),
+        this endpoint works for current-week contracts.
+
+        Note: intraday endpoint may not provide iv and spot. Those fields
+        will be absent from returned data rather than fabricated.
+
+        Args:
+            security_id: Dhan security ID for the option contract
+            exchange_segment: e.g., "NSE_FNO"
+            instrument: e.g., "OPTIDX"
+            interval: "1", "5", "15" (minutes)
+            start_dt: "YYYY-MM-DD HH:MM:SS"
+            end_dt: "YYYY-MM-DD HH:MM:SS"
+            oi: Whether to include open interest (default True)
+
+        Returns:
+            List of candle dicts with time, open, high, low, close, volume, oi (if available)
+        """
+        self._throttle()
+
+        payload = {
+            "securityId": security_id,
+            "exchangeSegment": exchange_segment,
+            "instrument": instrument,
+            "interval": INTERVAL_MAP.get(interval, interval),
+            "oi": oi,
+            "fromDate": start_dt,
+            "toDate": end_dt,
+        }
+
+        try:
+            resp = self.session.post(
+                f"{BASE_URL}/charts/intraday",
+                json=payload,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            timestamps = data.get("timestamp", [])
+            if not timestamps:
+                return []
+
+            opens = data.get("open", [])
+            highs = data.get("high", [])
+            lows = data.get("low", [])
+            closes = data.get("close", [])
+            volumes = data.get("volume", [])
+            ois = data.get("oi", [])
+
+            normalized = []
+            for i, ts in enumerate(timestamps):
+                candle = {
+                    "time": self._epoch_to_ist_iso(ts),
+                    "open": float(opens[i]) if i < len(opens) else 0.0,
+                    "high": float(highs[i]) if i < len(highs) else 0.0,
+                    "low": float(lows[i]) if i < len(lows) else 0.0,
+                    "close": float(closes[i]) if i < len(closes) else 0.0,
+                    "volume": int(float(volumes[i])) if i < len(volumes) else 0,
+                }
+                if ois and i < len(ois):
+                    candle["oi"] = float(ois[i])
+
+                normalized.append(candle)
+
+            return normalized
+
+        except requests.exceptions.HTTPError as e:
+            logger.warning(
+                f"Dhan active option intraday HTTP {e.response.status_code}: {e.response.text[:200]}"
+            )
+        except Exception as e:
+            logger.warning(f"Dhan active option intraday error: {e}")
+        return []
