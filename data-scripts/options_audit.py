@@ -211,8 +211,11 @@ def determine_readiness(
     )
     if not has_ec0:
         warnings.append("No current-week (ec0) data found")
-    elif not updater_wired:
-        warnings.append("ec0 exists but live updater not wired")
+    else:
+        warnings.append(
+            "ec0 (live current-week) unproven: Dhan API returns DH-905 for expiry_code=0; "
+            "requires active option instruments redesign"
+        )
 
     has_overlap = False
     if timestamps["underlying"] and timestamps["options"]:

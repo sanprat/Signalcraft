@@ -32,6 +32,7 @@ duckdb
 pandas
 pyarrow
 scipy
+tqdm
 
 # ZenScript DSL Parser
 lark==1.1.9
