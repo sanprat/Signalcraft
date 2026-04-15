@@ -18,9 +18,11 @@ Intraday active contracts: POST /v2/charts/intraday (up to 90 days/call)
 import logging
 import time
 from datetime import datetime, timedelta, date, timezone
+from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import requests
 
 logger = logging.getLogger(__name__)
@@ -422,3 +424,77 @@ class DhanClient:
         except Exception as e:
             logger.warning(f"Dhan expirylist error: {e}")
         return []
+
+    def _load_instrument_master(self) -> pd.DataFrame:
+        """Load Dhan instrument master CSV from cache."""
+        master_path = Path(__file__).parent / "dhan_instrument_master.csv"
+        if not master_path.exists():
+            logger.warning(
+                "Instrument master not found, run generate_nifty500_mapping.py first"
+            )
+            return pd.DataFrame()
+        return pd.read_csv(master_path, low_memory=False)
+
+    def resolve_active_weekly_options(
+        self,
+        index: str,
+        expiry_date: str,
+        strikes: list[int],
+        option_type: str,
+    ) -> list[dict]:
+        """
+        Resolve active option contract metadata for a given expiry and strike range.
+
+        Uses Dhan instrument master CSV to find security IDs for:
+          - index (NIFTY, BANKNIFTY, FINNIFTY)
+          - expiry_date (YYYY-MM-DD of weekly expiry)
+          - option_type (CE/PE)
+          - strike (actual strike price)
+
+        Returns list of dicts with:
+          - security_id
+          - exchange_segment
+          - instrument
+          - strike
+          - option_type
+          - expiry_date
+        """
+        master = self._load_instrument_master()
+        if master.empty:
+            logger.warning(
+                "Cannot resolve active options: instrument master unavailable"
+            )
+            return []
+
+        expiry_str = pd.to_datetime(expiry_date).strftime("%d-%b-%Y").upper()
+
+        drv_type = "CALL" if option_type == "CE" else "PUT"
+
+        mask = (
+            (master["ExchangeSegment"] == "NSE_FNO")
+            & (master["Instrument"] == "OPTIDX")
+            & (master["DRVUnderlyingScripCode"] == SECURITY_IDS.get(index))
+            & (master["OptionType"] == drv_type)
+            & (master["ExpiryDate"].str.upper() == expiry_str)
+            & (master["StrikePrice"].isin(strikes))
+        )
+
+        filtered = master[mask]
+
+        results = []
+        for _, row in filtered.iterrows():
+            results.append(
+                {
+                    "security_id": str(row["SecurityId"]),
+                    "exchange_segment": "NSE_FNO",
+                    "instrument": "OPTIDX",
+                    "strike": int(row["StrikePrice"]),
+                    "option_type": option_type,
+                    "expiry_date": expiry_date,
+                }
+            )
+
+        logger.info(
+            f"Resolved {len(results)} active {option_type} contracts for {index} {expiry_date}"
+        )
+        return results

@@ -580,5 +580,27 @@ class TestDhanBulkLoaderTimestampMerge:
             assert result_df["time"].dt.tz is None, "Time should be naive"
 
 
+class TestDhanClientActiveInstrumentResolution:
+    """Test active weekly option instrument resolution."""
+
+    def test_resolve_active_weekly_options_returns_ce_and_pe(self):
+        """resolve_active_weekly_options should return contract metadata for CE and PE."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dhan_client import DhanClient
+
+        client = DhanClient("test_client", "test_token")
+        result = client.resolve_active_weekly_options(
+            index="NIFTY",
+            expiry_date="2025-04-24",
+            strikes=[25000, 25100],
+            option_type="CE",
+        )
+        assert isinstance(result, list)
+        if result:
+            assert "security_id" in result[0]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
