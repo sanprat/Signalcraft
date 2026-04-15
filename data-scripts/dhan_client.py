@@ -440,32 +440,90 @@ class DhanClient:
         """Normalize instrument master columns to support multiple CSV formats.
 
         Dhan's instrument master CSV has changed column names over time.
-        This method handles both spaced names (e.g., "Exchange Segment") and
-        camel-case names (e.g., "ExchangeSegment") by mapping them to
-        consistent internal names.
+        This method handles:
+        - Spaced names: "Exchange Segment", "Security Id", "Strike Price"
+        - CamelCase: "ExchangeSegment", "SecurityId", "StrikePrice"
+        - Uppercase snake_case: SEGMENT, SECURITY_ID, UNDERLYING_SECURITY_ID, SM_EXPIRY_DATE, etc.
+
+        Maps to canonical internal names:
+        - exchange_id
+        - segment
+        - security_id
+        - instrument
+        - instrument_type
+        - underlying_security_id
+        - underlying_symbol
+        - expiry_date
+        - strike_price
+        - option_type
+        - expiry_flag
         """
         column_mapping = {}
 
         for col in df.columns:
             col_lower = col.lower().strip()
+            col_upper = col.upper().strip()
             if col_lower in ("exchange segment", "exchangesegment"):
                 column_mapping[col] = "exchange_segment"
-            elif col_lower in ("instrument",):
+            elif col_lower in ("segment", "exchange_id") or col_upper in (
+                "SEGMENT",
+                "EXCH_ID",
+            ):
+                column_mapping[col] = "segment"
+            elif (
+                col_lower in ("instrument", "sem_instrument")
+                or col_upper == "INSTRUMENT"
+            ):
                 column_mapping[col] = "instrument"
-            elif col_lower in ("security id", "securityid", "sem_smst_security_id"):
+            elif (
+                col_lower in ("instrument_type", "sem_instrument_type")
+                or col_upper == "INSTRUMENT_TYPE"
+            ):
+                column_mapping[col] = "instrument_type"
+            elif (
+                col_lower in ("security id", "securityid", "sem_smst_security_id")
+                or col_upper == "SECURITY_ID"
+            ):
                 column_mapping[col] = "security_id"
-            elif col_lower in ("strike price", "strikeprice", "sem_strike_price"):
+            elif (
+                col_lower in ("underlying security id", "underlyingsecurityid")
+                or col_upper == "UNDERLYING_SECURITY_ID"
+            ):
+                column_mapping[col] = "underlying_security_id"
+            elif (
+                col_lower in ("underlying symbol", "underlying symbol")
+                or col_upper == "UNDERLYING_SYMBOL"
+            ):
+                column_mapping[col] = "underlying_symbol"
+            elif (
+                col_lower in ("strike price", "strikeprice", "sem_strike_price")
+                or col_upper == "STRIKE_PRICE"
+            ):
                 column_mapping[col] = "strike_price"
-            elif col_lower in ("option type", "optiontype", "sem_option_type"):
+            elif (
+                col_lower in ("option type", "optiontype", "sem_option_type")
+                or col_upper == "OPTION_TYPE"
+            ):
                 column_mapping[col] = "option_type"
-            elif col_lower in ("expiry date", "expirydate", "sem_expiry_date"):
+            elif (
+                col_lower
+                in ("expiry date", "expirydate", "sem_expiry_date", "sm_expiry_date")
+                or col_upper == "SM_EXPIRY_DATE"
+            ):
                 column_mapping[col] = "expiry_date"
+            elif (
+                col_lower in ("expiry flag", "expiryflag", "sem_expiry_flag")
+                or col_upper == "EXPIRY_FLAG"
+            ):
+                column_mapping[col] = "expiry_flag"
             elif col_lower in ("drv underlying scrip code", "drvunderlyingscripcode"):
                 column_mapping[col] = "drv_underlying_scrip_code"
             elif col_lower in ("symbol",):
                 column_mapping[col] = "symbol"
             elif col_lower in ("underlying", "underlying symbol"):
                 column_mapping[col] = "underlying"
+            elif col_lower in ("display name", "displayname"):
+                column_mapping[col] = "display_name"
 
         if column_mapping:
             df = df.rename(columns=column_mapping)
@@ -488,6 +546,11 @@ class DhanClient:
           - option_type (CE/PE)
           - strike (actual strike price)
 
+        Filters dynamically by discovering actual values from the CSV:
+        - segment value for index options
+        - instrument_type for index options
+        - option_type encoding (CE/PE or CALL/PUT, etc.)
+
         Returns list of dicts with:
           - security_id
           - exchange_segment
@@ -503,18 +566,109 @@ class DhanClient:
             )
             return []
 
-        expiry_str = pd.to_datetime(expiry_date).strftime("%d-%b-%Y").upper()
+        underlying_id = SECURITY_IDS.get(index)
+        if not underlying_id:
+            logger.warning(f".Unknown index: {index}")
+            return []
 
-        drv_type = "CALL" if option_type == "CE" else "PUT"
+        unique_option_types = set()
+        if "option_type" in master.columns:
+            unique_option_types = master["option_type"].dropna().unique()
 
-        mask = (
-            (master["exchange_segment"] == "NSE_FNO")
-            & (master["instrument"] == "OPTIDX")
-            & (master["drv_underlying_scrip_code"] == SECURITY_IDS.get(index))
-            & (master["option_type"] == drv_type)
-            & (master["expiry_date"].str.upper() == expiry_str)
-            & (master["strike_price"].isin(strikes))
-        )
+        opt_type_value = option_type.upper()
+        opt_type_alt = None
+        for ot in unique_option_types:
+            if ot and isinstance(ot, str):
+                ot_upper = ot.upper()
+                if option_type.upper() in ot_upper:
+                    opt_type_value = ot
+                    break
+                elif "CALL" in ot_upper or "CE" in ot_upper:
+                    opt_type_alt = ot
+        if opt_type_alt and opt_type_value == option_type.upper():
+            opt_type_value = opt_type_alt
+
+        unique_instruments = set()
+        if "instrument" in master.columns:
+            unique_instruments = master["instrument"].dropna().unique()
+        unique_instrument_types = set()
+        if "instrument_type" in master.columns:
+            unique_instrument_types = master["instrument_type"].dropna().unique()
+
+        unique_segments = set()
+        if "segment" in master.columns:
+            unique_segments = master["segment"].dropna().unique()
+
+        index_option_instrument = None
+        for inst in unique_instruments:
+            if inst and isinstance(inst, str) and "IDX" in inst.upper():
+                index_option_instrument = inst
+                break
+
+        index_option_instrument_type = None
+        for it in unique_instrument_types:
+            if (
+                it
+                and isinstance(it, str)
+                and "INDEX" in it.upper()
+                and "OPT" in it.upper()
+            ):
+                index_option_instrument_type = it
+                break
+
+        index_option_segment = None
+        for seg in unique_segments:
+            if seg and isinstance(seg, str) and "FNO" in seg.upper():
+                index_option_segment = seg
+                break
+        if not index_option_segment:
+            index_option_segment = "NSE_FNO"
+
+        expiry_dt = pd.to_datetime(expiry_date)
+        expiry_str_formats = [
+            expiry_dt.strftime("%d-%b-%Y").upper(),
+            expiry_dt.strftime("%Y-%m-%d"),
+            expiry_dt.strftime("%d/%m/%Y"),
+            expiry_dt.strftime("%d-%m-%Y"),
+        ]
+
+        mask = None
+        if "segment" in master.columns and index_option_segment:
+            q = master["segment"] == index_option_segment
+            if index_option_instrument_type:
+                q = q & (master["instrument_type"] == index_option_instrument_type)
+            elif index_option_instrument:
+                q = q & (master["instrument"] == index_option_instrument)
+
+            if "underlying_security_id" in master.columns:
+                q = q & (master["underlying_security_id"] == underlying_id)
+            elif "underlying_symbol" in master.columns:
+                q = q & (master["underlying_symbol"] == index)
+            elif "drv_underlying_scrip_code" in master.columns:
+                q = q & (master["drv_underlying_scrip_code"] == underlying_id)
+
+            if "option_type" in master.columns:
+                q = q & (master["option_type"] == opt_type_value)
+
+            if "expiry_date" in master.columns:
+                exp_mask = None
+                for fmt in expiry_str_formats:
+                    if exp_mask is None:
+                        exp_mask = master["expiry_date"].astype(str).str.upper() == fmt
+                    else:
+                        exp_mask = exp_mask | (
+                            master["expiry_date"].astype(str).str.upper() == fmt
+                        )
+                q = q & exp_mask
+
+            if "strike_price" in master.columns:
+                q = q & (master["strike_price"].isin(strikes))
+
+            mask = q
+
+        if mask is None:
+            logger.warning(f"Cannot build filter for {index} options")
+            return []
 
         filtered = master[mask]
 
@@ -522,10 +676,10 @@ class DhanClient:
         for _, row in filtered.iterrows():
             results.append(
                 {
-                    "security_id": str(row["security_id"]),
-                    "exchange_segment": "NSE_FNO",
-                    "instrument": "OPTIDX",
-                    "strike": int(row["strike_price"]),
+                    "security_id": str(row.get("security_id", "")),
+                    "exchange_segment": index_option_segment,
+                    "instrument": index_option_instrument or "OPTIDX",
+                    "strike": int(row.get("strike_price", 0)),
                     "option_type": option_type,
                     "expiry_date": expiry_date,
                 }
