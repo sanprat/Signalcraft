@@ -662,5 +662,71 @@ class TestDailyUpdaterLiveOptions:
         mock_client.get_expired_options_full.assert_not_called()
 
 
+class TestOptionsAuditEc0:
+    """Test options_audit.py handles ec0 data correctly."""
+
+    def test_audit_no_ec0_warning_when_recent_ec0_exists(self):
+        """When recent ec0 files exist, no warning should be added."""
+        import sys
+        import tempfile
+        from pathlib import Path
+        from datetime import datetime, timedelta
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        import options_audit
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_root = Path(tmpdir)
+
+            recent_time = datetime.now() - timedelta(days=1)
+            for idx in ["NIFTY", "BANKNIFTY", "FINNIFTY"]:
+                for opt in ["CE", "PE"]:
+                    for iv in ["1min"]:
+                        dirpath = data_root / "candles" / idx / opt / iv
+                        dirpath.mkdir(parents=True)
+
+                        df = pd.DataFrame(
+                            {
+                                "time": pd.date_range(
+                                    recent_time, periods=10, freq="min"
+                                ),
+                                "open": [100.0] * 10,
+                                "high": [105.0] * 10,
+                                "low": [99.0] * 10,
+                                "close": [103.0] * 10,
+                                "volume": [1000] * 10,
+                            }
+                        )
+                        df.to_parquet(dirpath / "dhan_ec0_25000.parquet")
+
+            for idx in ["NIFTY", "BANKNIFTY", "FINNIFTY"]:
+                ud = data_root / "underlying" / idx
+                ud.mkdir(parents=True)
+                df = pd.DataFrame(
+                    {
+                        "time": pd.date_range(recent_time, periods=10, freq="min"),
+                        "open": [25000.0] * 10,
+                        "high": [25100.0] * 10,
+                        "low": [24900.0] * 10,
+                        "close": [25050.0] * 10,
+                        "volume": [10000] * 10,
+                    }
+                )
+                df.to_parquet(ud / "1min.parquet")
+
+            scan = options_audit.scan_directory(data_root)
+            timestamps = options_audit.analyze_timestamps(scan)
+            families = options_audit.count_expiry_families(scan)
+
+            verdict, findings = options_audit.determine_readiness(
+                scan, timestamps, families, updater_wired=True
+            )
+
+            ec0_warning = [f for f in findings if "ec0" in f.lower()]
+            assert len(ec0_warning) == 0, (
+                f"Expected no ec0 warnings, got: {ec0_warning}"
+            )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -203,6 +203,40 @@ def determine_readiness(
     if not has_expired_history:
         issues.append("No expired weekly options history (need ec1+)")
 
+    from datetime import datetime, timedelta
+
+    seven_days_ago = datetime.now() - timedelta(days=7)
+
+    has_recent_ec0 = False
+    for idx in INDICES:
+        for opt in OPT_TYPES:
+            for iv in INTERVALS:
+                files = (
+                    scan["candles"]
+                    .get(idx, {})
+                    .get(opt, {})
+                    .get("intervals", {})
+                    .get(iv, {})
+                    .get("files", {})
+                )
+                for fname, fpath in files.items():
+                    if "ec0" in fname:
+                        try:
+                            df = pd.read_parquet(
+                                Path(scan["path"]) / fpath, columns=["time"]
+                            )
+                            if not df.empty:
+                                max_time = pd.to_datetime(df["time"]).max()
+                                if max_time >= seven_days_ago:
+                                    has_recent_ec0 = True
+                                    break
+                        except Exception:
+                            pass
+                if has_recent_ec0:
+                    break
+        if has_recent_ec0:
+            break
+
     has_ec0 = any(
         families[idx].get(opt, {}).get(iv, {}).get("ec0", 0) > 0
         for idx in INDICES
@@ -211,11 +245,9 @@ def determine_readiness(
     )
     if not has_ec0:
         warnings.append("No current-week (ec0) data found")
-    else:
-        warnings.append(
-            "ec0 (live current-week) unproven: Dhan API returns DH-905 for expiry_code=0; "
-            "requires active option instruments redesign"
-        )
+    elif not has_recent_ec0:
+        warnings.append("ec0 files exist but none are recent (last 7 days)")
+    # Else: recent ec0 exists, no warning added
 
     has_overlap = False
     if timestamps["underlying"] and timestamps["options"]:
