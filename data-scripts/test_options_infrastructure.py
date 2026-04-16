@@ -896,5 +896,70 @@ class TestCurrentWeekExpirySelection:
         assert call_args[1]["expiry_date"] == friday.strftime("%Y-%m-%d")
 
 
+class TestDeriveActiveExpiryFromMaster:
+    """Test derive_active_expiry_from_master picks nearest weekly expiry."""
+
+    def test_derive_expiry_picks_nearest_weekly(self):
+        """Should pick nearest expiry >= end_date from weekly index options."""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dhan_client import DhanClient
+        from datetime import date
+
+        client = DhanClient("test", "test")
+
+        df = pd.DataFrame(
+            {
+                "segment": ["NSE_FNO"] * 4,
+                "instrument": ["OPTIDX"] * 4,
+                "underlying_symbol": ["NIFTY"] * 4,
+                "expiry_date": [
+                    "2026-04-23",
+                    "2026-04-21",
+                    "2026-04-28",
+                    "2026-05-05",
+                ],
+                "expiry_flag": ["W", "W", "W", "M"],
+            }
+        )
+
+        client._load_instrument_master = lambda: df
+
+        end_date = date(2026, 4, 15)
+        result = client.derive_active_expiry_from_master("NIFTY", end_date)
+
+        assert result == "2026-04-21", f"Expected 2026-04-21, got {result}"
+
+    def test_derive_expiry_returns_none_when_no_weekly(self):
+        """Should return None when no valid expiries found at all."""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dhan_client import DhanClient
+        from datetime import date
+
+        client = DhanClient("test", "test")
+
+        df = pd.DataFrame(
+            {
+                "segment": ["NSE_FNO"],
+                "instrument": ["OPTIDX"],
+                "underlying_symbol": ["NIFTY"],
+                "expiry_date": ["2026-04-10"],
+                "expiry_flag": ["M"],
+            }
+        )
+
+        client._load_instrument_master = lambda: df
+
+        end_date = date(2026, 4, 15)
+        result = client.derive_active_expiry_from_master("NIFTY", end_date)
+
+        assert result is None, f"Expected None, got {result}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

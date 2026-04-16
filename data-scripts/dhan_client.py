@@ -761,6 +761,20 @@ class DhanClient:
         if "instrument_type" in master.columns:
             unique_instrument_types = set(master["instrument_type"].dropna().unique())
 
+        unique_option_types = set()
+        if "option_type" in master.columns:
+            unique_option_types = set(master["option_type"].dropna().unique())
+
+        unique_expiry_flags = set()
+        if "expiry_flag" in master.columns:
+            unique_expiry_flags = set(master["expiry_flag"].dropna().unique())
+
+        logger.debug(
+            f"Master distinct values: segments={unique_segments}, "
+            f"instruments={unique_instruments}, instrument_types={unique_instrument_types}, "
+            f"option_types={unique_option_types}, expiry_flags={unique_expiry_flags}"
+        )
+
         index_option_segment = None
         for seg in unique_segments:
             if seg and isinstance(seg, str) and "FNO" in seg.upper():
@@ -800,13 +814,13 @@ class DhanClient:
         if "segment" in master.columns and index_option_segment:
             base_mask = master["segment"] == index_option_segment
 
-            if index_option_instrument_type:
-                base_mask = base_mask & (
-                    master["instrument_type"] == index_option_instrument_type
-                )
-            elif index_option_instrument:
+            if index_option_instrument:
                 base_mask = base_mask & (
                     master["instrument"] == index_option_instrument
+                )
+            elif index_option_instrument_type:
+                base_mask = base_mask & (
+                    master["instrument_type"] == index_option_instrument_type
                 )
 
         if base_mask is None:
