@@ -465,11 +465,10 @@ class DhanClient:
             col_upper = col.upper().strip()
             if col_lower in ("exchange segment", "exchangesegment"):
                 column_mapping[col] = "exchange_segment"
-            elif col_lower in ("segment", "exchange_id") or col_upper in (
-                "SEGMENT",
-                "EXCH_ID",
-            ):
+            elif col_lower in ("segment",) or col_upper == "SEGMENT":
                 column_mapping[col] = "segment"
+            elif col_lower in ("exchange_id",) or col_upper == "EXCH_ID":
+                column_mapping[col] = "exchange_id"
             elif (
                 col_lower in ("instrument", "sem_instrument")
                 or col_upper == "INSTRUMENT"

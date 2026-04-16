@@ -819,6 +819,33 @@ class TestDhanClientInstrumentMasterNormalization:
         assert "option_type" in normalized.columns
         assert "expiry_date" in normalized.columns
 
+    def test_normalize_deduplicates_columns(self):
+        """_normalize_instrument_master_columns should produce unique canonical columns."""
+        import sys
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).parent))
+        from dhan_client import DhanClient
+
+        df = pd.DataFrame(
+            {
+                "SEGMENT": ["NSE_FNO"],
+                "INSTRUMENT": ["OPTIDX"],
+                "SECURITY_ID": ["12345"],
+                "UNDERLYING_SECURITY_ID": [13],
+                "STRIKE_PRICE": [25000],
+                "OPTION_TYPE": ["CE"],
+                "SM_EXPIRY_DATE": ["24-APR-2025"],
+            }
+        )
+
+        client = DhanClient("test", "test")
+        normalized = client._normalize_instrument_master_columns(df)
+
+        assert normalized.columns.is_unique, (
+            f"Duplicate columns: {list(normalized.columns[normalized.columns.duplicated()])}"
+        )
+
 
 class TestCurrentWeekExpirySelection:
     """Test daily_updater.py selects the correct current-week expiry."""
