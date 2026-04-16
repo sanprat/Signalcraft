@@ -540,6 +540,10 @@ class DhanClient:
                 )
         df = df[cols_to_keep]
 
+        assert df.columns.is_unique, (
+            f"Duplicate columns after normalization: {list(df.columns[df.columns.duplicated()])}"
+        )
+
         return df
 
     def resolve_active_weekly_options(
@@ -659,6 +663,14 @@ class DhanClient:
             elif "drv_underlying_scrip_code" in master.columns:
                 q = q & (master["drv_underlying_scrip_code"] == underlying_id)
 
+            if "expiry_flag" in master.columns:
+                weekly_mask = master["expiry_flag"].astype(str).str.upper() == "W"
+                if weekly_mask.any():
+                    q = q & weekly_mask
+                    logger.debug(
+                        f"Applied weekly filter (expiry_flag=W) in resolve_active_weekly_options"
+                    )
+
             if "option_type" in master.columns:
                 q = q & (master["option_type"] == opt_type_value)
 
@@ -715,10 +727,12 @@ class DhanClient:
 
         Flow:
           1. Load instrument master
-          2. Filter to index's option contracts (by underlying_security_id/underlying_symbol)
-          3. Filter to expiries >= end_date (the current trading week)
-          4. Pick the nearest such expiry
-          5. Return as YYYY-MM-DD string
+          2. Filter to index options (segment + instrument/instrument_type)
+          3. Filter to weekly contracts (expiry_flag) if available
+          4. Filter by underlying
+          5. Filter to expiries >= end_date
+          6. Pick the nearest such expiry
+          7. Return as YYYY-MM-DD string
 
         Returns None if no valid expiry found.
         """
@@ -727,40 +741,120 @@ class DhanClient:
             logger.warning("Cannot derive active expiry: instrument master unavailable")
             return None
 
+        assert master.columns.is_unique, (
+            f"Duplicate columns in master: {list(master.columns[master.columns.duplicated()])}"
+        )
+
         underlying_id = SECURITY_IDS.get(index)
         if not underlying_id:
             logger.warning(f"Unknown index: {index}")
             return None
 
+        unique_segments = set()
+        if "segment" in master.columns:
+            unique_segments = set(master["segment"].dropna().unique())
+
+        unique_instruments = set()
+        if "instrument" in master.columns:
+            unique_instruments = set(master["instrument"].dropna().unique())
+
+        unique_instrument_types = set()
+        if "instrument_type" in master.columns:
+            unique_instrument_types = set(master["instrument_type"].dropna().unique())
+
+        index_option_segment = None
+        for seg in unique_segments:
+            if seg and isinstance(seg, str) and "FNO" in seg.upper():
+                index_option_segment = seg
+                break
+        if not index_option_segment:
+            index_option_segment = "NSE_FNO"
+
+        index_option_instrument = None
+        for inst in unique_instruments:
+            if (
+                inst
+                and isinstance(inst, str)
+                and "IDX" in inst.upper()
+                and "OPT" in inst.upper()
+            ):
+                index_option_instrument = inst
+                break
+
+        index_option_instrument_type = None
+        for it in unique_instrument_types:
+            if (
+                it
+                and isinstance(it, str)
+                and "INDEX" in it.upper()
+                and "OPT" in it.upper()
+            ):
+                index_option_instrument_type = it
+                break
+
+        logger.debug(
+            f"Master discovery for {index}: segment={index_option_segment}, "
+            f"instrument={index_option_instrument}, instrument_type={index_option_instrument_type}"
+        )
+
+        base_mask = None
+        if "segment" in master.columns and index_option_segment:
+            base_mask = master["segment"] == index_option_segment
+
+            if index_option_instrument_type:
+                base_mask = base_mask & (
+                    master["instrument_type"] == index_option_instrument_type
+                )
+            elif index_option_instrument:
+                base_mask = base_mask & (
+                    master["instrument"] == index_option_instrument
+                )
+
+        if base_mask is None:
+            logger.warning(f"Cannot build base filter for index options")
+            return None
+
+        filtered = master[base_mask]
+        logger.debug(f"After index-option filter: {len(filtered)} rows")
+
         underlying_col = None
-        if "underlying_security_id" in master.columns:
+        if "underlying_security_id" in filtered.columns:
             underlying_col = "underlying_security_id"
-        elif "underlying_symbol" in master.columns:
+        elif "underlying_symbol" in filtered.columns:
             underlying_col = "underlying_symbol"
-        elif "drv_underlying_scrip_code" in master.columns:
+        elif "drv_underlying_scrip_code" in filtered.columns:
             underlying_col = "drv_underlying_scrip_code"
 
         if underlying_col is None:
-            logger.warning(f"No underlying column found in instrument master")
+            logger.warning(f"No underlying column found in filtered master")
             return None
 
         if underlying_col == "underlying_security_id":
-            mask = master["underlying_security_id"] == underlying_id
+            mask = filtered[underlying_col] == underlying_id
         elif underlying_col == "underlying_symbol":
-            mask = master["underlying_symbol"] == index
+            mask = filtered[underlying_col] == index
         else:
-            mask = master["drv_underlying_scrip_code"] == underlying_id
+            mask = filtered[underlying_col] == underlying_id
 
-        filtered = master[mask]
+        filtered = filtered[mask]
+        logger.debug(f"After underlying filter: {len(filtered)} rows")
+
+        if "expiry_flag" in filtered.columns:
+            weekly_mask = filtered["expiry_flag"].astype(str).str.upper() == "W"
+            if weekly_mask.any():
+                filtered = filtered[weekly_mask]
+                logger.debug(
+                    f"After weekly filter (expiry_flag=W): {len(filtered)} rows"
+                )
 
         if "expiry_date" not in filtered.columns:
-            logger.warning(f"expiry_date column not found in instrument master")
+            logger.warning(f"expiry_date column not found in filtered master")
             return None
 
         expiries = filtered["expiry_date"].dropna().unique()
 
         if len(expiries) == 0:
-            logger.warning(f"No expiries found for {index}")
+            logger.warning(f"No expiries found for {index} after filtering")
             return None
 
         parsed_expiries = []
@@ -776,7 +870,7 @@ class DhanClient:
 
         if not parsed_expiries:
             logger.warning(
-                f"No expiries >= {end_date} found for {index} in instrument master"
+                f"No expiries >= {end_date} found for {index} in filtered master"
             )
             return None
 
