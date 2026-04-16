@@ -528,6 +528,18 @@ class DhanClient:
         if column_mapping:
             df = df.rename(columns=column_mapping)
 
+        seen = {}
+        cols_to_keep = []
+        for col in df.columns:
+            if col not in seen:
+                seen[col] = True
+                cols_to_keep.append(col)
+            else:
+                logger.warning(
+                    f"Duplicate column '{col}' detected after normalization, dropping duplicate"
+                )
+        df = df[cols_to_keep]
+
         return df
 
     def resolve_active_weekly_options(
@@ -689,6 +701,93 @@ class DhanClient:
             f"Resolved {len(results)} active {option_type} contracts for {index} {expiry_date}"
         )
         return results
+
+    def derive_active_expiry_from_master(
+        self,
+        index: str,
+        end_date: date,
+    ) -> str | None:
+        """
+        Derive the active (current-week) expiry directly from instrument master.
+
+        This replaces expirylist as the source of truth because expirylist
+        returns future expiries only, not the current trading week.
+
+        Flow:
+          1. Load instrument master
+          2. Filter to index's option contracts (by underlying_security_id/underlying_symbol)
+          3. Filter to expiries >= end_date (the current trading week)
+          4. Pick the nearest such expiry
+          5. Return as YYYY-MM-DD string
+
+        Returns None if no valid expiry found.
+        """
+        master = self._load_instrument_master()
+        if master.empty:
+            logger.warning("Cannot derive active expiry: instrument master unavailable")
+            return None
+
+        underlying_id = SECURITY_IDS.get(index)
+        if not underlying_id:
+            logger.warning(f"Unknown index: {index}")
+            return None
+
+        underlying_col = None
+        if "underlying_security_id" in master.columns:
+            underlying_col = "underlying_security_id"
+        elif "underlying_symbol" in master.columns:
+            underlying_col = "underlying_symbol"
+        elif "drv_underlying_scrip_code" in master.columns:
+            underlying_col = "drv_underlying_scrip_code"
+
+        if underlying_col is None:
+            logger.warning(f"No underlying column found in instrument master")
+            return None
+
+        if underlying_col == "underlying_security_id":
+            mask = master["underlying_security_id"] == underlying_id
+        elif underlying_col == "underlying_symbol":
+            mask = master["underlying_symbol"] == index
+        else:
+            mask = master["drv_underlying_scrip_code"] == underlying_id
+
+        filtered = master[mask]
+
+        if "expiry_date" not in filtered.columns:
+            logger.warning(f"expiry_date column not found in instrument master")
+            return None
+
+        expiries = filtered["expiry_date"].dropna().unique()
+
+        if len(expiries) == 0:
+            logger.warning(f"No expiries found for {index}")
+            return None
+
+        parsed_expiries = []
+        end_dt = pd.to_datetime(end_date)
+
+        for exp in expiries:
+            try:
+                parsed = pd.to_datetime(exp)
+                if parsed >= end_dt:
+                    parsed_expiries.append(parsed)
+            except Exception:
+                continue
+
+        if not parsed_expiries:
+            logger.warning(
+                f"No expiries >= {end_date} found for {index} in instrument master"
+            )
+            return None
+
+        parsed_expiries.sort()
+        nearest_expiry = parsed_expiries[0]
+
+        result = nearest_expiry.strftime("%Y-%m-%d")
+        logger.info(
+            f"Derived active expiry for {index}: {result} (from instrument master)"
+        )
+        return result
 
     def get_active_option_intraday(
         self,

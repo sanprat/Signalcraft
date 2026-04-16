@@ -701,20 +701,12 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
 
     if dry_run:
         for idx in fno_indices:
-            expiry_list = client.get_expiry_list(idx)
-            if not expiry_list:
-                log.info(f"  {idx}: would skip (no expiry list)")
+            current_expiry = client.derive_active_expiry_from_master(idx, end_date)
+            if not current_expiry:
+                log.info(
+                    f"  {idx}: could not derive active expiry from master, would skip"
+                )
                 continue
-
-            today_date = date.today()
-            valid_expiries = [
-                e for e in expiry_list if pd.to_datetime(e).date() >= today_date
-            ]
-            if not valid_expiries:
-                log.info(f"  {idx}: would skip (no valid expiry)")
-                continue
-
-            current_expiry = valid_expiries[0]
 
             strikes = [25000 + offset * 100 for offset in FNO_OFFSETS]
             contracts_ce = client.resolve_active_weekly_options(
@@ -743,27 +735,34 @@ def update_fno_live_options(client: DhanClient, end_date: date, dry_run: bool = 
     unresolved = 0
 
     for idx in fno_indices:
-        expiry_list = client.get_expiry_list(idx)
-        if not expiry_list:
-            log.warning(f"  {idx}: could not get expiry list, skipping")
-            continue
-
-        sorted_expiries = sorted(expiry_list, key=lambda x: pd.to_datetime(x))
-        current_expiry = None
-        for exp in sorted_expiries:
-            exp_dt = pd.to_datetime(exp)
-            week_start = exp_dt - timedelta(days=exp_dt.weekday())
-            week_start_date = week_start.date()
-            if week_start_date <= end_date <= exp_dt.date():
-                current_expiry = exp
-                break
+        current_expiry = client.derive_active_expiry_from_master(idx, end_date)
 
         if not current_expiry:
             log.warning(
-                f"  {idx}: no current-week expiry found. "
-                f"Available expiries: {sorted_expiries}, end_date={end_date}"
+                f"  {idx}: could not derive active expiry from instrument master, "
+                f"falling back to expirylist"
             )
-            continue
+            expiry_list = client.get_expiry_list(idx)
+            if not expiry_list:
+                log.warning(f"  {idx}: could not get expiry list, skipping")
+                continue
+
+            sorted_expiries = sorted(expiry_list, key=lambda x: pd.to_datetime(x))
+            current_expiry = None
+            for exp in sorted_expiries:
+                exp_dt = pd.to_datetime(exp)
+                week_start = exp_dt - timedelta(days=exp_dt.weekday())
+                week_start_date = week_start.date()
+                if week_start_date <= end_date <= exp_dt.date():
+                    current_expiry = exp
+                    break
+
+            if not current_expiry:
+                log.warning(
+                    f"  {idx}: no current-week expiry found. "
+                    f"Available expiries: {sorted_expiries}, end_date={end_date}"
+                )
+                continue
 
         log.info(f"  {idx}: current expiry = {current_expiry}")
 

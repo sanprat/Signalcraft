@@ -629,6 +629,7 @@ class TestDailyUpdaterLiveOptions:
         future_expiry = tomorrow.strftime("%Y-%m-%d")
 
         mock_client = MagicMock()
+        mock_client.derive_active_expiry_from_master.return_value = future_expiry
         mock_client.get_expiry_list.return_value = [future_expiry]
         mock_client.resolve_active_weekly_options.return_value = [
             {
@@ -845,6 +846,9 @@ class TestCurrentWeekExpirySelection:
         ]
 
         mock_client = MagicMock()
+        mock_client.derive_active_expiry_from_master.return_value = friday.strftime(
+            "%Y-%m-%d"
+        )
         mock_client.get_expiry_list.return_value = expiry_list
         mock_client.resolve_active_weekly_options.return_value = [
             {
