@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-resample_nifty500.py — Resample NIFTY500 1-minute parquet data to 5min, 15min, and 1D.
+resample_nifty50.py — Resample Nifty50 1-minute parquet data to 5min, 15min, and 1D.
 
 Uses DuckDB for fast SQL-based aggregation directly on parquet files.
 Skips stocks/timeframes that are already up to date.
@@ -12,9 +12,11 @@ Data layout:
   data/candles/NIFTY500/{SYMBOL}/1D.parquet     ← generated
 
 Usage:
-  python3 data-scripts/Cron example (run daily at 3:45 PM IST, resample immediately after):
-  45 15 * * 1-5 cd /path/to/Pytrader && python3 data-scripts/daily_updater.py >> data/logs/daily_update.log 2>&1 && python3 data-scripts/resample_nifty50.py >> data/logs/resample_nifty50.log 2>&1 && python3 data-scripts/resample_fno.py >> data/logs/resample_fno.log 2>&1
-      # preview only
+  python3 data-scripts/resample_nifty50.py       # resample all
+  python3 data-scripts/resample_nifty50.py --dry-run  # preview only
+
+Cron example (run daily at 3:50 PM IST after daily_updater.py):
+  50 15 * * 1-5 cd /path/to/Pytrader && python3 data-scripts/resample_nifty50.py >> data/logs/resample_nifty50.log 2>&1
 """
 
 import argparse
@@ -38,13 +40,56 @@ RESAMPLE_TARGETS = ["5min", "10min", "15min", "30min", "60min", "1D"]
 
 # NIFTY 50 blue-chip stocks (Deep historical data support)
 NIFTY_50 = [
-    "RELIANCE", "TCS", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "SBIN", "INFY", "LICI",
-    "ITC", "HINDUNILVR", "LT", "BAJFINANCE", "HCLTECH", "MARUTI", "SUNPHARMA",
-    "TATAMOTORS", "TATASTEEL", "KOTAKBANK", "TITAN", "NTPC", "ULTRACEMCO", "ONGC",
-    "AXISBANK", "WIPRO", "NESTLEIND", "M&M", "POWERGRID", "GRASIM", "JSWSTEEL",
-    "ASIANPAINT", "HDFCLIFE", "SBILIFE", "BRITANNIA", "EICHERMOT", "APOLLOHOSP",
-    "DIVISLAB", "TATACONSUM", "BAJAJFINSV", "HINDALCO", "TECHM", "DRREDDY", "CIPLA",
-    "INDUSINDBK", "ADANIPORTS", "ADANIENT", "BPCL", "COALINDIA", "HEROMOTOCO", "UPL", "TATAPOWER"
+    "RELIANCE",
+    "TCS",
+    "HDFCBANK",
+    "ICICIBANK",
+    "BHARTIARTL",
+    "SBIN",
+    "INFY",
+    "LICI",
+    "ITC",
+    "HINDUNILVR",
+    "LT",
+    "BAJFINANCE",
+    "HCLTECH",
+    "MARUTI",
+    "SUNPHARMA",
+    "TATAMOTORS",
+    "TATASTEEL",
+    "KOTAKBANK",
+    "TITAN",
+    "NTPC",
+    "ULTRACEMCO",
+    "ONGC",
+    "AXISBANK",
+    "WIPRO",
+    "NESTLEIND",
+    "M&M",
+    "POWERGRID",
+    "GRASIM",
+    "JSWSTEEL",
+    "ASIANPAINT",
+    "HDFCLIFE",
+    "SBILIFE",
+    "BRITANNIA",
+    "EICHERMOT",
+    "APOLLOHOSP",
+    "DIVISLAB",
+    "TATACONSUM",
+    "BAJAJFINSV",
+    "HINDALCO",
+    "TECHM",
+    "DRREDDY",
+    "CIPLA",
+    "INDUSINDBK",
+    "ADANIPORTS",
+    "ADANIENT",
+    "BPCL",
+    "COALINDIA",
+    "HEROMOTOCO",
+    "UPL",
+    "TATAPOWER",
 ]
 
 # Market hours IST (used to filter 1D aggregation to intraday hours only)
@@ -52,14 +97,16 @@ MARKET_OPEN = "09:15"
 MARKET_CLOSE = "15:30"
 
 # PyArrow schema for all output files
-SCHEMA = pa.schema([
-    ("time",   pa.timestamp("s")),
-    ("open",   pa.float32()),
-    ("high",   pa.float32()),
-    ("low",    pa.float32()),
-    ("close",  pa.float32()),
-    ("volume", pa.int64()),
-])
+SCHEMA = pa.schema(
+    [
+        ("time", pa.timestamp("s")),
+        ("open", pa.float32()),
+        ("high", pa.float32()),
+        ("low", pa.float32()),
+        ("close", pa.float32()),
+        ("volume", pa.int64()),
+    ]
+)
 
 LOG_DIR = PROJECT_ROOT / "data" / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -76,6 +123,7 @@ log = logging.getLogger(__name__)
 
 
 # ── DuckDB SQL Aggregation ─────────────────────────────────────────────────────
+
 
 def resample_with_duckdb(src_path: Path, interval: str) -> pd.DataFrame:
     """
@@ -139,6 +187,7 @@ def resample_with_duckdb(src_path: Path, interval: str) -> pd.DataFrame:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def is_up_to_date(src_path: Path, dst_path: Path) -> bool:
     """Return True if destination file exists and is newer than the source."""
     if not dst_path.exists():
@@ -150,15 +199,20 @@ def save_parquet(df: pd.DataFrame, path: Path):
     """Cast types and save as a compressed parquet file."""
     # Convert to pure UTC naive to bypass Pandas/Pyarrow timezone metadata bugs
     if df["time"].dt.tz is None:
-        df["time"] = pd.to_datetime(df["time"]).dt.tz_localize("Asia/Kolkata").dt.tz_convert("UTC").dt.tz_localize(None)
+        df["time"] = (
+            pd.to_datetime(df["time"])
+            .dt.tz_localize("Asia/Kolkata")
+            .dt.tz_convert("UTC")
+            .dt.tz_localize(None)
+        )
     else:
         df["time"] = pd.to_datetime(df["time"], utc=True).dt.tz_localize(None)
-        
-    df["time"]   = df["time"].astype("datetime64[s]")
-    df["open"]   = df["open"].astype("float32")
-    df["high"]   = df["high"].astype("float32")
-    df["low"]    = df["low"].astype("float32")
-    df["close"]  = df["close"].astype("float32")
+
+    df["time"] = df["time"].astype("datetime64[s]")
+    df["open"] = df["open"].astype("float32")
+    df["high"] = df["high"].astype("float32")
+    df["low"] = df["low"].astype("float32")
+    df["close"] = df["close"].astype("float32")
     df["volume"] = df["volume"].astype("int64")
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -168,10 +222,13 @@ def save_parquet(df: pd.DataFrame, path: Path):
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+
 def parse_args():
-    p = argparse.ArgumentParser(description="Resample NIFTY500 1-min data to 5min/15min/1D")
-    p.add_argument("--symbol",  help="Process a single stock symbol (e.g. RELIANCE)")
-    p.add_argument("--force",   action="store_true", help="Overwrite existing files")
+    p = argparse.ArgumentParser(
+        description="Resample NIFTY500 1-min data to 5min/15min/1D"
+    )
+    p.add_argument("--symbol", help="Process a single stock symbol (e.g. RELIANCE)")
+    p.add_argument("--force", action="store_true", help="Overwrite existing files")
     p.add_argument("--dry-run", action="store_true", help="Preview without writing")
     return p.parse_args()
 
@@ -210,7 +267,7 @@ def main():
     t_start = time.time()
     updated = 0
     skipped = 0
-    errors  = 0
+    errors = 0
 
     for i, sym_dir in enumerate(sym_dirs, 1):
         sym = sym_dir.name
@@ -238,7 +295,9 @@ def main():
             try:
                 df = resample_with_duckdb(src_path, interval)
                 if df.empty:
-                    log.warning(f"  [{i}/{total}] {sym} {interval}: Empty result — skipping")
+                    log.warning(
+                        f"  [{i}/{total}] {sym} {interval}: Empty result — skipping"
+                    )
                     skipped += 1
                     continue
 

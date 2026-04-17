@@ -200,10 +200,9 @@ def test_backtest_date_range_validation(from_date, to_date, should_pass):
         validate_backtest_date_range(from_date, to_date)
 
     assert exc_info.value.status_code == 422
-    assert (
-        "Expected YYYY-MM-DD" in str(exc_info.value.detail)
-        or "backtest_to must be on or after backtest_from" in str(exc_info.value.detail)
-    )
+    assert "Expected YYYY-MM-DD" in str(
+        exc_info.value.detail
+    ) or "backtest_to must be on or after backtest_from" in str(exc_info.value.detail)
 
 
 @pytest.mark.parametrize(
@@ -320,13 +319,15 @@ class TestStrategyV2:
         assert risk.max_trades_per_day == 5
         assert risk.reentry_after_sl == True
 
-    def test_fno_strategy_requires_index(self):
-        """Test FnO strategy requires index field."""
+    def test_fno_strategy_rejected(self):
+        """Test FNO strategy is rejected as temporarily unavailable."""
         with pytest.raises(ValueError) as exc_info:
             StrategyV2(
                 name="FnO Test",
                 symbols=["NIFTY"],
                 asset_type="FNO",
+                index="NIFTY",
+                option_type="CE",
                 entry_conditions=[
                     Condition(
                         left=IndicatorRef(name="RSI", params=[14]),
@@ -336,7 +337,7 @@ class TestStrategyV2:
                 ],
                 exit_rules=[StopLossRule(percent=2.0)],
             )
-        assert "FnO strategies require" in str(exc_info.value)
+        assert "temporarily unavailable" in str(exc_info.value)
 
 
 # ============================================================================
@@ -664,7 +665,9 @@ class TestStrategyEngine:
                     TargetRule(percent=20.0, priority=1),
                     StopLossRule(percent=20.0, priority=2),
                 ],
-                risk=RiskConfig(quantity=1, max_trades_per_day=5, max_loss_per_day=5000),
+                risk=RiskConfig(
+                    quantity=1, max_trades_per_day=5, max_loss_per_day=5000
+                ),
             )
         )
 
@@ -711,7 +714,9 @@ class TestStrategyEngine:
                     )
                 ],
                 exit_rules=[StopLossRule(percent=2.0, priority=1)],
-                risk=RiskConfig(quantity=10, max_trades_per_day=3, max_loss_per_day=5000),
+                risk=RiskConfig(
+                    quantity=10, max_trades_per_day=3, max_loss_per_day=5000
+                ),
             )
         )
 

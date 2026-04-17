@@ -102,7 +102,11 @@ export function useStrategy(): UseStrategyReturn {
 
     // Load existing strategy for editing
     const loadStrategyAction = useCallback((s: StrategyV2, id?: string) => {
-        setStrategyState(s)
+        // Force EQUITY if loading an F&O strategy (F&O is temporarily disabled)
+        const safeStrategy = s.asset_type === 'FNO' 
+            ? { ...s, asset_type: 'EQUITY' as const, index: undefined, option_type: undefined, strike_type: undefined }
+            : s
+        setStrategyState(safeStrategy)
         setEditMode(true)
         setStrategyId(id || null)
         setIsDirty(false)

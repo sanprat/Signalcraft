@@ -1,5 +1,5 @@
 """
-symbols.py — Centralized symbol configuration for FnO and NIFTY500.
+symbols.py — Centralized symbol configuration for Nifty50 stocks.
 """
 
 import json
@@ -14,66 +14,53 @@ logger = logging.getLogger(__name__)
 
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-CSV_PATH = PROJECT_ROOT / "data-scripts" / "nifty500_symbols.csv"
-MAPPING_PATH = PROJECT_ROOT / "data-scripts" / "nifty500_dhan_mapping.json"
+MAPPING_PATH = PROJECT_ROOT / "data-scripts" / "nifty50_dhan_mapping.json"
 
 
 # ── FnO Symbols Configuration ──────────────────────────────────────────────
+# Kept for reference/compatibility, but not actively used in strategy flows
 # Dhan API uses numeric security IDs for indices
-# Note: BANKNIFTY and FINNIFTY intraday data is only available from Jan 2022
 FNO_SYMBOLS: Dict[str, Dict[str, str]] = {
     "NIFTY": {
         "id": "13",
         "segment": "IDX_I",
         "instrument": "INDEX",
         "name": "Nifty 50",
-        "start_date": "2020-01-01",  # NIFTY available from Jan 2020
+        "start_date": "2020-01-01",
     },
     "BANKNIFTY": {
         "id": "25",
         "segment": "IDX_I",
         "instrument": "INDEX",
         "name": "Nifty Bank",
-        "start_date": "2022-01-01",  # BANKNIFTY only available from Jan 2022
+        "start_date": "2022-01-01",
     },
     "FINNIFTY": {
         "id": "27",
         "segment": "IDX_I",
         "instrument": "INDEX",
         "name": "Nifty Fin Services",
-        "start_date": "2022-01-01",  # FINNIFTY only available from Jan 2022
+        "start_date": "2022-01-01",
     },
-    # GIFTNIFTY - only available on SGX, may have limited data
-    # "GIFTNIFTY": {
-    #     "id": "442",
-    #     "segment": "IDX_I",
-    #     "instrument": "INDEX",
-    #     "name": "Nifty GIFT",
-    #     "start_date": "2022-01-01",
-    # },
 }
 
-# All FnO index keys for iteration
 FNO_INDEX_KEYS = list(FNO_SYMBOLS.keys())
 
 
-# ── Load NIFTY500 from CSV ────────────────────────────────────────────────
-def _load_nifty500_from_csv() -> List[str]:
-    """Load NIFTY500 symbols from CSV file."""
+# ── Load Nifty50 from JSON ────────────────────────────────────────────────
+def _load_nifty50_from_json() -> List[str]:
+    """Load Nifty50 symbols from JSON file."""
     try:
-        df = pd.read_csv(CSV_PATH)
-        if "Symbol" in df.columns:
-            return df["Symbol"].tolist()
-        else:
-            logger.warning(
-                f"CSV doesn't have 'Symbol' column. Columns: {df.columns.tolist()}"
-            )
-            return []
+        with open(MAPPING_PATH, "r") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return [item["symbol"] for item in data]
+            return list(data.keys())
     except FileNotFoundError:
-        logger.warning(f"NIFTY500 CSV not found at {CSV_PATH}")
+        logger.warning(f"Nifty50 mapping not found at {MAPPING_PATH}")
         return []
     except Exception as e:
-        logger.error(f"Error loading NIFTY500 CSV: {e}")
+        logger.error(f"Error loading Nifty50 mapping: {e}")
         return []
 
 
@@ -83,7 +70,6 @@ def _load_dhan_mapping() -> Dict[str, str]:
     try:
         with open(MAPPING_PATH, "r") as f:
             data = json.load(f)
-            # Handle both formats: {"SYMBOL": "12345"} or [{"symbol": "SYMBOL", "dhan_id": "12345"}]
             if isinstance(data, list):
                 return {item["symbol"]: item["dhan_id"] for item in data}
             return data
@@ -96,11 +82,11 @@ def _load_dhan_mapping() -> Dict[str, str]:
 
 
 # ── Initialize at module load ────────────────────────────────────────────
-NIFTY500: List[str] = _load_nifty500_from_csv()
+NIFTY50: List[str] = _load_nifty50_from_json()
 DHAN_MAPPING: Dict[str, str] = _load_dhan_mapping()
 
-# Combined list of all tradable symbols
-ALL_SYMBOLS: List[str] = FNO_INDEX_KEYS + NIFTY500
+# Nifty50 stocks only (FnO indices excluded from active flows)
+ALL_SYMBOLS: List[str] = NIFTY50.copy()
 
 
 # ── Helper Functions ──────────────────────────────────────────────────────
@@ -146,11 +132,11 @@ def get_dhan_id(symbol: str) -> Optional[str]:
     Returns:
         Dhan security ID as string, or None if not found
     """
-    # Check FnO first
+    # Check FnO first (kept for reference)
     if symbol in FNO_SYMBOLS:
         return FNO_SYMBOLS[symbol]["id"]
 
-    # Check NIFTY500 mapping
+    # Check Nifty50 mapping
     return DHAN_MAPPING.get(symbol)
 
 
@@ -168,10 +154,9 @@ def get_symbol_info(symbol: str) -> Dict:
         "symbol": symbol,
         "dhan_id": get_dhan_id(symbol),
         "is_fno": symbol in FNO_INDEX_KEYS,
-        "is_nifty500": symbol in NIFTY500,
+        "is_nifty50": symbol in NIFTY50,
     }
 
-    # Add FnO details if applicable
     if symbol in FNO_SYMBOLS:
         info.update(FNO_SYMBOLS[symbol])
 
@@ -191,9 +176,9 @@ def is_tradable(symbol: str) -> bool:
     return symbol in ALL_SYMBOLS
 
 
-def get_all_nifty500() -> List[str]:
-    """Get list of all NIFTY500 symbols."""
-    return NIFTY500.copy()
+def get_all_nifty50() -> List[str]:
+    """Get list of all Nifty50 symbols."""
+    return NIFTY50.copy()
 
 
 def get_all_fno() -> List[str]:
@@ -203,12 +188,12 @@ def get_all_fno() -> List[str]:
 
 def get_missing_dhan_ids() -> List[str]:
     """
-    Get list of NIFTY500 symbols that don't have Dhan ID mapping.
+    Get list of Nifty50 symbols that don't have Dhan ID mapping.
 
     Returns:
         List of symbols missing mapping
     """
-    return [s for s in NIFTY500 if s not in DHAN_MAPPING]
+    return [s for s in NIFTY50 if s not in DHAN_MAPPING]
 
 
 # ── Timeframe Configuration ────────────────────────────────────────────────
@@ -230,11 +215,11 @@ if __name__ == "__main__":
     print("SYMBOL CONFIGURATION SUMMARY")
     print("=" * 60)
 
-    print(f"\nFnO Indices: {len(FNO_SYMBOLS)}")
+    print(f"\nFnO Indices: {len(FNO_SYMBOLS)} (reference only)")
     for symbol, config in FNO_SYMBOLS.items():
         print(f"  {symbol}: ID={config['id']}")
 
-    print(f"\nNIFTY500: {len(NIFTY500)} symbols")
+    print(f"\nNifty50: {len(NIFTY50)} symbols")
     print(f"Dhan Mapped: {len(DHAN_MAPPING)} symbols")
     print(f"Missing Mapping: {len(get_missing_dhan_ids())} symbols")
 

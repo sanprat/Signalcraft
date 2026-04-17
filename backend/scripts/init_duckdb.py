@@ -94,18 +94,10 @@ def main():
     logger.info(f"Database: {DB_PATH}")
     logger.info(f"API: {'✓ Connected' if api_ok else '⚠ Not configured'}")
     logger.info("\nNext steps:")
-    logger.info("  1. Download historical data:")
-    logger.info(
-        "     docker exec signalcraft-backend python3 scripts/download_fno_historical.py"
-    )
-    logger.info("\n  2. Or run daily update:")
-    logger.info(
-        "     docker exec signalcraft-backend python3 scripts/daily_fno_updater.py"
-    )
-    logger.info("\n  3. Check data status:")
-    logger.info(
-        "     docker exec signalcraft-backend python3 scripts/fno_data_manager.py status"
-    )
+    logger.info("  1. Update daily stock data:")
+    logger.info("     python data-scripts/daily_updater.py")
+    logger.info("\n  2. Resample to higher timeframes:")
+    logger.info("     python data-scripts/resample_nifty50.py")
     logger.info("=" * 70)
 
 

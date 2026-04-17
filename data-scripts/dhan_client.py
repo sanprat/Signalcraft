@@ -666,8 +666,8 @@ class DhanClient:
                 weekly_mask = master["expiry_flag"].astype(str).str.upper() == "W"
                 if weekly_mask.any():
                     q = q & weekly_mask
-                    logger.debug(
-                        f"Applied weekly filter (expiry_flag=W) in resolve_active_weekly_options"
+                    logger.info(
+                        f"DEBUG: Applied weekly filter (expiry_flag=W) in resolve_active_weekly_options"
                     )
 
             if "option_type" in master.columns:
@@ -769,8 +769,8 @@ class DhanClient:
         if "expiry_flag" in master.columns:
             unique_expiry_flags = set(master["expiry_flag"].dropna().unique())
 
-        logger.debug(
-            f"Master distinct values: segments={unique_segments}, "
+        logger.info(
+            f"DEBUG: Master distinct values: segments={unique_segments}, "
             f"instruments={unique_instruments}, instrument_types={unique_instrument_types}, "
             f"option_types={unique_option_types}, expiry_flags={unique_expiry_flags}"
         )
@@ -805,7 +805,7 @@ class DhanClient:
                 index_option_instrument_type = it
                 break
 
-        logger.debug(
+        logger.info(
             f"Master discovery for {index}: segment={index_option_segment}, "
             f"instrument={index_option_instrument}, instrument_type={index_option_instrument_type}"
         )
@@ -828,7 +828,7 @@ class DhanClient:
             return None
 
         filtered = master[base_mask]
-        logger.debug(f"After index-option filter: {len(filtered)} rows")
+        logger.info(f"After index-option filter: {len(filtered)} rows")
 
         underlying_col = None
         if "underlying_security_id" in filtered.columns:
@@ -850,13 +850,13 @@ class DhanClient:
             mask = filtered[underlying_col] == underlying_id
 
         filtered = filtered[mask]
-        logger.debug(f"After underlying filter: {len(filtered)} rows")
+        logger.info(f"After underlying filter: {len(filtered)} rows")
 
         if "expiry_flag" in filtered.columns:
             weekly_mask = filtered["expiry_flag"].astype(str).str.upper() == "W"
             if weekly_mask.any():
                 filtered = filtered[weekly_mask]
-                logger.debug(
+                logger.info(
                     f"After weekly filter (expiry_flag=W): {len(filtered)} rows"
                 )
 

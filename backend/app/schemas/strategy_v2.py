@@ -318,10 +318,14 @@ class RiskConfig(BaseModel):
     """Risk management configuration."""
 
     max_trades_per_day: int = Field(
-        default=0, ge=0, description="Max trades per day, 0 disables the daily trade cap"
+        default=0,
+        ge=0,
+        description="Max trades per day, 0 disables the daily trade cap",
     )
     max_loss_per_day: float = Field(
-        default=0.0, ge=0, description="Max daily loss (Rs), 0 disables the daily loss cap"
+        default=0.0,
+        ge=0,
+        description="Max daily loss (Rs), 0 disables the daily loss cap",
     )
     quantity: int = Field(default=1, gt=0, description="Quantity per trade")
     reentry_after_sl: bool = Field(
@@ -425,7 +429,13 @@ class StrategyV2(BaseModel):
     @model_validator(mode="after")
     def validate_strategy(self) -> "StrategyV2":
         """Validate complete strategy."""
-        # FnO requires index and option_type
+        # FNO is temporarily unavailable
+        if self.asset_type == "FNO":
+            raise ValueError(
+                "Options are temporarily unavailable. Please use EQUITY asset type for now."
+            )
+
+        # FnO requires index and option_type (kept for legacy compatibility checks)
         if self.asset_type == "FNO":
             if not self.index:
                 raise ValueError("FnO strategies require 'index' field")
