@@ -127,3 +127,7 @@ mcp_config.json
 .mcp.json
 .qwen/mcp.json
 .kilocode/mcp.json
+
+# Watchdog state (runtime only)
+ops/watchdog/state.json
+ops/watchdog/poll_state.json

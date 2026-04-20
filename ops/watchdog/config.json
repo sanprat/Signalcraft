@@ -1,0 +1,24 @@
+{
+  "telegram_bot_token": "", 
+  "telegram_chat_id": "",
+  "logs": [
+    {
+      "path": "/home/signalcraft/data/logs/daily_update.log",
+      "name": "daily_update",
+      "max_stale_minutes": 1500,
+      "severity": "CRITICAL"
+    },
+    {
+      "path": "/home/signalcraft/data/logs/token_refresh.log",
+      "name": "token_refresh",
+      "max_stale_minutes": 1500,
+      "severity": "ERROR"
+    },
+    {
+      "path": "/home/signalcraft/data/logs/docker_restart.log",
+      "name": "docker_restart",
+      "max_stale_minutes": 1500,
+      "severity": "WARNING"
+    }
+  ]
+}
