@@ -77,6 +77,10 @@ def send_telegram(config, message):
         print("Telegram Alert Skiped: No bot token or chat ID configured.")
         return
 
+    # Enforce Telegram 4096 byte hard limit
+    if len(message) > 4000:
+        message = message[:3900] + "\n\n⚠️ [ MESSAGE TRUNCATED EXCEEDED TELEGRAM LIMIT ]"
+
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
     data = json.dumps(payload).encode("utf-8")
@@ -230,10 +234,6 @@ def poll_telegram_updates(config):
     token = config.get("telegram_bot_token", os.getenv("TELEGRAM_BOT_TOKEN", ""))
     chat_id = config.get("telegram_chat_id", os.getenv("TELEGRAM_CHAT_ID", ""))
 
-    if not token or not chat_id:
-        return
-
-    # Try SignalCraft .env fallback
     if not token or not chat_id:
         env_fallback = "/home/signalcraft/.env"
         if os.path.exists(env_fallback):
