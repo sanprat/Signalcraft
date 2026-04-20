@@ -213,7 +213,7 @@ def handle_telegram_command(config, text):
 
         return "\n".join(lines)
 
-    elif cmd == "/help":
+    elif cmd in ("/help", "/start"):
         return """🤖 **Watchdog Commands:**
 
 /logs <service> - Get last 20 log lines
@@ -251,8 +251,8 @@ def poll_telegram_updates(config):
     offset = poll_state.get("offset", 0)
 
     try:
-        # Limit to 1 update at a time to avoid 413 errors
-        url = f"https://api.telegram.org/bot{token}/getUpdates?timeout=30&limit=1"
+        # Fetch all pending updates instantly instead of bottlenecking at 1
+        url = f"https://api.telegram.org/bot{token}/getUpdates?timeout=30"
         if offset > 0:
             url += f"&offset={offset}"
 
