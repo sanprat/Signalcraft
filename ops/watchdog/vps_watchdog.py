@@ -251,7 +251,8 @@ def poll_telegram_updates(config):
     offset = poll_state.get("offset", 0)
 
     try:
-        url = f"https://api.telegram.org/bot{token}/getUpdates?timeout=30"
+        # Limit to 1 update at a time to avoid 413 errors
+        url = f"https://api.telegram.org/bot{token}/getUpdates?timeout=30&limit=1"
         if offset > 0:
             url += f"&offset={offset}"
 
@@ -274,10 +275,11 @@ def poll_telegram_updates(config):
                 if response:
                     send_telegram(config, response)
 
-        # Update offset to next update
-        new_offset = updates[-1].get("update_id", 0) + 1
-        with open(POLL_FILE, "w") as f:
-            json.dump({"offset": new_offset}, f)
+        # Update offset to next update (always, not just on success)
+        if updates:
+            new_offset = updates[-1].get("update_id", 0) + 1
+            with open(POLL_FILE, "w") as f:
+                json.dump({"offset": new_offset}, f)
 
     except Exception as e:
         pass  # Silently skip polling errors
