@@ -82,7 +82,7 @@ def send_telegram(config, message):
         message = message[:3900] + "\n\n⚠️ [ MESSAGE TRUNCATED EXCEEDED TELEGRAM LIMIT ]"
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+    payload = {"chat_id": chat_id, "text": message}
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}
