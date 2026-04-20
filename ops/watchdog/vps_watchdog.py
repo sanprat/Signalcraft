@@ -89,12 +89,6 @@ def send_telegram(config, message):
     )
 
     try:
-        print(f"[DEBUG] Token length: {len(token)}")
-        print(f"[DEBUG] Chat ID length: {len(chat_id)}")
-        print(f"[DEBUG] URL length: {len(url)}")
-        print(f"[DEBUG] Data payload byte size: {len(data)}")
-        if len(data) > 5000:
-            print(f"[DEBUG] WARRNING: Payload is huge: {data[:100]}...{data[-100:]}")
         with urllib.request.urlopen(req, timeout=10) as _:
             pass
     except urllib.error.URLError as e:
