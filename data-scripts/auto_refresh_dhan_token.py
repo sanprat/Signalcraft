@@ -74,12 +74,12 @@ def get_current_token_expiry():
 def generate_new_token():
     """Generate a new Dhan access token using official RenewToken API or TOTP fallback."""
     client_id = os.getenv("DHAN_CLIENT_ID", "").strip()
-    password = os.getenv("DHAN_PASSWORD", "").strip()
+    pin = os.getenv("DHAN_PIN", os.getenv("DHAN_PASSWORD", "")).strip()
     totp_secret = os.getenv("DHAN_TOTP_SECRET", "").strip()
     current_token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
 
-    if not all([client_id, password, totp_secret]):
-        logger.error("Missing Dhan credentials in .env")
+    if not all([client_id, pin, totp_secret]):
+        logger.error("Missing Dhan credentials in .env (need client_id, pin, and totp_secret)")
         return None
 
     # --- METHOD 1: Official Dhan RenewToken API ---
@@ -107,23 +107,18 @@ def generate_new_token():
 
         logger.info(f"Generating TOTP for fallback login...")
 
-        # Use official Dhan auth endpoint
-        auth_url = "https://api.dhan.co/v2/login"
+        # Use new official Dhan token generation endpoint
+        auth_url = "https://auth.dhan.co/app/generateAccessToken"
 
-        payload = {
-            "clientId": client_id,
-            "password": password,
+        params = {
+            "dhanClientId": client_id,
+            "pin": pin,
             "totp": current_totp
-        }
-
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
         }
 
         try:
             response = requests.post(
-                auth_url, json=payload, headers=headers, timeout=30
+                auth_url, params=params, timeout=30
             )
 
             if response.status_code == 200:
