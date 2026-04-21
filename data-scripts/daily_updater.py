@@ -197,12 +197,10 @@ def _normalize_time_to_utc_naive(series: pd.Series) -> pd.Series:
         raise ValueError("time column could not be parsed as datetimes")
 
     if parsed.dt.tz is None:
-        return (
-            parsed.dt.tz_localize("Asia/Kolkata")
-            .dt.tz_convert("UTC")
-            .dt.tz_localize(None)
-        )
+        # Existing data from Parquet is already naive UTC.
+        return parsed
 
+    # New data from Dhan is tz-aware (Asia/Kolkata), convert to naive UTC
     return parsed.dt.tz_convert("UTC").dt.tz_localize(None)
 
 
