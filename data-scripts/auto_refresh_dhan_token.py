@@ -101,50 +101,46 @@ def generate_new_token():
 
     # --- METHOD 2: Fallback to TOTP Login ---
     try:
-        # Generate TOTP
-        totp = pyotp.TOTP(totp_secret)
-        current_totp = totp.now()
-
-        logger.info(f"Generating TOTP for fallback login...")
-
-        # Use new official Dhan token generation endpoint
+        logger.info("Generating TOTP for fallback login...")
         auth_url = "https://auth.dhan.co/app/generateAccessToken"
+        totp_obj = pyotp.TOTP(totp_secret)
 
-        params = {
-            "dhanClientId": client_id,
-            "pin": pin,
-            "totp": current_totp
-        }
+        for attempt in range(1, 4):
+            current_totp = totp_obj.now()
+            
+            params = {
+                "dhanClientId": client_id,
+                "pin": pin,
+                "totp": current_totp
+            }
 
-        try:
-            response = requests.post(
-                auth_url, params=params, timeout=30
-            )
+            try:
+                response = requests.post(auth_url, params=params, timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    access_token = (
+                        data.get("accessToken") 
+                        or data.get("access_token") 
+                        or data.get("data", {}).get("accessToken")
+                    )
 
-            if response.status_code == 200:
-                data = response.json()
-                # Handle different response formats
-                access_token = (
-                    data.get("accessToken") 
-                    or data.get("access_token") 
-                    or data.get("data", {}).get("accessToken")
-                )
-
-                if access_token:
-                    logger.info(f"✅ New token generated successfully via TOTP!")
-                    return access_token
+                    if access_token:
+                        logger.info("✅ New token generated successfully via TOTP!")
+                        return access_token
+                    else:
+                        logger.warning(f"Attempt {attempt}: No access token in response: {data}")
                 else:
-                    logger.error(f"No access token in response: {data}")
-                    return None
-            else:
-                logger.error(
-                    f"Dhan auth error: {response.status_code} {response.text[:200]}"
-                )
-                return None
-
-        except Exception as e:
-            logger.error(f"TOTP auth request error: {e}")
-            return None
+                    logger.warning(f"Attempt {attempt}: Dhan auth error ({response.status_code}): {response.text[:100]}")
+            except Exception as req_e:
+                logger.warning(f"Attempt {attempt} network error: {req_e}")
+            
+            # Pause briefly before trying the next TOTP window
+            if attempt < 3:
+                time.sleep(3)
+                
+        logger.error("❌ All 3 TOTP fallback attempts failed. Please verify VPS system time (`timedatectl`) and DHAN_TOTP_SECRET.")
+        return None
 
     except Exception as e:
         logger.error(f"Token generation failed: {e}")
