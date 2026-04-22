@@ -143,7 +143,12 @@ def merge_and_save(new_df: pd.DataFrame, path: Path):
     """Merge new data with existing and save."""
     existing = load_existing(path)
 
+    # Normalize timestamps to tz-naive UTC BEFORE concatenation to prevent coercion crashes
+    if not new_df.empty:
+        new_df["time"] = pd.to_datetime(new_df["time"], utc=True).dt.tz_localize(None)
+        
     if not existing.empty:
+        existing["time"] = pd.to_datetime(existing["time"], utc=True).dt.tz_localize(None)
         combined = pd.concat([existing, new_df], ignore_index=True)
     else:
         combined = new_df
@@ -155,11 +160,7 @@ def merge_and_save(new_df: pd.DataFrame, path: Path):
     )
 
     # Store timestamps as naive UTC for cross-host compatibility.
-    if combined["time"].dt.tz is None:
-        combined["time"] = pd.to_datetime(combined["time"], utc=True)
-    else:
-        combined["time"] = pd.to_datetime(combined["time"], utc=True)
-    combined["time"] = combined["time"].dt.tz_localize(None).astype("datetime64[s]")
+    combined["time"] = combined["time"].astype("datetime64[s]")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(combined, schema=SCHEMA, preserve_index=False)
