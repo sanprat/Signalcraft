@@ -95,9 +95,9 @@ def generate_new_token():
                 if "token" in data:
                     logger.info("✅ Token renewed successfully via RenewToken API!")
                     return data["token"]
-            logger.warning(f"RenewToken failed: {resp.status_code} {resp.text[:100]}")
+            logger.info(f"RenewToken failed/expired (expected): {resp.status_code} {resp.text[:100]}")
         except Exception as e:
-            logger.error(f"RenewToken request error: {e}")
+            logger.info(f"RenewToken request skipped/failed: {e}")
 
     # --- METHOD 2: Fallback to TOTP Login ---
     try:
