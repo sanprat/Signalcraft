@@ -4,11 +4,11 @@ auto_refresh_dhan_token.py — Auto-refresh Dhan token every 23 hours.
 Runs as a background daemon or via cron.
 
 CRONTAB RECOMMENDATION:
-Run daily at 8:00 AM (before market opens):
-0 8 * * * cd /path/to/project && python3 data-scripts/auto_refresh_dhan_token.py --force >> /var/log/dhan_token_refresh.log 2>&1
+Run daily at 6:30 AM (before market opens):
+30 6 * * * cd /path/to/project && python3 data-scripts/auto_refresh_dhan_token.py --force >> /var/log/dhan_token_refresh.log 2>&1
 
 Or run twice daily for extra safety:
-0 8,20 * * * cd /path/to/project && python3 data-scripts/auto_refresh_dhan_token.py --force >> /var/log/dhan_token_refresh.log 2>&1
+30 6,18 * * * cd /path/to/project && python3 data-scripts/auto_refresh_dhan_token.py --force >> /var/log/dhan_token_refresh.log 2>&1
 """
 
 import sys
@@ -95,7 +95,7 @@ def generate_new_token():
                 if "token" in data:
                     logger.info("✅ Token renewed successfully via RenewToken API!")
                     return data["token"]
-            logger.info(f"RenewToken failed/expired (expected): {resp.status_code} {resp.text[:100]}")
+            logger.info(f"RenewToken unsuccessful/expired (expected). HTTP {resp.status_code}")
         except Exception as e:
             logger.info(f"RenewToken request skipped/failed: {e}")
 
