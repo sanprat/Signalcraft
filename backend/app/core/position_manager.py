@@ -668,15 +668,15 @@ class PositionManager:
             )
 
             # Send Notification
-            emoji = "💰" if pnl >= 0 else "📉"
-            await send_user_telegram_message(
-                user_id,
-                f"{emoji} *Position Closed*\n"
-                f"Symbol: {position['symbol']}\n"
-                f"Exit Reason: {reason}\n"
-                f"Exit Price: ₹{exit_price}\n"
-                f"PnL: *₹{pnl:.2f}* ({pnl_pct:.2f}%)",
-            )
+            # emoji = "💰" if pnl >= 0 else "📉"
+            # await send_user_telegram_message(
+            #     user_id,
+            #     f"{emoji} *Position Closed*\n"
+            #     f"Symbol: {position['symbol']}\n"
+            #     f"Exit Reason: {reason}\n"
+            #     f"Exit Price: ₹{exit_price}\n"
+            #     f"PnL: *₹{pnl:.2f}* ({pnl_pct:.2f}%)",
+            # )
 
         except Exception as e:
             logger.error(f"Error closing position {position['id']}: {e}")
