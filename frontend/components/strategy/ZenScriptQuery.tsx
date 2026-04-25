@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Sparkles, Loader2, ArrowDown } from 'lucide-react'
 import type { Condition } from '@/lib/types/strategy'
+import { config, getAuthHeaders } from '@/lib/config'
 
 interface ZenScriptQueryProps {
     onConditionsGenerated: (conditions: Condition[]) => void
@@ -20,9 +21,13 @@ export function ZenScriptQuery({ onConditionsGenerated }: ZenScriptQueryProps) {
         setSuccessMsg(null)
         
         try {
-            const res = await fetch('/api/strategy/v2/parse-query', {
+            const API_BASE = config.apiBaseUrl
+            const res = await fetch(`${API_BASE}/api/strategy/v2/parse-query`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders() 
+                },
                 body: JSON.stringify({ query })
             })
             

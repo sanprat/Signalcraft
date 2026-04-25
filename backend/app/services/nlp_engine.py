@@ -112,17 +112,23 @@ def parse_natural_language_condition(sentence: str) -> Optional[Dict[str, Any]]:
                 }
     
     # Use fuzzy matching for natural language operators
-    words = sentence.split()
+    best_op = None
+    best_syn = ""
+    
     for op, synonyms in OPERATOR_SYNONYMS.items():
         for syn in synonyms:
-            # simple substring search for the synonym
             if syn in sentence:
-                parts = sentence.split(syn, 1)
-                return {
-                    "left": resolve_entity(parts[0]),
-                    "operator": op,
-                    "right": resolve_entity(parts[1])
-                }
+                if len(syn) > len(best_syn):
+                    best_syn = syn
+                    best_op = op
+                    
+    if best_op:
+        parts = sentence.split(best_syn, 1)
+        return {
+            "left": resolve_entity(parts[0]),
+            "operator": best_op,
+            "right": resolve_entity(parts[1])
+        }
                 
     # If no operator found, return None
     return None
