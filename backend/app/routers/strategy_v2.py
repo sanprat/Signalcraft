@@ -1220,3 +1220,20 @@ async def list_indicators():
         )
 
     return indicators
+
+class ParseQueryRequest(BaseModel):
+    query: str
+
+@router.post("/parse-query")
+async def parse_nlp_query(req: ParseQueryRequest):
+    """
+    Parses a natural language string into a structured StrategyV2 conditions array using the heuristic NLP engine.
+    """
+    from app.services.nlp_engine import parse_query
+    
+    try:
+        conditions = parse_query(req.query)
+        return {"success": True, "conditions": conditions}
+    except Exception as e:
+        logger.error(f"NLP Parse Error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))

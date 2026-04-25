@@ -8,7 +8,8 @@ import { BackButton } from '@/components/BackButton'
 import { StrategyConfig } from '@/components/strategy/StrategyConfig'
 import { ExitBuilder } from '@/components/strategy/ExitBuilder'
 import { RiskPanel } from '@/components/strategy/RiskPanel'
-import { ZenScriptEditor } from '@/components/strategy/ZenScriptEditor'
+import { EntryBuilder } from '@/components/strategy/EntryBuilder'
+import { ZenScriptQuery } from '@/components/strategy/ZenScriptQuery'
 import { ValidationResults } from '@/components/strategy/ValidationResults'
 import { isValidDateRange, isValidDateString } from '@/lib/date'
 import type { AssetType, IndexType, OptionType, StrikeType, TimeframeType } from '@/lib/types/strategy'
@@ -253,12 +254,20 @@ function StrategyBuilderContent() {
 
             case 'entry':
                 return (
-                    <ZenScriptEditor
-                        strategy={strategy}
-                        onUpdateStrategy={(partial) => setStrategy({ ...strategy, ...partial } as any)}
-                        onSubmitStrategy={handleBacktest}
-                        isSubmitting={isBacktesting || isSaving || isValidating}
-                    />
+                    <div className="space-y-6">
+                        <ZenScriptQuery 
+                            onConditionsGenerated={(conditions) => setStrategy({ ...strategy, entry_conditions: conditions } as any)} 
+                        />
+                        <EntryBuilder
+                            conditions={strategy.entry_conditions}
+                            entryLogic={strategy.entry_logic}
+                            onAddCondition={addCondition}
+                            onRemoveCondition={removeCondition}
+                            onUpdateCondition={updateCondition}
+                            onReorderConditions={reorderConditions}
+                            onSetEntryLogic={setEntryLogic}
+                        />
+                    </div>
                 )
 
             case 'exit':

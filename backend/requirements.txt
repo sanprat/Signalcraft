@@ -46,3 +46,4 @@ kiteconnect
 NorenRestApiPy
 python-multipart
 redis==5.0.3
+rapidfuzz
