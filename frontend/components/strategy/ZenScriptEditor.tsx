@@ -318,14 +318,20 @@ function parseRisk(text: string): RiskConfig {
 }
 
 function parseStrategyQuery(query: string): Condition[] {
-    const conditions = query
-        .split(/\s+AND\s+|\n+/i)
-        .map(part => parseConditionQuery(part))
-        .filter((condition): condition is Omit<Condition, 'id'> => Boolean(condition));
+    const lines = query.split(/\s+AND\s+|\n+/i).filter(l => l.trim() && !l.trim().startsWith('//'));
+    const conditions: Omit<Condition, 'id'>[] = [];
+    
+    for (const line of lines) {
+        const parsed = parseConditionQuery(line);
+        if (!parsed) {
+            throw new Error(`Could not understand entry rule: "${line}". Please check your spelling and ensure you are using a valid operator (like >, <, =, crosses above).`);
+        }
+        conditions.push(parsed);
+    }
         
     return conditions.map((c, idx) => ({
         ...c,
-        id: `cond_${Date.now()}_${idx}`
+        id: `cond_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 11)}`
     }));
 }
 
