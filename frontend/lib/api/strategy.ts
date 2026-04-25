@@ -12,6 +12,8 @@ import type {
     SaveStrategyResponse,
     LoadStrategyResponse,
     IndicatorDefinition,
+    NLPParseRequest,
+    NLPParseResponse,
 } from '@/lib/types/strategy'
 
 // Backtest result types
@@ -351,4 +353,22 @@ export async function getSymbols(): Promise<string[]> {
         console.error('Get symbols error:', error)
         return []
     }
+}
+
+export async function parseStrategyQuery(payload: NLPParseRequest): Promise<NLPParseResponse> {
+    const response = await fetch(`${API_BASE}/api/strategy/v2/parse-query`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+        },
+        body: JSON.stringify(payload),
+    })
+
+    const data = await response.json().catch(() => null)
+    if (!response.ok) {
+        throw new Error(data?.detail || 'Failed to parse query')
+    }
+
+    return data as NLPParseResponse
 }

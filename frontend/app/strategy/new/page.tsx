@@ -12,7 +12,18 @@ import { EntryBuilder } from '@/components/strategy/EntryBuilder'
 import { ZenScriptQuery } from '@/components/strategy/ZenScriptQuery'
 import { ValidationResults } from '@/components/strategy/ValidationResults'
 import { isValidDateRange, isValidDateString } from '@/lib/date'
-import type { AssetType, IndexType, OptionType, StrikeType, TimeframeType } from '@/lib/types/strategy'
+import type {
+    AssetType,
+    ConfigNLPResponse,
+    EntryNLPResponse,
+    ExitNLPResponse,
+    IndexType,
+    NLPParseResponse,
+    OptionType,
+    RiskNLPResponse,
+    StrikeType,
+    TimeframeType,
+} from '@/lib/types/strategy'
 
 type Section = 'config' | 'entry' | 'exit' | 'risk'
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
@@ -97,6 +108,30 @@ function StrategyBuilderContent() {
     const showNotification = (type: 'success' | 'error' | 'info', message: string) => {
         setNotification({ type, message })
         setTimeout(() => setNotification(null), 4000)
+    }
+
+    const handleEntryNLPApply = (result: NLPParseResponse) => {
+        const data = result as EntryNLPResponse
+        setStrategy({ ...strategy, entry_conditions: data.conditions } as any)
+    }
+
+    const handleConfigNLPApply = (result: NLPParseResponse) => {
+        const data = result as ConfigNLPResponse
+        setStrategy({ ...strategy, ...data.config } as any)
+    }
+
+    const handleExitNLPApply = (result: NLPParseResponse) => {
+        const data = result as ExitNLPResponse
+        setStrategy({
+            ...strategy,
+            exit_rules: data.exit_rules,
+            exit_logic: data.exit_logic ?? strategy.exit_logic,
+        } as any)
+    }
+
+    const handleRiskNLPApply = (result: NLPParseResponse) => {
+        const data = result as RiskNLPResponse
+        setStrategy({ ...strategy, risk: data.risk } as any)
     }
 
     const ensureValidBacktestDates = (): boolean => {
@@ -227,6 +262,14 @@ function StrategyBuilderContent() {
             case 'config':
                 return (
                     <div className="space-y-6">
+                        <ZenScriptQuery
+                            section="config"
+                            title="ZenScript NLP Query"
+                            description="Describe strategy setup in natural English. This replaces the current Config section with the parsed strategy metadata."
+                            placeholder="e.g., Create a strategy named 'Nifty Momentum' for RELIANCE and TCS on 15 minute candles from 2025-01-01 to 2025-03-31."
+                            successLabel="config values"
+                            onApply={handleConfigNLPApply}
+                        />
                         <StrategyConfig
                             name={strategy.name}
                             symbols={strategy.symbols}
@@ -255,8 +298,13 @@ function StrategyBuilderContent() {
             case 'entry':
                 return (
                     <div className="space-y-6">
-                        <ZenScriptQuery 
-                            onConditionsGenerated={(conditions) => setStrategy({ ...strategy, entry_conditions: conditions } as any)} 
+                        <ZenScriptQuery
+                            section="entry"
+                            title="ZenScript NLP Query"
+                            description="Type your entry logic in natural English. This replaces the current Entry Conditions with parsed visual blocks."
+                            placeholder="e.g., Buy when the 14-period RSI drops below 30 and price crosses above the 200 SMA."
+                            successLabel="entry conditions"
+                            onApply={handleEntryNLPApply}
                         />
                         <EntryBuilder
                             conditions={strategy.entry_conditions}
@@ -272,24 +320,44 @@ function StrategyBuilderContent() {
 
             case 'exit':
                 return (
-                    <ExitBuilder
-                        exitRules={strategy.exit_rules}
-                        exitLogic={strategy.exit_logic}
-                        onAddExitRule={addExitRule}
-                        onRemoveExitRule={removeExitRule}
-                        onUpdateExitRule={updateExitRule}
-                        onReorderExitRules={reorderExitRules}
-                        onSetExitLogic={setExitLogic}
-                    />
+                    <div className="space-y-6">
+                        <ZenScriptQuery
+                            section="exit"
+                            title="ZenScript NLP Query"
+                            description="Describe exit logic in natural English. This replaces the current Exit section with parsed stop, target, trailing, time, or indicator exits."
+                            placeholder="e.g., Exit with 2% stop loss, 5% target, trailing stop 1.5% after 3% profit, and RSI crosses below 60."
+                            successLabel="exit rules"
+                            onApply={handleExitNLPApply}
+                        />
+                        <ExitBuilder
+                            exitRules={strategy.exit_rules}
+                            exitLogic={strategy.exit_logic}
+                            onAddExitRule={addExitRule}
+                            onRemoveExitRule={removeExitRule}
+                            onUpdateExitRule={updateExitRule}
+                            onReorderExitRules={reorderExitRules}
+                            onSetExitLogic={setExitLogic}
+                        />
+                    </div>
                 )
 
             case 'risk':
                 return (
-                    <RiskPanel
-                        risk={strategy.risk}
-                        assetType={strategy.asset_type}
-                        onUpdate={updateRisk}
-                    />
+                    <div className="space-y-6">
+                        <ZenScriptQuery
+                            section="risk"
+                            title="ZenScript NLP Query"
+                            description="Describe risk settings in natural English. This replaces the current Risk section with parsed position sizing and guardrails."
+                            placeholder="e.g., Max 3 trades per day, daily loss 5000, quantity 10, max open positions 2, partial exit 50%, enable re-entry."
+                            successLabel="risk settings"
+                            onApply={handleRiskNLPApply}
+                        />
+                        <RiskPanel
+                            risk={strategy.risk}
+                            assetType={strategy.asset_type}
+                            onUpdate={updateRisk}
+                        />
+                    </div>
                 )
 
             default:

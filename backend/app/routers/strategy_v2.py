@@ -1222,18 +1222,19 @@ async def list_indicators():
     return indicators
 
 class ParseQueryRequest(BaseModel):
+    section: str = Field(..., pattern=r"^(entry|config|exit|risk)$")
     query: str
 
 @router.post("/parse-query")
 async def parse_nlp_query(req: ParseQueryRequest):
     """
-    Parses a natural language string into a structured StrategyV2 conditions array using the heuristic NLP engine.
+    Parse a natural language string into a structured payload for a strategy builder section.
     """
-    from app.services.nlp_engine import parse_query
+    from app.services.nlp_engine import parse_section_query
     
     try:
-        conditions = parse_query(req.query)
-        return {"success": True, "conditions": conditions}
+        payload = parse_section_query(req.section, req.query)
+        return {"success": True, "section": req.section, **payload}
     except Exception as e:
         logger.error(f"NLP Parse Error: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))

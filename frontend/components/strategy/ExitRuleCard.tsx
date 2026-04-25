@@ -3,6 +3,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { ExitRule } from '@/lib/types/strategy'
+import { ConditionEditor } from './ConditionEditor'
 
 interface ExitRuleCardProps {
     rule: ExitRule
@@ -59,6 +60,12 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 )
+            case 'indicator_exit':
+                return (
+                    <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4-4 4 2 8-8" />
+                    </svg>
+                )
             default:
                 return null
         }
@@ -74,8 +81,10 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                 return 'Trailing Stop'
             case 'time':
                 return 'Time Exit'
+            case 'indicator_exit':
+                return 'Indicator Exit'
             default:
-                return rule.type
+                return 'Exit Rule'
         }
     }
 
@@ -89,6 +98,8 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                 return 'border-amber-200 bg-amber-50'
             case 'time':
                 return 'border-blue-200 bg-blue-50'
+            case 'indicator_exit':
+                return 'border-indigo-200 bg-indigo-50'
             default:
                 return 'border-slate-200 bg-slate-50'
         }
@@ -250,6 +261,25 @@ export function ExitRuleCard({ rule, onUpdate, onRemove, canRemove }: ExitRuleCa
                             onChange={(e) => onUpdate({ time: e.target.value })}
                             className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
+                    </div>
+                )}
+
+                {rule.type === 'indicator_exit' && (
+                    <div className="space-y-3">
+                        <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-2">
+                                Indicator Condition
+                            </label>
+                            <ConditionEditor
+                                condition={rule.condition}
+                                onUpdate={(conditionUpdates) => onUpdate({
+                                    condition: {
+                                        ...rule.condition,
+                                        ...conditionUpdates,
+                                    },
+                                })}
+                            />
+                        </div>
                     </div>
                 )}
             </div>

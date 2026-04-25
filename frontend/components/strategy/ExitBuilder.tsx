@@ -70,6 +70,16 @@ const EXIT_RULE_TYPES: { type: ExitRuleType; label: string; icon: JSX.Element; d
         ),
         description: 'Exit at specific time',
     },
+    {
+        type: 'indicator_exit',
+        label: 'Indicator Exit',
+        icon: (
+            <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4-4 4 2 8-8" />
+            </svg>
+        ),
+        description: 'Exit on indicator condition',
+    },
 ]
 
 export function ExitBuilder({

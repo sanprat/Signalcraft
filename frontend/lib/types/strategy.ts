@@ -241,6 +241,50 @@ export interface LoadStrategyResponse {
     updated_at?: string
 }
 
+export type NLPSection = 'entry' | 'config' | 'exit' | 'risk'
+
+export interface NLPParseRequest {
+    section: NLPSection
+    query: string
+}
+
+export interface EntryNLPResponse {
+    success: true
+    section: 'entry'
+    conditions: Condition[]
+}
+
+export interface ConfigNLPResponse {
+    success: true
+    section: 'config'
+    config: Partial<Pick<StrategyV2, 'name' | 'symbols' | 'asset_type' | 'timeframe' | 'backtest_from' | 'backtest_to'>>
+    symbol_matches?: {
+        input: string
+        matched_alias: string
+        symbol: string
+        confidence: number
+    }[]
+}
+
+export interface ExitNLPResponse {
+    success: true
+    section: 'exit'
+    exit_rules: ExitRule[]
+    exit_logic?: LogicType
+}
+
+export interface RiskNLPResponse {
+    success: true
+    section: 'risk'
+    risk: RiskConfig
+}
+
+export type NLPParseResponse =
+    | EntryNLPResponse
+    | ConfigNLPResponse
+    | ExitNLPResponse
+    | RiskNLPResponse
+
 // ============================================================================
 // BUILDER STATE TYPES
 // ============================================================================
@@ -355,6 +399,18 @@ export const createDefaultExitRule = (type: ExitRuleType): ExitRule => {
             return { type: 'trailing', id: baseId, percent: 1.5, priority: 3, activationPercent: 3 }
         case 'time':
             return { type: 'time', id: baseId, time: '15:15', priority: 4 }
+        case 'indicator_exit':
+            return {
+                type: 'indicator_exit',
+                id: baseId,
+                priority: 5,
+                condition: {
+                    id: `cond_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    left: { type: 'indicator', name: 'RSI', params: [14] },
+                    operator: '<',
+                    right: { type: 'value', value: 30 },
+                },
+            }
         default:
             return { type: 'stoploss', id: baseId, percent: 2, priority: 1, trailing: false }
     }

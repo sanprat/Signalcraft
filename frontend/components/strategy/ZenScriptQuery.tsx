@@ -1,47 +1,61 @@
+'use client'
+
 import { useState } from 'react'
 import { Sparkles, Loader2, ArrowDown } from 'lucide-react'
-import type { Condition } from '@/lib/types/strategy'
-import { config, getAuthHeaders } from '@/lib/config'
+import type { ConfigNLPResponse, NLPParseResponse, NLPSection } from '@/lib/types/strategy'
+import { parseStrategyQuery } from '@/lib/api/strategy'
 
 interface ZenScriptQueryProps {
-    onConditionsGenerated: (conditions: Condition[]) => void
+    section: NLPSection
+    title: string
+    description: string
+    placeholder: string
+    successLabel: string
+    onApply: (result: NLPParseResponse) => void
 }
 
-export function ZenScriptQuery({ onConditionsGenerated }: ZenScriptQueryProps) {
+export function ZenScriptQuery({
+    section,
+    title,
+    description,
+    placeholder,
+    successLabel,
+    onApply,
+}: ZenScriptQueryProps) {
     const [query, setQuery] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [successMsg, setSuccessMsg] = useState<string | null>(null)
+    const [hintLines, setHintLines] = useState<string[]>([])
 
     const handleGenerate = async () => {
         if (!query.trim()) return
-        
+
         setIsLoading(true)
         setError(null)
         setSuccessMsg(null)
-        
+        setHintLines([])
+
         try {
-            const API_BASE = config.apiBaseUrl
-            const res = await fetch(`${API_BASE}/api/strategy/v2/parse-query`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    ...getAuthHeaders() 
-                },
-                body: JSON.stringify({ query })
-            })
-            
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.detail || 'Failed to parse query')
-            
-            if (data.conditions && data.conditions.length > 0) {
-                onConditionsGenerated(data.conditions)
-                setSuccessMsg(`Successfully generated ${data.conditions.length} condition(s)!`)
-                // clear after 3 seconds
-                setTimeout(() => setSuccessMsg(null), 3000)
-            } else {
-                setError("Could not extract any valid trading rules from your text. Try being more specific like 'RSI is below 30'.")
+            const data = await parseStrategyQuery({ section, query })
+            onApply(data)
+
+            const countLabel = (() => {
+                if (data.section === 'entry') return `${data.conditions.length} condition(s)`
+                if (data.section === 'exit') return `${data.exit_rules.length} exit rule(s)`
+                return successLabel
+            })()
+
+            setSuccessMsg(`Applied ${countLabel}.`)
+            if (data.section === 'config' && (data as ConfigNLPResponse).symbol_matches?.length) {
+                const configData = data as ConfigNLPResponse
+                setHintLines(
+                    (configData.symbol_matches || []).map(
+                        (match) => `${match.input} -> ${match.symbol}`
+                    )
+                )
             }
+            setTimeout(() => setSuccessMsg(null), 3000)
         } catch (err: any) {
             setError(err.message)
         } finally {
@@ -54,31 +68,36 @@ export function ZenScriptQuery({ onConditionsGenerated }: ZenScriptQueryProps) {
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 px-5 py-4">
                 <div className="flex items-center gap-2">
                     <Sparkles className="h-5 w-5 text-indigo-600" />
-                    <h3 className="text-sm font-bold text-slate-800">ZenScript NLP Query</h3>
+                    <h3 className="text-sm font-bold text-slate-800">{title}</h3>
                 </div>
-                <p className="mt-1 text-xs leading-5 text-slate-600">
-                    Type your strategy rules in natural English. Our heuristic engine will automatically translate them into visual blocks below!
-                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">{description}</p>
             </div>
-            
+
             <div className="p-5">
                 <textarea
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="e.g., Buy when the 14-period RSI drops below 30 and the price crosses above the 200 SMA."
+                    placeholder={placeholder}
                     className="min-h-[100px] w-full resize-y rounded-lg border border-slate-300 bg-white p-4 font-sans text-sm font-medium leading-relaxed text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 placeholder:text-slate-400"
                 />
-                
+
                 {error && (
                     <div className="mt-3 rounded-lg bg-red-50 px-4 py-3 text-xs font-medium text-red-700 border border-red-100">
                         {error}
                     </div>
                 )}
-                
+
                 {successMsg && (
-                    <div className="mt-3 rounded-lg bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-700 border border-emerald-100 flex items-center gap-2">
-                        <ArrowDown className="h-4 w-4" />
-                        {successMsg}
+                    <div className="mt-3 rounded-lg bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-700 border border-emerald-100">
+                        <div className="flex items-center gap-2">
+                            <ArrowDown className="h-4 w-4" />
+                            {successMsg}
+                        </div>
+                        {hintLines.length > 0 && (
+                            <div className="mt-2 border-t border-emerald-100 pt-2 text-[11px] leading-5 text-emerald-800">
+                                Interpreted symbols: {hintLines.join(' • ')}
+                            </div>
+                        )}
                     </div>
                 )}
 
