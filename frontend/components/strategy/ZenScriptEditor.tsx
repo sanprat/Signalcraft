@@ -5,10 +5,11 @@ import {
     BarChart3,
     Check,
     ChevronRight,
+    Copy,
     Search,
     Sparkles,
 } from 'lucide-react'
-import type { ComparisonOperator, Condition, MathOperand, StrategyV2 } from '@/lib/types/strategy'
+import type { ComparisonOperator, Condition, MathOperand, StrategyV2, ExitRule, RiskConfig } from '@/lib/types/strategy'
 
 interface ZenScriptEditorProps {
     strategy: StrategyV2
@@ -23,8 +24,7 @@ type RuleTemplate = {
 }
 
 const RULE_TEMPLATES: RuleTemplate[] = [
-    { label: 'Trend Breakout', example: 'Close > EMA(20) AND\nVolume > SMA(20)' },
-    { label: 'Momentum Reversal', example: 'RSI(14) < 30 AND\nClose crosses_above SMA(50)' },
+    { label: 'Full Basic Strategy', example: 'STRATEGY "Trend Follower" {\n    SYMBOLS: RELIANCE\n    TIMEFRAME: 15m\n    DATE_RANGE: 2024-04-25 to 2026-04-25\n\n    ENTRY ALL {\n        RSI(14) < 40\n        Close > EMA(20)\n    }\n\n    EXIT ANY {\n        STOPLOSS 2%\n        TARGET 5%\n    }\n\n    RISK {\n        QUANTITY: 100\n    }\n}' },
 ]
 
 const OPERATOR_WORDS: Record<string, ComparisonOperator> = {
@@ -47,36 +47,40 @@ export function ZenScriptEditor({
     onSubmitStrategy,
     isSubmitting = false,
 }: ZenScriptEditorProps) {
-    // Generate initial text from conditions if we have them
-    const initialQuery = useMemo(() => {
-        if (!strategy.entry_conditions || strategy.entry_conditions.length === 0) return ''
-        return strategy.entry_conditions.map(c => formatCondition(c)).join(' AND\n')
-    }, [strategy.entry_conditions])
-
-    const [query, setQuery] = useState(initialQuery)
+    // Keep local text state
+    const [query, setQuery] = useState('')
     const [parseError, setParseError] = useState<string | null>(null)
+    const [parsedStrategy, setParsedStrategy] = useState<Partial<StrategyV2> | null>(null)
+
+    // On mount or when strategy changes externally (not from this component's own updates)
+    // we could update the text. But to avoid resetting cursor position while typing, 
+    // we only set it initially or when it's completely empty.
+    useEffect(() => {
+        if (!query.trim()) {
+            setQuery(generateZenScript(strategy))
+        }
+    }, [])
 
     // Parse whenever query changes
     useEffect(() => {
         if (!query.trim()) {
             setParseError(null)
-            if (onUpdateStrategy) onUpdateStrategy({ entry_conditions: [] })
             return
         }
 
-        const parsed = parseStrategyQuery(query)
-        if (parsed.length === 0 && query.trim().length > 0) {
-            setParseError('Could not parse rules. Join multiple rules with AND.')
-            return
-        }
-
-        setParseError(null)
-        if (onUpdateStrategy) {
-            onUpdateStrategy({ entry_conditions: parsed })
+        try {
+            const parsed = parseFullZenScript(query)
+            setParsedStrategy(parsed)
+            setParseError(null)
+            if (onUpdateStrategy) {
+                onUpdateStrategy(parsed)
+            }
+        } catch (err: any) {
+            setParseError(err.message || 'Syntax error in ZenScript')
         }
     }, [query])
 
-    const narrative = useMemo(() => generateStrategyNarrative(strategy), [strategy])
+    const narrative = useMemo(() => generateStrategyNarrative({ ...strategy, ...parsedStrategy }), [strategy, parsedStrategy])
 
     return (
         <div className="space-y-4">
@@ -85,10 +89,10 @@ export function ZenScriptEditor({
                     <div>
                         <div className="flex items-center gap-2">
                             <Sparkles className="h-4 w-4 text-blue-600" />
-                            <h3 className="text-sm font-bold text-slate-800">Entry Criteria (Screener Style)</h3>
+                            <h3 className="text-sm font-bold text-slate-800">ZenScript Studio</h3>
                         </div>
                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                            Write your entry conditions in natural language. Use the Config, Exit, and Risk tabs to finish setup.
+                            Write your complete strategy—from symbols to risk—in plain text.
                         </p>
                     </div>
                 </div>
@@ -96,16 +100,14 @@ export function ZenScriptEditor({
                 <div className="p-5">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                         <div className="mb-3 flex items-center justify-between gap-2">
-                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Query</span>
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Editor</span>
                         </div>
                         <div className="relative">
-                            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                             <textarea
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
-                                placeholder={`RSI(14) < 40 AND\nClose > EMA(20) AND\nVolume > SMA(20)`}
                                 spellCheck={false}
-                                className="min-h-[250px] w-full resize-y rounded-lg border border-slate-300 bg-white py-3 pl-9 pr-4 font-mono text-sm font-medium leading-7 text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                className="min-h-[400px] w-full resize-y rounded-lg border border-slate-300 bg-white py-3 px-4 font-mono text-[13px] font-medium leading-relaxed text-emerald-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
                             />
                         </div>
                     </div>
@@ -116,26 +118,23 @@ export function ZenScriptEditor({
                             {parseError}
                         </div>
                     ) : (
-                        strategy.entry_conditions.length > 0 && (
-                            <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-100 px-4 py-3 text-xs font-medium leading-5 text-emerald-700 flex items-center gap-2">
-                                <Check className="w-4 h-4 text-emerald-600" />
-                                Successfully parsed {strategy.entry_conditions.length} condition(s)
-                            </div>
-                        )
+                        <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-100 px-4 py-3 text-xs font-medium leading-5 text-emerald-700 flex items-center gap-2">
+                            <Check className="w-4 h-4 text-emerald-600" />
+                            Compiled successfully
+                        </div>
                     )}
 
-                    <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-4">
-                        <div className="text-[11px] font-bold uppercase tracking-wide text-blue-700 mb-2">
+                    <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50/50 p-4">
+                        <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 mb-2">
                             Quick Snippets
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                        <div className="grid grid-cols-1 gap-3 mt-2">
                             {RULE_TEMPLATES.map(template => (
-                                <div key={template.label} className="text-xs bg-white border border-blue-100 rounded p-3 cursor-pointer hover:border-blue-300 transition-colors" onClick={() => {
-                                    const connector = query.trim() ? (query.trim().endsWith('AND') ? '\n' : '\nAND\n') : '';
-                                    setQuery(query + connector + template.example);
+                                <div key={template.label} className="text-xs bg-white border border-emerald-100 rounded p-3 cursor-pointer hover:border-emerald-300 transition-colors" onClick={() => {
+                                    setQuery(template.example);
                                 }}>
                                     <span className="block font-semibold text-slate-600 mb-2">{template.label}</span>
-                                    <pre className="font-mono text-blue-800 text-[11px] leading-relaxed overflow-x-auto">{template.example}</pre>
+                                    <pre className="font-mono text-emerald-800 text-[11px] leading-relaxed overflow-x-auto">{template.example}</pre>
                                 </div>
                             ))}
                         </div>
@@ -153,7 +152,7 @@ export function ZenScriptEditor({
                 <div className="space-y-3 p-5">
                     {narrative.map((line, index) => (
                         <div key={`${line}-${index}`} className="flex gap-3 text-sm leading-6">
-                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-blue-500" />
+                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-emerald-500" />
                             <span className="text-slate-700 font-medium">{line}</span>
                         </div>
                     ))}
@@ -161,7 +160,7 @@ export function ZenScriptEditor({
                     <button
                         type="button"
                         onClick={onSubmitStrategy}
-                        disabled={isSubmitting || !!parseError || strategy.entry_conditions.length === 0}
+                        disabled={isSubmitting || !!parseError || !parsedStrategy?.symbols?.length || !parsedStrategy?.entry_conditions?.length}
                         className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300 shadow-sm"
                     >
                         {isSubmitting ? (
@@ -177,6 +176,147 @@ export function ZenScriptEditor({
     )
 }
 
+function parseFullZenScript(text: string): Partial<StrategyV2> {
+    const strategy: Partial<StrategyV2> = {};
+
+    // 1. Strategy Name
+    const nameMatch = text.match(/STRATEGY\s+"([^"]+)"/i);
+    if (nameMatch) strategy.name = nameMatch[1];
+
+    // 2. Symbols
+    const symbolsMatch = text.match(/SYMBOLS:\s*([^\n]+)/i);
+    if (symbolsMatch) {
+        const symbolsStr = symbolsMatch[1].trim();
+        if (symbolsStr !== 'N/A' && symbolsStr !== 'Choose symbols') {
+            strategy.symbols = symbolsStr.split(',').map(s => s.trim()).filter(Boolean);
+        }
+    }
+
+    // 3. Timeframe
+    const tfMatch = text.match(/TIMEFRAME:\s*([^\n]+)/i);
+    if (tfMatch) strategy.timeframe = tfMatch[1].trim() as any;
+
+    // 4. Date Range
+    const dateMatch = text.match(/DATE_RANGE:\s*([\d-]+)\s+to\s+([\d-]+)/i);
+    if (dateMatch) {
+        strategy.backtest_from = dateMatch[1].trim();
+        strategy.backtest_to = dateMatch[2].trim();
+    }
+
+    // 5. Entry
+    const entryMatch = text.match(/ENTRY\s+(ALL|ANY)\s*\{([^}]+)\}/i);
+    if (entryMatch) {
+        strategy.entry_logic = entryMatch[1].toUpperCase() as any;
+        const conditionsText = entryMatch[2];
+        strategy.entry_conditions = parseStrategyQuery(conditionsText);
+    }
+
+    // 6. Exit
+    const exitMatch = text.match(/EXIT\s+(ALL|ANY)\s*\{([^}]+)\}/i);
+    if (exitMatch) {
+        strategy.exit_logic = exitMatch[1].toUpperCase() as any;
+        const exitText = exitMatch[2];
+        strategy.exit_rules = parseExitRules(exitText);
+    }
+
+    // 7. Risk
+    const riskMatch = text.match(/RISK\s*\{([^}]+)\}/i);
+    if (riskMatch) {
+        strategy.risk = parseRisk(riskMatch[1]);
+    }
+
+    return strategy;
+}
+
+function parseExitRules(text: string): ExitRule[] {
+    const rules: ExitRule[] = [];
+    const lines = text.split('\n').filter(l => l.trim() && !l.trim().startsWith('//'));
+    
+    lines.forEach((line, index) => {
+        const normalized = line.trim().toUpperCase();
+        
+        // Stoploss
+        let match = normalized.match(/STOPLOSS\s+([\d.]+)\s*%/);
+        if (match) {
+            const trailing = normalized.includes('TRAILING');
+            rules.push({
+                id: `exit_${Date.now()}_${index}`,
+                type: 'stoploss',
+                priority: index + 1,
+                percent: parseFloat(match[1]),
+                trailing,
+            });
+            return;
+        }
+
+        // Target
+        match = normalized.match(/TARGET\s+([\d.]+)\s*%/);
+        if (match) {
+            rules.push({
+                id: `exit_${Date.now()}_${index}`,
+                type: 'target',
+                priority: index + 1,
+                percent: parseFloat(match[1]),
+            });
+            return;
+        }
+
+        // Trailing
+        match = normalized.match(/TRAILING\s+([\d.]+)\s*%/);
+        if (match) {
+            const activationMatch = normalized.match(/AFTER\s+([\d.]+)\s*%/);
+            rules.push({
+                id: `exit_${Date.now()}_${index}`,
+                type: 'trailing',
+                priority: index + 1,
+                percent: parseFloat(match[1]),
+                activationPercent: activationMatch ? parseFloat(activationMatch[1]) : undefined
+            });
+            return;
+        }
+
+        // Time
+        match = normalized.match(/AT\s+([\d:]+)/);
+        if (match) {
+            rules.push({
+                id: `exit_${Date.now()}_${index}`,
+                type: 'time',
+                priority: index + 1,
+                time: match[1],
+            });
+            return;
+        }
+    });
+
+    return rules;
+}
+
+function parseRisk(text: string): RiskConfig {
+    const risk: RiskConfig = { 
+        quantity: 1, 
+        max_trades_per_day: 0, 
+        max_loss_per_day: 0,
+        reentry_after_sl: false,
+        max_concurrent_trades: 1
+    };
+    
+    const lines = text.split('\n').filter(l => l.trim() && !l.trim().startsWith('//'));
+    lines.forEach(line => {
+        const normalized = line.trim().toUpperCase();
+        
+        let match = normalized.match(/QUANTITY:\s+(\d+)/);
+        if (match) risk.quantity = parseInt(match[1], 10);
+
+        match = normalized.match(/MAX_TRADES_DAY:\s+(\d+)/);
+        if (match) risk.max_trades_per_day = parseInt(match[1], 10);
+
+        match = normalized.match(/MAX_DAILY_LOSS:\s+(\d+)/);
+        if (match) risk.max_loss_per_day = parseInt(match[1], 10);
+    });
+
+    return risk;
+}
+
 function parseStrategyQuery(query: string): Condition[] {
     const conditions = query
         .split(/\s+AND\s+|\n+/i)
@@ -185,7 +325,7 @@ function parseStrategyQuery(query: string): Condition[] {
         
     return conditions.map((c, idx) => ({
         ...c,
-        id: `cond_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 11)}`
+        id: `cond_${Date.now()}_${idx}`
     }));
 }
 
@@ -262,7 +402,7 @@ function escapeRegExp(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function generateStrategyNarrative(strategy: StrategyV2): string[] {
+function generateStrategyNarrative(strategy: Partial<StrategyV2>): string[] {
     const symbols = strategy.symbols?.length ? strategy.symbols.join(', ') : 'selected symbols'
     const conditions = strategy.entry_conditions?.length || 0
     const exits = strategy.exit_rules?.length || 0
@@ -279,6 +419,53 @@ function generateStrategyNarrative(strategy: StrategyV2): string[] {
     }
 
     return lines
+}
+
+export function generateZenScript(strategy: StrategyV2): string {
+    const lines: string[] = []
+    const indent = '    '
+
+    lines.push(`STRATEGY "${strategy.name || 'Untitled Strategy'}" {`)
+    lines.push(`${indent}SYMBOLS: ${(strategy.symbols || []).join(', ') || 'N/A'}`)
+    lines.push(`${indent}TIMEFRAME: ${strategy.timeframe || '15m'}`)
+
+    if (strategy.backtest_from && strategy.backtest_to) {
+        lines.push(`${indent}DATE_RANGE: ${strategy.backtest_from} to ${strategy.backtest_to}`)
+    }
+
+    lines.push('')
+    lines.push(`${indent}ENTRY ${strategy.entry_logic} {`)
+    const entryConditions = Array.isArray(strategy.entry_conditions) ? strategy.entry_conditions : []
+    if (entryConditions.length === 0) {
+        lines.push(`${indent}${indent}// No entry conditions configured`)
+    } else {
+        entryConditions.forEach((condition) => {
+            lines.push(`${indent}${indent}${formatCondition(condition)}`)
+        })
+    }
+    lines.push(`${indent}}`)
+
+    lines.push('')
+    lines.push(`${indent}EXIT ${strategy.exit_logic} {`)
+    const exitRules = strategy.exit_rules || []
+    if (exitRules.length === 0) {
+        lines.push(`${indent}${indent}// No exit rules configured`)
+    } else {
+        exitRules.forEach((rule) => {
+            lines.push(`${indent}${indent}${formatExitRule(rule)}`)
+        })
+    }
+    lines.push(`${indent}}`)
+
+    lines.push('')
+    lines.push(`${indent}RISK {`)
+    lines.push(`${indent}${indent}QUANTITY: ${strategy.risk.quantity}`)
+    lines.push(`${indent}${indent}MAX_TRADES_DAY: ${strategy.risk.max_trades_per_day || 'NO_LIMIT'}`)
+    lines.push(`${indent}${indent}MAX_DAILY_LOSS: ${strategy.risk.max_loss_per_day || 'NO_CAP'}`)
+    lines.push(`${indent}}`)
+    lines.push(`}`)
+
+    return lines.join('\n')
 }
 
 function formatCondition(condition: Condition): string {
@@ -313,4 +500,23 @@ function formatOperator(op: string): string {
         crosses_below: 'crosses below',
     }
     return opMap[op] || op
+}
+
+function formatExitRule(rule: any): string {
+    if (!rule?.type) return 'Invalid exit rule'
+
+    switch (rule.type) {
+        case 'stoploss':
+            return `STOPLOSS ${rule.percent || 0}%${rule.trailing ? ' TRAILING' : ''}`
+        case 'target':
+            return `TARGET ${rule.percent || 0}%`
+        case 'trailing':
+            return `TRAILING ${rule.percent || 0}%${rule.activationPercent ? ` AFTER ${rule.activationPercent}%` : ''}`
+        case 'time':
+            return `AT ${rule.time || '15:15'}`
+        case 'indicator_exit':
+            return `EXIT WHEN ${formatCondition(rule.condition)}`
+        default:
+            return `UNKNOWN: ${rule.type}`
+    }
 }
