@@ -15,8 +15,8 @@ import type { AssetType, IndexType, OptionType, StrikeType, TimeframeType } from
 
 type Section = 'config' | 'entry' | 'exit' | 'risk'
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
+    { id: 'entry', label: 'ZenScript', icon: '✨' },
     { id: 'config', label: 'Config', icon: '⚙️' },
-    { id: 'entry', label: 'Entry', icon: '🚀' },
     { id: 'exit', label: 'Exit', icon: '🚪' },
     { id: 'risk', label: 'Risk', icon: '🛡️' },
 ]
@@ -33,7 +33,7 @@ const T = {
 function StrategyBuilderContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
-    const [activeSection, setActiveSection] = useState<Section>('config')
+    const [activeSection, setActiveSection] = useState<Section>('entry')
     const [showPreview, setShowPreview] = useState(true)
     const [showValidation, setShowValidation] = useState(false)
     const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
