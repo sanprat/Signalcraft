@@ -6,10 +6,9 @@ import { useStrategy } from '@/hooks/useStrategy'
 import { loadStrategy } from '@/lib/api/strategy'
 import { BackButton } from '@/components/BackButton'
 import { StrategyConfig } from '@/components/strategy/StrategyConfig'
-import { EntryBuilder } from '@/components/strategy/EntryBuilder'
 import { ExitBuilder } from '@/components/strategy/ExitBuilder'
 import { RiskPanel } from '@/components/strategy/RiskPanel'
-import { ZenScriptPreview } from '@/components/strategy/ZenScriptPreview'
+import { ZenScriptEditor } from '@/components/strategy/ZenScriptEditor'
 import { ValidationResults } from '@/components/strategy/ValidationResults'
 import { isValidDateRange, isValidDateString } from '@/lib/date'
 import type { AssetType, IndexType, OptionType, StrikeType, TimeframeType } from '@/lib/types/strategy'
@@ -48,6 +47,7 @@ function StrategyBuilderContent() {
         validationResult,
         editMode,
         strategyId,
+        setStrategy,
         updateStrategyField,
         loadStrategy: loadStrategyIntoHook,
         resetStrategy,
@@ -253,14 +253,11 @@ function StrategyBuilderContent() {
 
             case 'entry':
                 return (
-                    <EntryBuilder
-                        conditions={strategy.entry_conditions}
-                        entryLogic={strategy.entry_logic}
-                        onAddCondition={addCondition}
-                        onRemoveCondition={removeCondition}
-                        onUpdateCondition={updateCondition}
-                        onReorderConditions={reorderConditions}
-                        onSetEntryLogic={setEntryLogic}
+                    <ZenScriptEditor
+                        strategy={strategy}
+                        onUpdateStrategy={(partial) => setStrategy({ ...strategy, ...partial } as any)}
+                        onSubmitStrategy={handleBacktest}
+                        isSubmitting={isBacktesting || isSaving || isValidating}
                     />
                 )
 
@@ -327,9 +324,9 @@ function StrategyBuilderContent() {
 
             {/* Main Content */}
             <div className="max-w-7xl mx-auto px-4 py-6">
-                <div className={`grid gap-6 ${showPreview ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'}`}>
+                <div className={`grid gap-6 ${showPreview ? 'grid-cols-1 lg:grid-cols-5' : 'grid-cols-1'}`}>
                     {/* Main Editor */}
-                    <div className={showPreview ? 'lg:col-span-2' : 'col-span-1'}>
+                    <div className={showPreview ? 'lg:col-span-3' : 'col-span-1'}>
                         {/* Section Tabs */}
                         <div className="flex gap-1 mb-4 bg-slate-100 p-1 rounded-lg overflow-x-auto">
                             {SECTIONS.map(section => (
@@ -455,10 +452,8 @@ function StrategyBuilderContent() {
 
                     {/* Preview Sidebar */}
                     {showPreview && (
-                        <div className="lg:col-span-1">
+                        <div className="lg:col-span-2">
                             <div className="sticky top-24">
-                                <ZenScriptPreview strategy={strategy} />
-
                                 {/* Quick Stats */}
                                 <div className="mt-4 bg-white rounded-xl border border-slate-200 p-4">
                                     <h3 className="text-sm font-semibold text-slate-700 mb-3">Quick Stats</h3>
