@@ -4,33 +4,6 @@ import { useState, useEffect } from "react";
 import { config } from '@/lib/config';
 
 const API = config.apiBaseUrl;
-const BROKERS = ["Dhan", "Shoonya", "Flattrade", "Zerodha"];
-
-const BROKER_FIELDS: Record<string, { key: string; label: string; type: string }[]> = {
-    Dhan: [
-        { key: "client_id", label: "Client ID", type: "text" },
-        { key: "access_token", label: "Access Token", type: "password" },
-    ],
-    Shoonya: [
-        { key: "userid", label: "User ID", type: "text" },
-        { key: "password", label: "Password", type: "password" },
-        { key: "totp_secret", label: "TOTP Secret", type: "password" },
-        { key: "vendor_code", label: "Vendor Code", type: "text" },
-        { key: "api_secret", label: "API Key / Secret", type: "password" },
-        { key: "imei", label: "IMEI (Optional)", type: "text" },
-    ],
-    Flattrade: [
-        { key: "userid", label: "User ID", type: "text" },
-        { key: "password", label: "Password", type: "password" },
-        { key: "totp_secret", label: "TOTP Secret", type: "password" },
-        { key: "vendor_code", label: "Vendor Code", type: "text" },
-        { key: "api_secret", label: "API Key / Secret", type: "password" },
-    ],
-    Zerodha: [
-        { key: "api_key", label: "API Key", type: "password" },
-        { key: "access_token", label: "Access Token", type: "password" },
-    ],
-};
 
 const T = {
     bg: '#F8FAFC', surface: '#FFFFFF', surfaceHover: '#F1F5F9',
@@ -41,115 +14,6 @@ const T = {
     amber: '#D97706', amberLight: '#FFFBEB',
     teal: '#0D9488', tealLight: '#F0FDFA',
     text: '#0F172A', textMid: '#475569', textMuted: '#94A3B8', pill: '#F1F5F9',
-}
-
-// ── Broker Config Panel ────────────────────────────────────────────────────────
-function BrokerPanel({ broker }: { broker: string }) {
-    const [credentials, setCredentials] = useState<Record<string, string>>({});
-    const [loading, setLoading] = useState(false);
-    const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
-
-    useEffect(() => {
-        fetchCredentials(broker);
-    }, [broker]);
-
-    const getAuthHeader = (): Record<string, string> => {
-        const token = localStorage.getItem("access_token") || localStorage.getItem("sc_token");
-        return token ? { Authorization: `Bearer ${token}` } : {};
-    };
-
-    const fetchCredentials = async (b: string) => {
-        setLoading(true);
-        setMessage(null);
-        setCredentials({});
-        try {
-            const res = await fetch(`${API}/api/settings/broker/${b}`, { headers: getAuthHeader() });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.credentials) setCredentials(data.credentials);
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        setMessage(null);
-        try {
-            const res = await fetch(`${API}/api/settings/broker`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", ...getAuthHeader() },
-                body: JSON.stringify({ broker, credentials }),
-            });
-            if (res.ok) {
-                setMessage({ text: `Credentials for ${broker} updated successfully!`, type: "success" });
-                fetchCredentials(broker);
-            } else {
-                const err = await res.json();
-                setMessage({ text: err.detail || "Failed to save credentials", type: "error" });
-            }
-        } catch {
-            setMessage({ text: "Network error saving credentials.", type: "error" });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <>
-            <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, color: T.navy }}>{broker} Configuration</h2>
-            <p style={{ margin: '0 0 24px', fontSize: 13, color: T.textMuted, lineHeight: 1.5 }}>
-                Configure API keys for algorithmic trading through {broker}. Credentials are encrypted per-user.
-            </p>
-            {message && (
-                <div style={{
-                    padding: '12px 16px', borderRadius: 8, marginBottom: 24, fontSize: 13, fontWeight: 600,
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    border: `1px solid ${message.type === 'success' ? T.greenMid : T.redMid}`,
-                    background: message.type === 'success' ? T.greenLight : T.redLight,
-                    color: message.type === 'success' ? T.green : T.red,
-                }}>
-                    {message.type === 'success' ? '✓' : '⚠'} {message.text}
-                </div>
-            )}
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 480 }}>
-                {BROKER_FIELDS[broker]?.map((field) => (
-                    <div key={field.key}>
-                        <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: T.textMid, marginBottom: 6 }}>
-                            {field.label}
-                        </label>
-                        <input
-                            type={field.type}
-                            value={credentials[field.key] || ""}
-                            onChange={(e) => setCredentials(prev => ({ ...prev, [field.key]: e.target.value }))}
-                            placeholder={`Enter ${field.label}`}
-                            style={{
-                                width: '100%', padding: '10px 14px', border: `1px solid ${T.borderStrong}`,
-                                borderRadius: 8, fontSize: 14, outline: 'none',
-                                background: T.surface, color: T.text,
-                                fontFamily: field.type === 'password' ? 'inherit' : "'DM Mono', monospace",
-                            }}
-                            onFocus={e => e.target.style.borderColor = T.blue}
-                            onBlur={e => e.target.style.borderColor = T.borderStrong}
-                        />
-                    </div>
-                ))}
-                <div style={{ marginTop: 16, paddingTop: 20, borderTop: `1px solid ${T.border}` }}>
-                    <button type="submit" disabled={loading} style={{
-                        padding: '10px 20px', background: T.blue, color: '#fff', border: 'none',
-                        borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
-                        opacity: loading ? 0.7 : 1,
-                    }}>
-                        {loading ? "Saving..." : "Save Configuration"}
-                    </button>
-                </div>
-            </form>
-        </>
-    );
 }
 
 // ── Telegram Config Panel ──────────────────────────────────────────────────────
@@ -411,16 +275,6 @@ function TelegramPanel() {
 
 // ── Main Settings Page ─────────────────────────────────────────────────────────
 export default function SettingsPage() {
-    const [selected, setSelected] = useState<string>(BROKERS[0]);
-
-    type NavItem = { id: string; label: string; icon: string; section: 'broker' | 'telegram' };
-    const NAV: NavItem[] = [
-        ...BROKERS.map(b => ({ id: b, label: b, icon: '🔗', section: 'broker' as const })),
-        { id: 'telegram', label: 'Telegram', icon: '✈️', section: 'telegram' as const },
-    ];
-
-    const active = NAV.find(n => n.id === selected)!;
-
     return (
         <div style={{ padding: 24, fontFamily: "'DM Sans', sans-serif", background: T.bg, minHeight: "100vh" }}>
             <div style={{ marginBottom: 20 }}>
@@ -428,61 +282,14 @@ export default function SettingsPage() {
                     Settings
                 </h1>
                 <p style={{ margin: '4px 0 0', fontSize: 13, color: T.textMuted }}>
-                    Manage broker connections, API credentials, and notification preferences
+                    Manage notification preferences
                 </p>
             </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 24 }}>
-                {/* Sidebar */}
-                <div style={{
-                    background: T.surface, borderRadius: 12, border: `1px solid ${T.border}`,
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', alignSelf: 'start',
-                }}>
-                    <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.border}`, fontSize: 11, fontWeight: 700, color: T.textMuted, letterSpacing: '0.6px', textTransform: 'uppercase' }}>
-                        Brokers
-                    </div>
-                    <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        {BROKERS.map(broker => (
-                            <button key={broker} onClick={() => setSelected(broker)} style={{
-                                width: '100%', padding: '10px 14px', border: 'none', borderRadius: 8,
-                                background: selected === broker ? T.blueLight : 'transparent',
-                                color: selected === broker ? T.blue : T.textMid,
-                                fontSize: 14, fontWeight: selected === broker ? 700 : 500,
-                                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-                            }}>
-                                🔗 {broker}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Notifications section */}
-                    <div style={{ padding: '16px 20px 8px', borderTop: `1px solid ${T.border}`, fontSize: 11, fontWeight: 700, color: T.textMuted, letterSpacing: '0.6px', textTransform: 'uppercase' }}>
-                        Notifications
-                    </div>
-                    <div style={{ padding: '0 8px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <button onClick={() => setSelected('telegram')} style={{
-                            width: '100%', padding: '10px 14px', border: 'none', borderRadius: 8,
-                            background: selected === 'telegram' ? T.blueLight : 'transparent',
-                            color: selected === 'telegram' ? T.blue : T.textMid,
-                            fontSize: 14, fontWeight: selected === 'telegram' ? 700 : 500,
-                            cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-                        }}>
-                            ✈️ Telegram
-                        </button>
-                    </div>
-                </div>
-
-                {/* Main Content */}
-                <div style={{
-                    background: T.surface, borderRadius: 12, border: `1px solid ${T.border}`,
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)', padding: 28,
-                }}>
-                    {selected === 'telegram' ? (
-                        <TelegramPanel />
-                    ) : (
-                        <BrokerPanel broker={selected} />
-                    )}
-                </div>
+            <div style={{
+                background: T.surface, borderRadius: 12, border: `1px solid ${T.border}`,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)', padding: 28, maxWidth: 760,
+            }}>
+                <TelegramPanel />
             </div>
         </div>
     );

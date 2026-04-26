@@ -27,7 +27,7 @@ import type {
 
 type Section = 'config' | 'entry' | 'exit' | 'risk'
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
-    { id: 'entry', label: 'ZenScript', icon: '✨' },
+    { id: 'entry', label: 'Entry', icon: '✨' },
     { id: 'config', label: 'Config', icon: '⚙️' },
     { id: 'exit', label: 'Exit', icon: '🚪' },
     { id: 'risk', label: 'Risk', icon: '🛡️' },
