@@ -38,6 +38,7 @@ POLL_INTERVAL = 2
 MAX_LOG_LINES = 20
 # Max message size (Telegram limit is ~4096)
 MAX_MESSAGE_SIZE = 3500
+TELEGRAM_BYTE_LIMIT = 3500
 
 
 def load_json(filepath, default):
@@ -55,6 +56,35 @@ def save_state(state):
     with open(STATE_TMP, "w") as f:
         json.dump(state, f, indent=2)
     os.replace(STATE_TMP, STATE_FILE)
+
+
+def truncate_utf8(text, max_bytes):
+    """Trim text to a UTF-8 byte budget without splitting code points."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def sanitize_telegram_text(text):
+    """Remove markdown-like formatting and code fences for fallback delivery."""
+    text = text.replace("```", "")
+    text = text.replace("**", "")
+    text = text.replace("`", "")
+    text = text.replace("*", "")
+    return text
+
+
+def post_telegram_message(token, chat_id, message):
+    """Send a single Telegram message payload."""
+    payload = {"chat_id": chat_id, "text": message}
+    data = json.dumps(payload).encode("utf-8")
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    req = urllib.request.Request(
+        url, data=data, headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=10) as _:
+        pass
 
 
 def send_telegram(config, message):
@@ -77,20 +107,31 @@ def send_telegram(config, message):
         print("Telegram Alert Skiped: No bot token or chat ID configured.")
         return
 
-    # Enforce Telegram 4096 byte hard limit
-    if len(message) > 4000:
-        message = message[:3900] + "\n\n⚠️ [ MESSAGE TRUNCATED EXCEEDED TELEGRAM LIMIT ]"
-
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": message}
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}
-    )
+    trimmed = truncate_utf8(message, TELEGRAM_BYTE_LIMIT)
+    if trimmed != message:
+        trimmed = truncate_utf8(
+            trimmed + "\n\n[ MESSAGE TRUNCATED TO FIT TELEGRAM LIMIT ]",
+            TELEGRAM_BYTE_LIMIT,
+        )
 
     try:
-        with urllib.request.urlopen(req, timeout=10) as _:
-            pass
+        post_telegram_message(token, chat_id, trimmed)
+        return
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        print(f"Failed to send Telegram alert: HTTP {e.code} {err_body[:300]}")
+
+        if e.code in (400, 413):
+            fallback = sanitize_telegram_text(message)
+            fallback = truncate_utf8(
+                fallback + "\n\n[ FALLBACK: plain-text Telegram delivery ]",
+                TELEGRAM_BYTE_LIMIT,
+            )
+            try:
+                post_telegram_message(token, chat_id, fallback)
+                return
+            except urllib.error.URLError as retry_err:
+                print(f"Fallback Telegram alert also failed: {retry_err}")
     except urllib.error.URLError as e:
         print(f"Failed to send Telegram alert: {e}")
 
@@ -170,7 +211,7 @@ def handle_telegram_command(config, text):
         if content is None:
             return f"❌ Cannot read log file: {filepath}"
 
-        truncated = content[:MAX_MESSAGE_SIZE]
+        truncated = truncate_utf8(content, MAX_MESSAGE_SIZE)
         return f"🧾 Logs ({arg}, last {MAX_LOG_LINES} lines):\n```\n{truncated}```"
 
     elif cmd == "/errors":
