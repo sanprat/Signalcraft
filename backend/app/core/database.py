@@ -5,6 +5,7 @@ Automatically detects database type from DATABASE_URL environment variable.
 
 import os
 import logging
+from datetime import datetime
 from typing import Optional, Generator, Any
 from contextlib import contextmanager
 
@@ -167,6 +168,7 @@ def init_db():
     if IS_SQLITE:
         # SQLite: Use SQLAlchemy ORM
         Base.metadata.create_all(bind=engine)
+        _ensure_sqlite_user_subscription_columns()
         logger.info("SQLite tables created successfully")
     else:
         # PostgreSQL: Use raw SQL
@@ -187,9 +189,37 @@ def _init_postgres_schema():
                 full_name VARCHAR(255),
                 role VARCHAR(50) DEFAULT 'user',
                 is_active BOOLEAN DEFAULT TRUE,
+                subscription_plan VARCHAR(100),
+                subscription_status VARCHAR(50) DEFAULT 'active',
+                subscription_started_at TIMESTAMP,
+                subscription_expires_at TIMESTAMP,
+                payment_reference VARCHAR(255),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(100)"
+        )
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'active'"
+        )
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMP"
+        )
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMP"
+        )
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(255)"
+        )
+        cursor.execute(
+            """
+            UPDATE users
+            SET subscription_status = COALESCE(subscription_status, 'active')
+            WHERE subscription_status IS NULL
+            """
+        )
 
         # Admin logs table
         cursor.execute("""
@@ -306,14 +336,54 @@ def _init_postgres_schema():
 
         cursor.execute("COMMIT")
         cursor.close()
-        logger.info("PostgreSQL tables created successfully")
+
+
+def _ensure_sqlite_user_subscription_columns():
+    """Add subscription columns to the SQLite users table if they are missing."""
+    with engine.begin() as conn:
+        existing = {
+            row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)").fetchall()
+        }
+        additions = [
+            ("subscription_plan", "ALTER TABLE users ADD COLUMN subscription_plan VARCHAR(100)"),
+            (
+                "subscription_status",
+                "ALTER TABLE users ADD COLUMN subscription_status VARCHAR(50) DEFAULT 'active'",
+            ),
+            (
+                "subscription_started_at",
+                "ALTER TABLE users ADD COLUMN subscription_started_at DATETIME",
+            ),
+            (
+                "subscription_expires_at",
+                "ALTER TABLE users ADD COLUMN subscription_expires_at DATETIME",
+            ),
+            ("payment_reference", "ALTER TABLE users ADD COLUMN payment_reference VARCHAR(255)"),
+        ]
+        for column, statement in additions:
+            if column not in existing:
+                conn.exec_driver_sql(statement)
+        conn.exec_driver_sql(
+            """
+            UPDATE users
+            SET subscription_status = COALESCE(subscription_status, 'active')
+            """
+        )
+        logger.info("SQLite user subscription columns verified")
 
 
 # ── User Database Functions (Database Agnostic) ───────────────────────────────
 
 
 def create_user(
-    email: str, password_hash: str, full_name: Optional[str] = None
+    email: str,
+    password_hash: str,
+    full_name: Optional[str] = None,
+    subscription_plan: Optional[str] = None,
+    subscription_status: str = "pending_payment",
+    subscription_started_at: Optional[datetime] = None,
+    subscription_expires_at: Optional[datetime] = None,
+    payment_reference: Optional[str] = None,
 ) -> Optional[int]:
     """Create a new user and return their ID."""
     if IS_SQLITE:
@@ -321,7 +391,16 @@ def create_user(
 
         db = SessionLocal()
         try:
-            user = User(email=email, password_hash=password_hash, full_name=full_name)
+            user = User(
+                email=email,
+                password_hash=password_hash,
+                full_name=full_name,
+                subscription_plan=subscription_plan,
+                subscription_status=subscription_status,
+                subscription_started_at=subscription_started_at,
+                subscription_expires_at=subscription_expires_at,
+                payment_reference=payment_reference,
+            )
             db.add(user)
             db.commit()
             db.refresh(user)
@@ -338,11 +417,24 @@ def create_user(
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT INTO users (email, password_hash, full_name)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO users (
+                        email, password_hash, full_name, subscription_plan,
+                        subscription_status, subscription_started_at,
+                        subscription_expires_at, payment_reference
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (email, password_hash, full_name),
+                    (
+                        email,
+                        password_hash,
+                        full_name,
+                        subscription_plan,
+                        subscription_status,
+                        subscription_started_at,
+                        subscription_expires_at,
+                        payment_reference,
+                    ),
                 )
                 user_id = cursor.fetchone()[0]
                 cursor.execute("COMMIT")
@@ -369,6 +461,15 @@ def get_user_by_email(email: str) -> Optional[dict]:
                     "full_name": user.full_name,
                     "role": user.role,
                     "is_active": user.is_active,
+                    "subscription_plan": user.subscription_plan,
+                    "subscription_status": user.subscription_status,
+                    "subscription_started_at": str(user.subscription_started_at)
+                    if user.subscription_started_at
+                    else None,
+                    "subscription_expires_at": str(user.subscription_expires_at)
+                    if user.subscription_expires_at
+                    else None,
+                    "payment_reference": user.payment_reference,
                     "created_at": str(user.created_at) if user.created_at else None,
                 }
             return None
@@ -377,7 +478,16 @@ def get_user_by_email(email: str) -> Optional[dict]:
     else:
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+            cursor.execute(
+                """
+                SELECT id, email, password_hash, full_name, role, is_active,
+                       subscription_plan, subscription_status,
+                       subscription_started_at, subscription_expires_at,
+                       payment_reference, created_at
+                FROM users WHERE email = %s
+                """,
+                (email,),
+            )
             row = cursor.fetchone()
             cursor.close()
             if row:
@@ -388,7 +498,12 @@ def get_user_by_email(email: str) -> Optional[dict]:
                     "full_name": row[3],
                     "role": row[4],
                     "is_active": row[5],
-                    "created_at": str(row[6]) if row[6] else None,
+                    "subscription_plan": row[6],
+                    "subscription_status": row[7],
+                    "subscription_started_at": str(row[8]) if row[8] else None,
+                    "subscription_expires_at": str(row[9]) if row[9] else None,
+                    "payment_reference": row[10],
+                    "created_at": str(row[11]) if row[11] else None,
                 }
             return None
 
@@ -408,6 +523,15 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
                     "full_name": user.full_name,
                     "role": user.role,
                     "is_active": user.is_active,
+                    "subscription_plan": user.subscription_plan,
+                    "subscription_status": user.subscription_status,
+                    "subscription_started_at": str(user.subscription_started_at)
+                    if user.subscription_started_at
+                    else None,
+                    "subscription_expires_at": str(user.subscription_expires_at)
+                    if user.subscription_expires_at
+                    else None,
+                    "payment_reference": user.payment_reference,
                     "created_at": str(user.created_at) if user.created_at else None,
                 }
             return None
@@ -419,6 +543,7 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
             cursor.execute(
                 """
                 SELECT id, email, full_name, role, is_active, created_at
+                , subscription_plan, subscription_status, subscription_started_at, subscription_expires_at, payment_reference
                 FROM users WHERE id = %s
                 """,
                 (user_id,),
@@ -433,6 +558,11 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
                     "role": row[3],
                     "is_active": row[4],
                     "created_at": str(row[5]) if row[5] else None,
+                    "subscription_plan": row[6],
+                    "subscription_status": row[7],
+                    "subscription_started_at": str(row[8]) if row[8] else None,
+                    "subscription_expires_at": str(row[9]) if row[9] else None,
+                    "payment_reference": row[10],
                 }
             return None
 
@@ -458,6 +588,14 @@ def get_all_users(limit: int = 100, offset: int = 0) -> list:
                     "full_name": u.full_name,
                     "role": u.role,
                     "is_active": u.is_active,
+                    "subscription_plan": u.subscription_plan,
+                    "subscription_status": u.subscription_status,
+                    "subscription_started_at": str(u.subscription_started_at)
+                    if u.subscription_started_at
+                    else None,
+                    "subscription_expires_at": str(u.subscription_expires_at)
+                    if u.subscription_expires_at
+                    else None,
                     "created_at": str(u.created_at) if u.created_at else None,
                 }
                 for u in users
@@ -469,7 +607,8 @@ def get_all_users(limit: int = 100, offset: int = 0) -> list:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT id, email, full_name, role, is_active, created_at
+                SELECT id, email, full_name, role, is_active, created_at,
+                       subscription_plan, subscription_status, subscription_started_at, subscription_expires_at
                 FROM users ORDER BY created_at DESC LIMIT %s OFFSET %s
                 """,
                 (limit, offset),
@@ -484,6 +623,10 @@ def get_all_users(limit: int = 100, offset: int = 0) -> list:
                     "role": row[3],
                     "is_active": row[4],
                     "created_at": str(row[5]) if row[5] else None,
+                    "subscription_plan": row[6],
+                    "subscription_status": row[7],
+                    "subscription_started_at": str(row[8]) if row[8] else None,
+                    "subscription_expires_at": str(row[9]) if row[9] else None,
                 }
                 for row in rows
             ]
@@ -491,7 +634,18 @@ def get_all_users(limit: int = 100, offset: int = 0) -> list:
 
 # Allowed columns for dynamic update - prevents SQL injection
 ALLOWED_USER_UPDATE_COLUMNS = frozenset(
-    {"email", "full_name", "role", "is_active", "password_hash"}
+    {
+        "email",
+        "full_name",
+        "role",
+        "is_active",
+        "password_hash",
+        "subscription_plan",
+        "subscription_status",
+        "subscription_started_at",
+        "subscription_expires_at",
+        "payment_reference",
+    }
 )
 
 

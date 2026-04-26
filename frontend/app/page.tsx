@@ -65,8 +65,9 @@ function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
             <a href="#products" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Products</a>
             <a href="#features" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Features</a>
             <a href="#how-it-works" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>How It Works</a>
+            <Link href="/pricing" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Pricing</Link>
             <Link href="/login" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
-            <Link href="/login?signup=1" style={{
+            <Link href="/pricing" style={{
                 padding: '14px 32px',
                 background: T.emerald,
                 color: '#000',
@@ -74,7 +75,7 @@ function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
                 fontSize: 18,
                 fontWeight: 700,
                 textDecoration: 'none',
-            }}>Enter SignalCraft</Link>
+            }}>Subscribe for ₹799/mo</Link>
             <button onClick={onClose} style={{
                 position: 'absolute',
                 top: 20,
@@ -130,7 +131,7 @@ export default function ZenalysLandingPage() {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 12 : 40 }}>
                     {/* Logo Area */}
-                    <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, letterSpacing: '-0.5px', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Link href="/" style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800, letterSpacing: '-0.5px', color: '#fff', display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
                         <div style={{ 
                             width: isMobile ? 24 : 28, 
                             height: isMobile ? 24 : 28, 
@@ -144,7 +145,7 @@ export default function ZenalysLandingPage() {
                             fontSize: isMobile ? 14 : 16 
                         }}>Z</div>
                         Zenalys
-                    </div>
+                    </Link>
                     
                     {/* Desktop Links */}
                     {!isMobile && (
@@ -152,6 +153,7 @@ export default function ZenalysLandingPage() {
                             <a href="#products" style={{ color: T.textMid, textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = T.textMid}>Products</a>
                             <a href="#features" style={{ color: T.textMid, textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = T.textMid}>Features</a>
                             <a href="#how-it-works" style={{ color: T.textMid, textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = T.textMid}>How It Works</a>
+                            <Link href="/pricing" style={{ color: T.textMid, textDecoration: 'none', transition: 'color 0.2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = T.textMid}>Pricing</Link>
                         </div>
                     )}
                 </div>
@@ -162,8 +164,8 @@ export default function ZenalysLandingPage() {
                             <Link href="/login" style={{ padding: '10px 24px', color: '#fff', fontSize: 14, fontWeight: 600, textDecoration: 'none', transition: 'opacity 0.2s' }} onMouseOver={e => e.currentTarget.style.opacity = '0.8'} onMouseOut={e => e.currentTarget.style.opacity = '1'}>
                                 Sign In
                             </Link>
-                            <Link href="/login?signup=1" style={{ padding: '10px 24px', background: '#fff', color: '#000', borderRadius: 50, fontSize: 14, fontWeight: 700, textDecoration: 'none', transition: 'transform 0.2s', boxShadow: '0 4px 14px rgba(255,255,255,0.1)' }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
-                                Enter SignalCraft
+                            <Link href="/pricing" style={{ padding: '10px 24px', background: '#fff', color: '#000', borderRadius: 50, fontSize: 14, fontWeight: 700, textDecoration: 'none', transition: 'transform 0.2s', boxShadow: '0 4px 14px rgba(255,255,255,0.1)' }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
+                                ₹799 / month
                             </Link>
                         </>
                     ) : (
@@ -286,7 +288,7 @@ export default function ZenalysLandingPage() {
                         flexDirection: isMobile ? 'column' : 'row',
                         width: isMobile ? '100%' : 'auto'
                     }}>
-                        <Link href="/login" style={{ 
+                        <Link href="/pricing" style={{ 
                             padding: isMobile ? '14px 28px' : '16px 36px', 
                             background: '#fff', 
                             color: '#000', 
@@ -298,7 +300,7 @@ export default function ZenalysLandingPage() {
                             boxShadow: '0 8px 25px rgba(255,255,255,0.15)',
                             textAlign: 'center',
                         }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
-                            Start Building Strategies
+                            View Pricing
                         </Link>
                         <a href="#how-it-works" style={{ 
                             padding: isMobile ? '14px 28px' : '16px 36px', 
@@ -385,7 +387,7 @@ export default function ZenalysLandingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            <Link href="/login?signup=1" style={{ 
+                            <Link href="/pricing" style={{ 
                                 display: 'inline-block', 
                                 padding: isMobile ? '12px 24px' : '14px 32px', 
                                 background: T.emerald, 
@@ -400,7 +402,7 @@ export default function ZenalysLandingPage() {
                                 textAlign: 'center',
                                 boxSizing: 'border-box',
                             }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
-                                Open SignalCraft App →
+                                Subscribe for ₹799/mo →
                             </Link>
                         </div>
 
@@ -514,9 +516,9 @@ export default function ZenalysLandingPage() {
                         margin: `0 auto ${isMobile ? 32 : 40}px`,
                         padding: isMobile ? '0 8px' : 0
                     }}>
-                        Build strategies, backtest against historical data, and get alerts when your conditions trigger. Start for free today.
+                        Build strategies, backtest against historical data, and get alerts when your conditions trigger with one monthly subscription.
                     </p>
-                    <Link href="/login?signup=1" style={{ 
+                    <Link href="/pricing" style={{ 
                         display: 'inline-block', 
                         padding: isMobile ? '14px 32px' : '16px 40px', 
                         background: '#fff', 
@@ -531,7 +533,7 @@ export default function ZenalysLandingPage() {
                         maxWidth: isMobile ? '280px' : 'none',
                         boxSizing: 'border-box',
                     }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}>
-                        Start Building
+                        Subscribe Now
                     </Link>
                 </section>
 

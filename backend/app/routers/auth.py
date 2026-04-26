@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 init_db()
+SUBSCRIPTION_PLAN_MONTHLY = "zenalys-monthly-799"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -48,6 +49,10 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     role: str
     is_active: bool
+    subscription_plan: Optional[str] = None
+    subscription_status: Optional[str] = None
+    subscription_started_at: Optional[str] = None
+    subscription_expires_at: Optional[str] = None
     created_at: Optional[str]
 
 
@@ -61,6 +66,13 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     full_name: Optional[str] = None
+    plan_code: str
+
+
+class RegisterResponse(BaseModel):
+    message: str
+    requires_payment: bool
+    user: UserResponse
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserResponse:
@@ -88,34 +100,50 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserResponse:
         full_name=user.get("full_name"),
         role=user.get("role", "user"),
         is_active=bool(user.get("is_active", True)),
+        subscription_plan=user.get("subscription_plan"),
+        subscription_status=user.get("subscription_status"),
+        subscription_started_at=user.get("subscription_started_at"),
+        subscription_expires_at=user.get("subscription_expires_at"),
         created_at=user["created_at"],
     )
 
 
-@router.post("/register", response_model=TokenResponse)
+@router.post("/register", response_model=RegisterResponse)
 @limiter.limit("3/minute")
 async def register(request: Request, req: RegisterRequest):
     existing = get_user_by_email(req.email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
+    if req.plan_code != SUBSCRIPTION_PLAN_MONTHLY:
+        raise HTTPException(status_code=400, detail="Invalid subscription plan selected")
 
     password_hash = get_password_hash(req.password)
-    user_id = create_user(req.email, password_hash, req.full_name)
+    user_id = create_user(
+        req.email,
+        password_hash,
+        req.full_name,
+        subscription_plan=req.plan_code,
+        subscription_status="pending_payment",
+    )
     if user_id is None:
         raise HTTPException(status_code=500, detail="Failed to create user")
     user = get_user_by_id(int(user_id))
     if user is None:
         raise HTTPException(status_code=500, detail="Failed to create user")
 
-    access_token = create_access_token(data={"sub": str(user["id"])})
-    return TokenResponse(
-        access_token=access_token,
+    return RegisterResponse(
+        message="Account created. Complete subscription payment before signing in.",
+        requires_payment=True,
         user=UserResponse(
             id=user["id"],
             email=user["email"],
             full_name=user.get("full_name"),
             role=user.get("role", "user"),
             is_active=bool(user.get("is_active", True)),
+            subscription_plan=user.get("subscription_plan"),
+            subscription_status=user.get("subscription_status"),
+            subscription_started_at=user.get("subscription_started_at"),
+            subscription_expires_at=user.get("subscription_expires_at"),
             created_at=user["created_at"],
         ),
     )
@@ -131,6 +159,16 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if not bool(user.get("is_active", True)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is inactive",
+        )
+    if user.get("subscription_status") != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Subscription inactive. Choose a plan on /pricing and activate payment before signing in.",
+        )
 
     access_token = create_access_token(data={"sub": str(user["id"])})
     return TokenResponse(
@@ -141,6 +179,10 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
             full_name=user["full_name"],
             role=user.get("role", "user"),
             is_active=bool(user.get("is_active", True)),
+            subscription_plan=user.get("subscription_plan"),
+            subscription_status=user.get("subscription_status"),
+            subscription_started_at=user.get("subscription_started_at"),
+            subscription_expires_at=user.get("subscription_expires_at"),
             created_at=user["created_at"],
         ),
     )

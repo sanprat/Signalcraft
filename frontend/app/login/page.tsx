@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { config } from '@/lib/config'
 
@@ -182,7 +182,7 @@ export default function LoginPage() {
 
                         <div style={{ textAlign: 'center', marginBottom: 32 }}>
                             <div style={{ fontSize: 22, fontWeight: 800, color: T.navy, marginBottom: 6 }}>Welcome back</div>
-                            <div style={{ fontSize: 13, color: T.textMuted }}>Sign in to your SignalCraft account</div>
+                            <div style={{ fontSize: 13, color: T.textMuted }}>Sign in to your active Zenalys subscription</div>
                         </div>
 
                         {error && (
@@ -215,7 +215,7 @@ export default function LoginPage() {
 
                         <div style={{ marginTop: 24, textAlign: 'center', fontSize: 12, color: T.textMuted }}>
                             Don't have an account?{' '}
-                            <Link href="/register" style={{ color: T.blue, fontWeight: 600 }}>Create one</Link>
+                            <Link href="/pricing" style={{ color: T.blue, fontWeight: 600 }}>See pricing</Link>
                         </div>
                     </div>
 
