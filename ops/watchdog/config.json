@@ -5,7 +5,7 @@
     {
       "path": "/home/signalcraft/data/logs/daily_update.log",
       "name": "daily_update",
-      "max_stale_minutes": 1500,
+      "max_stale_minutes": 5000,
       "severity": "CRITICAL"
     },
     {

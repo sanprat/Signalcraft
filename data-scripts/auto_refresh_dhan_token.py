@@ -23,7 +23,9 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Setup logging
-LOG_FILE = Path(__file__).parent / "data" / "token_refresh.log"
+# Keep a canonical app log under the shared project log directory so cron,
+# watchdog, and manual runs can all refer to the same file.
+LOG_FILE = Path(__file__).parent.parent / "data" / "logs" / "token_refresh.log"
 LOG_FILE.parent.mkdir(exist_ok=True)
 
 logging.basicConfig(
