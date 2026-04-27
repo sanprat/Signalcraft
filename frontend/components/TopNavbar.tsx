@@ -58,7 +58,7 @@ export default function TopNavbar() {
     const userInitial = user?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'
 
     // Only show navbar on specific paths
-    const PUBLIC_PATHS = ['/', '/login', '/register']
+    const PUBLIC_PATHS = ['/', '/login', '/register', '/pricing']
     if (PUBLIC_PATHS.includes(pathname) || pathname?.startsWith('/admin')) {
         return null
     }

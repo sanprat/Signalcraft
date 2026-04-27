@@ -67,15 +67,15 @@ function MobileMenu({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
             <a href="#how-it-works" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>How It Works</a>
             <Link href="/pricing" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Pricing</Link>
             <Link href="/login" style={{ color: '#fff', fontSize: 24, fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
-            <Link href="/pricing" style={{
-                padding: '14px 32px',
-                background: T.emerald,
-                color: '#000',
-                borderRadius: 50,
-                fontSize: 18,
-                fontWeight: 700,
-                textDecoration: 'none',
-            }}>Subscribe for ₹799/mo</Link>
+                            <Link href="/pricing" style={{
+                                padding: '14px 32px',
+                                background: T.emerald,
+                                color: '#000',
+                                borderRadius: 50,
+                                fontSize: 18,
+                                fontWeight: 700,
+                                textDecoration: 'none',
+                            }}>Subscribe</Link>
             <button onClick={onClose} style={{
                 position: 'absolute',
                 top: 20,
@@ -165,7 +165,7 @@ export default function ZenalysLandingPage() {
                                 Sign In
                             </Link>
                             <Link href="/pricing" style={{ padding: '10px 24px', background: '#fff', color: '#000', borderRadius: 50, fontSize: 14, fontWeight: 700, textDecoration: 'none', transition: 'transform 0.2s', boxShadow: '0 4px 14px rgba(255,255,255,0.1)' }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
-                                ₹799 / month
+                                Register here
                             </Link>
                         </>
                     ) : (
@@ -387,23 +387,23 @@ export default function ZenalysLandingPage() {
                                     </li>
                                 ))}
                             </ul>
-                            <Link href="/pricing" style={{ 
-                                display: 'inline-block', 
-                                padding: isMobile ? '12px 24px' : '14px 32px', 
-                                background: T.emerald, 
-                                color: '#000', 
-                                borderRadius: 8, 
-                                fontSize: isMobile ? 14 : 15, 
-                                fontWeight: 700, 
-                                textDecoration: 'none', 
-                                transition: 'all 0.2s', 
-                                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)',
-                                width: isMobile ? '100%' : 'auto',
-                                textAlign: 'center',
-                                boxSizing: 'border-box',
-                            }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
-                                Subscribe for ₹799/mo →
-                            </Link>
+                                <Link href="/pricing" style={{ 
+                                    display: 'inline-block', 
+                                    padding: isMobile ? '12px 24px' : '14px 32px', 
+                                    background: T.emerald, 
+                                    color: '#000', 
+                                    borderRadius: 8, 
+                                    fontSize: isMobile ? 14 : 15, 
+                                    fontWeight: 700, 
+                                    textDecoration: 'none', 
+                                    transition: 'all 0.2s', 
+                                    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)',
+                                    width: isMobile ? '100%' : 'auto',
+                                    textAlign: 'center',
+                                    boxSizing: 'border-box',
+                                }} onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}>
+                                    Subscribe →
+                                </Link>
                         </div>
 
                         {/* Mockup / Abstract visual */}

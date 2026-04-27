@@ -5,7 +5,7 @@ export function middleware(request: NextRequest) {
     const token = request.cookies.get('sc_token')?.value || request.headers.get('x-sc-token')
     const isAdmin = request.cookies.get('sc_admin')?.value === 'true'
 
-    const publicPaths = ['/login', '/register', '/admin/login', '/api/auth']
+    const publicPaths = ['/login', '/register', '/pricing', '/admin/login', '/api/auth']
     const adminPaths = ['/admin']
 
     const isPublicPath = publicPaths.some(path => request.nextUrl.pathname.startsWith(path))
